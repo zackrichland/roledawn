@@ -251,10 +251,10 @@ export function DashboardExperience() {
         <div className="dashboard-topbar"><div className="dashboard-search"><Icon name="search"/><span>Search applications, companies, receipts…</span></div><div><span className="prototype-dot"/><span>Local prototype</span><span className="company-avatar">AR</span></div></div>
         <div className="dashboard-content">
           {view === "Today" && <><AuthorityBar paused={paused} onToggle={() => setPaused((value) => !value)}/><TodayView paused={paused} open={setSelected} approve={requestApproval}/></>}
-          {view === "Approval Queue" && <ApplicationsView initialFilter="Ready" open={setSelected}/>} 
-          {view === "Applications" && <ApplicationsView open={setSelected}/>} 
-          {view === "Search" && <SearchView open={setSelected}/>} 
-          {(["Inbox", "Career Vault", "Rules", "Settings"] as DashboardView[]).includes(view) && <PlaceholderView view={view}/>} 
+          {view === "Approval Queue" && <ApplicationsView initialFilter="Ready" open={setSelected}/>}
+          {view === "Applications" && <ApplicationsView open={setSelected}/>}
+          {view === "Search" && <SearchView open={setSelected}/>}
+          {(["Inbox", "Career Vault", "Rules", "Settings"] as DashboardView[]).includes(view) && <PlaceholderView view={view}/>}
         </div>
       </main>
       {selected && <><button aria-label="Close application detail" className="detail-scrim" onClick={() => setSelected(null)} type="button"/><DetailPanel application={selected} onApprove={() => requestApproval(selected)} onClose={() => setSelected(null)} paused={paused}/></>}
