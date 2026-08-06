@@ -1,0 +1,16 @@
+{
+  "name": "RoleDawn",
+  "short_name": "RoleDawn",
+  "description": "A trust-first career agent in your messages.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#F7F8FC",
+  "theme_color": "#0B1020",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
