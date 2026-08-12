@@ -1,7 +1,7 @@
 ---
 title: Positioning and initial customer profile
 status: recommended direction
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 ---
 
 # Positioning and initial customer profile
@@ -100,7 +100,7 @@ The default is review. A user may later grant narrow, expiring rules to a proven
 
 ### 4. Receipts beat activity feeds
 
-A status update says work happened. A receipt identifies the job, requisition, answers, files, versions, timestamp, portal result, and confirmation evidence.
+A status update says work happened. A receipt identifies the company, role, canonical source, answers, files, versions, timestamp, portal result, and confirmation evidence. Provider references remain available as secondary evidence when useful; they are not the primary label.
 
 ### 5. Outcome quality over quantity
 

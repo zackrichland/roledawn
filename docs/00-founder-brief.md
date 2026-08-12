@@ -2,107 +2,111 @@
 title: Founder brief
 status: recommended direction
 owner: founder
-last_updated: 2026-08-06
-decision_state: use as the current one-page source of truth
+last_updated: 2026-08-12
+decision_state: current one-page product source of truth
 ---
 
 # Founder brief
 
 ## The decision
 
-Build **RoleDawn**, a trust-first career agent for iPhone-first active job seekers. It works continuously in the cloud, communicates through iMessage, and gives the candidate a dashboard for evidence, approvals, exceptions, and outcomes.
-
-The working tagline is:
+Build **RoleDawn**, a trust-first career agent for active job seekers.
 
 > Your job search has a night shift.
 
-The first product should not promise unattended submission. It should promise a verified queue prepared overnight and make approving it unusually fast. Full autopilot is a graduated permission, not the acquisition hook we need to prove on day one.
+The MVP prepares a small verified Queue and asks for one precise approval per
+immutable application. Unattended submission is outside the MVP. iMessage is a
+future control surface; the authenticated web application remains canonical.
 
-## Why now
+## Current repository state
 
-Job-search burnout and AI-assisted applications are already mainstream enough that the market does not need another lesson on AI writing. The unresolved problem is delegation with trust. Candidates want more reach and less repetitive work, but they do not want a black box inventing experience, answering legal questions, leaking private email, or firing off a broken resume.
+**Implemented:** one persistent-only web path. `/` redirects to the authenticated
+dashboard. A signed-in candidate can view an RLS-scoped Queue, paste a supported
+official Greenhouse, Lever, or Ashby posting, and open its database-backed
+application detail. Repository contracts cover safe resolution, immutable
+packets, approval, reconciliation, and browser-session boundaries.
 
-Tsenta proves the surface is compelling: cloud execution, cross-ATS automation, messaging, review controls, receipts, and aggressive pricing. Its own public product and user feedback also expose the opening: reliability, truth, profile isolation, cancellation, billing clarity, privacy consistency, and the difference between high volume and good outcomes.
+**Not verified live:** the Supabase plugin returned `Unknown tool`; the local CLI
+is unlinked and unauthenticated; `SUPABASE_SECRET_KEY` is absent; two migrations
+remain pending; and no signed-in multi-user acceptance record exists for this
+worktree.
+
+**Not connected:** reviewed resume ingestion, model drafting, artifact rendering,
+durable workflows, live browser/CUA, ATS fill or submit, messaging, and external
+receipt evidence. Nothing in the repository can submit a real job application.
+
+See [current state](execution/current-state.md), [backend status](execution/backend-build-status.md),
+and the root [changelog](../CHANGELOG.md).
+
+## Why this product
+
+Candidates want to offload repetitive work without a black box inventing
+experience, answering legal questions, leaking private data, or sending a
+broken application. The defensible product is reliable delegation with sourced
+facts, explicit authority, safe recovery, and proof.
+
+**Inference:** Tsenta shows demand for cloud execution, cross-ATS workflows,
+messaging, review controls, and receipts. Its public product and user feedback
+also suggest an opening around truth, reliability, cancellation, billing
+clarity, profile isolation, and outcome quality. Research is recorded in the
+[source register](research/source-register.md); company claims are not treated
+as independent verification.
 
 ## Initial customer
 
 Target a search state, not a generation:
 
-- U.S.-based, iPhone-first, active seeker.
-- Roughly 0–8 years into a career, initially concentrated around 22–34.
-- Applying to repeatable tech, business, operations, sales, customer success, marketing, or analytical roles.
+- U.S.-based active seeker, initially iPhone-first.
+- Roughly 0–8 years into a career, using early-career and recent layoffs as an
+  acquisition wedge rather than a permanent age identity.
+- Applying to repeatable tech, business, operations, sales, customer success,
+  marketing, or analytical roles.
 - Values speed but fears reputational damage.
-- Will pay to remove hours of repetitive work, not simply to produce more generic applications.
-
-Use early-career candidates and recent layoffs as the acquisition wedge. Do not make the permanent brand feel like a college utility. International and OPT candidates are a valuable later segment, after work-authorization controls and counsel review are mature.
+- Pays to remove repetitive work, not to generate more generic applications.
 
 ## Product loop
 
 ```mermaid
 flowchart LR
-    I["Import evidence and preferences"] --> D["Discover new roles continuously"]
-    D --> F["Score fit and eligibility"]
-    F --> W["Draft truthful materials"]
-    W --> Q["Build verified approval queue"]
-    Q --> M["Approve in iMessage or inspect dashboard"]
-    M --> A["Apply through ATS adapter"]
-    A --> R["Capture receipt and outcome"]
-    R --> F
+    U["Candidate supplies evidence + job"] --> Q["Persistent Queue"]
+    Q --> P["Prepare cited packet"]
+    P --> R["Review diff + decisions"]
+    R --> A["Approve once"]
+    A --> E["Execute one bounded attempt"]
+    E --> C["Confirm or reconcile"]
+    C --> O["Receipt + outcome"]
 ```
-
-## What actually needs to be built
-
-The durable asset is not a chatbot. It is:
-
-- A structured candidate evidence graph with provenance, versions, and usage policy.
-- Durable per-application workflows with explicit states and recovery behavior.
-- Versioned adapters for the major ATS families.
-- A secure browser-session broker and human-takeover path.
-- An approval policy engine that cannot be overridden by model output or webpage text.
-- An audit/receipt system that proves what was sent.
-- Outcome data that improves fit and eventually supports credible placement proof.
 
 ## Technical direction
 
-- Next.js/React PWA for onboarding and dashboard; native mobile later.
-- TypeScript control plane on AWS ECS Fargate.
-- Managed PostgreSQL, S3/KMS, Secrets Manager, and a redacted append-only audit ledger.
-- Temporal Cloud for durable schedules, retries, signals, and human-in-the-loop waits.
-- Managed isolated browsers with deterministic ATS adapters; computer-use reasoning only as fallback.
-- Photon for the iMessage alpha behind a channel adapter; web/SMS fallback from the start.
-- OpenAI Responses API and Agents SDK where useful, with task-level model routing and provider abstraction.
+- Next.js/React authenticated web application; native mobile later.
+- Supabase Auth/PostgreSQL as the bounded first control-plane authority.
+- Shared workers, not one permanent agent/container per candidate.
+- Temporal or an equivalent tested durable coordinator for waits and retries.
+- Versioned evidence, prompt, policy, model, renderer, and ATS-adapter releases.
+- Browserbase + Playwright as the first browser benchmark; bounded DOM/computer
+  use only as fallback.
+- Photon only after diligence, behind `ChannelAdapter`, with web/SMS fallback.
 
-There is no permanent agent process per user. Each user has a durable logical agent—identity, facts, preferences, policies, workflows, encrypted browser state, and history. Shared workers wake when an event or schedule needs work.
-
-Apple does not expose a general public server API for a personal iMessage bot. Messages for Business and Messages app extensions solve different, constrained use cases. Photon is therefore an alpha bridge with platform/vendor risk, not a foundation the company can assume will remain available. If written authorization/security/portability diligence or delivery testing fails, launch the same workflow through the PWA and consented SMS while keeping iMessage on hold.
-
-## Hermes decision
-
-Hermes is useful for internal prototypes because it packages tools, browser control, memory, cron, and channels. It should not own production identity, memory, permissions, policy, credentials, workflow state, or audit. A broad, self-modifying agent runtime creates the wrong multi-tenant boundary. If used at all, pin and sandbox it as a replaceable task executor.
+PostgreSQL owns candidate facts, applications, approvals, attempts, and receipts.
+Workflow history owns timers and replay. Models own neither.
 
 ## Business model hypothesis
 
-Do not enter a price-per-application race. After the concierge alpha, test a $99 Founding plan with 30 confirmed applications and a $149 Pro plan with 75. These are experiments, not launch commitments. A billable unit is one confirmed application; failed, canceled, uncertain, or duplicate attempts do not consume it. Publish only after measured browser, model, retry, payment, and support cost supports the margin gate in the GTM plan.
+Do not compete on price per application. Test pricing only after measuring
+full-utilization browser/model cost, retries, and support. A billable unit should
+be a confirmed application; failed, canceled, uncertain, or duplicate attempts
+should not count. Current price points remain hypotheses in the decision log.
 
-The North Star is **qualified applications that reach a documented outcome**, supported by:
+## Immediate founder priorities
 
-- Time saved per candidate.
-- Approval-to-submission conversion.
-- Verified submission success rate.
-- Recruiter-response and interview rate by cohort.
-- Unsupported-claim rate, duplicate submission rate, and unauthorized side effects—all targeted at zero.
+1. Restore Supabase access and accept one persistent signed-in journey.
+2. Add quarantined resume intake and candidate-reviewed facts.
+3. Produce one immutable, cited, no-submit application packet.
+4. Benchmark 100 forms without submitting and graduate Greenhouse first.
+5. Continue counsel, design-partner, Photon, browser, model, and trademark work
+   in parallel.
 
-## Twelve-week founder goal
-
-Recruit ten design partners and deliver a concierge alpha that supports Greenhouse, Lever, and Ashby; prepares an evidence-backed nightly queue; accepts single-application approvals over iMessage; submits only with a human-authorized final action; and captures a receipt every time.
-
-The go/no-go bar is not application volume. It is zero invented claims, zero unauthorized or duplicate submissions, reliable state recovery, and repeated evidence that candidates return because the product reduces anxiety as well as effort.
-
-## Immediate next actions
-
-1. Run counsel review on ATS terms, candidate attestations, messaging consent, privacy, and employer-logo claims.
-2. Interview 20 candidates across early-career, recently laid-off, and employed-searching cohorts.
-3. Diligence Photon in writing and preserve a web/SMS fallback.
-4. Benchmark 100 real application forms without submitting.
-5. Prototype the evidence graph, onboarding, nightly queue, approval token, and one Greenhouse adapter.
-6. Reserve brand handles/domains only after founder approval; commission a formal trademark screen.
+The go/no-go bar is zero invented claims, zero unauthorized or duplicate
+submissions, reliable state recovery, and repeated evidence that candidates
+return because the product reduces anxiety as well as effort.

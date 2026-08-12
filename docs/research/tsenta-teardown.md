@@ -1,8 +1,8 @@
 ---
 title: Tsenta product and onboarding teardown
 status: research snapshot
-last_updated: 2026-08-06
-method: live unauthenticated Browser walkthrough, public pages, headers, client bundles, legal pages, stores, and company profiles
+last_updated: 2026-08-11
+method: live unauthenticated Browser walkthrough, public pages, headers, client bundles, legal pages, stores, company profiles, and a founder-provided authenticated screenshot walkthrough
 ---
 
 # Tsenta product and onboarding teardown
@@ -38,7 +38,25 @@ The defensible work sits below the interface: career-page ingestion, a structure
 | Proof | The page shows a large employer-logo wall and says users have been hired at major companies. These are unverified first-party claims. |
 | ATS disclosure | Publicly lists 19 ATS families: Workday, Greenhouse, Lever, Ashby, Rippling, iCIMS, BambooHR, Workable, JazzHR, Jobvite, BreezyHR, Oracle Cloud, SmartRecruiters, Paylocity, UltiPro, ADP, Dover, Gem, and Zoho Recruit. |
 
-The walkthrough stopped before account creation and did not submit a phone number, create an account, accept terms, upload a resume, connect email, or apply to a job.
+The 2026-08-06 research walkthrough stopped before account creation and did not submit a phone number, create an account, accept terms, upload a resume, connect email, or apply to a job. On 2026-08-11, the founder supplied a separate authenticated screenshot sequence captured after uploading a resume. That sequence verifies the visible six-step intake and first dashboard described below. It does not prove an employer-side submission or any hidden security control.
+
+## Authenticated walkthrough observed on 2026-08-11
+
+**Verified from the founder-provided screenshots:**
+
+| Stage | Visible behavior | Product implication |
+|---|---|---|
+| Resume upload | The sequence begins after the founder uploaded a resume. Parsing continues in a persistent side rail while the remaining questions are completed. | Waiting time is converted into bounded setup progress. |
+| Step 1: location | Full address, city, ZIP/postal code, county/district, country, and state. | The product pre-collects reusable ATS identity fields before first value. |
+| Step 2: contact | Phone and LinkedIn, with copy indicating parser-found values may be used when skipped. | Contact facts become reusable application inputs. |
+| Step 3: work eligibility | Citizenship, target work countries, authorization, sponsorship need, and authorization basis per country. | Matching and later form completion become country-aware. |
+| Step 4: quick checklist | In-person work, relocation, immediate start, transportation, accommodations, clearance, foreign-government ties, voluntary demographic fields, veteran/disability status, and notes. | A broad answer bank is built before the candidate reaches the dashboard. |
+| Step 5: application password | One application password is requested for portals such as Workday, iCIMS, and Oracle, with a generator and an “Encrypted before save” statement. | The product attempts to remove account-creation handoffs. The screenshot does not verify reuse behavior or the underlying secret boundary. |
+| Step 6: application settings | Resume optimization modes Off, Honest, and Aggressive; automatic cover-letter behavior; edit approval; and Review Before Submit. | Intake ends with an explicit autonomy configuration. |
+| Completion | A modal grants 25 free applications with Browse jobs as the primary action and plans/wallet as the secondary action. | The user reaches value before payment and receives a visible consumable allowance. |
+| First dashboard | Assistant chat, dense search filters, five recommended jobs, Apply/Pass actions, Apply to all 5, a tracker, and a remaining-credit count. | Recommendations, batch action, tracking, support, and upsell share one operating surface. |
+
+The screenshots show selected factual and sensitive values, edit approval enabled, and review disabled. They do **not** establish whether those values were product defaults, parser output, or founder selections. Do not publish a claim about Tsenta's defaults without a controlled fresh-account test.
 
 ## Reconstructed onboarding
 
@@ -49,7 +67,7 @@ The following separates exact observed client behavior from inference.
 1. Choose Google, email, or messaging authentication.
 2. For messaging, enter a phone number or iMessage email and request a verification code.
 
-### Current public onboarding code
+### Current public onboarding code, now corroborated by the signed-in walkthrough
 
 1. Upload one PDF resume, up to 10 MB.
 2. The service parses the resume, begins a cover-letter draft, and starts matching.
@@ -63,7 +81,25 @@ The following separates exact observed client behavior from inference.
    - Auto-approval, cover-letter generation, and Review Before Submit choices.
 4. Continue to the dashboard while parsing and matching run asynchronously.
 
-**Inference:** job-filter setup appears elsewhere in the public client and is likely a dashboard follow-up, but the currently inspected onboarding state machine did not prove it is a required signup step. Do not document it as an observed onboarding screen without a signed-in walkthrough.
+**Verified:** job filters are visible on the first signed-in dashboard, but they were not part of the six captured post-resume steps. The evidence does not prove whether a separate pre-upload screen collected initial targets.
+
+## Conversion mechanics worth adapting
+
+- Keep resume parsing visible and honest while the user completes other work.
+- Make a long intake feel finite with one subject per screen, a persistent progress bar, Back controls, and keyboard support.
+- Keep a plain-language “why we ask” explanation beside every question.
+- End onboarding with an explicit permission summary before any agent work begins.
+- Avoid a blank first session by landing on sourced recommendations and visible activity.
+
+## Safety-critical differences for RoleDawn
+
+- Collect city, region, and search radius first; request a street address only when a named application requires it.
+- Ask work authorization as an exact per-country rule because it changes eligibility. Do not infer citizenship or sponsorship from a resume.
+- Do not collect voluntary demographic, disability, veteran, accommodation, clearance, or family-tie answers globally. Leave voluntary fields unanswered by default and ask just in time when a named form requires a decision.
+- Never store one reusable cross-ATS password. Create or capture unique site credentials behind the credential broker and keep them outside model context, ordinary domain rows, logs, screenshots, and analytics.
+- Do not offer an evidence-free “aggressive” mode. Stronger framing remains bounded by verified Career Vault facts.
+- Let discovery, eligibility checks, and drafting run unattended. Require one single-use approval tied to one immutable application revision before submission.
+- Replace bulk apply with bulk preparation. The candidate can review a queue quickly without granting ambiguous authority over multiple applications.
 
 ## What Tsenta collects early
 
@@ -133,5 +169,4 @@ This reinforces a central product lesson: the application is a durable stateful 
 
 Do not copy Tsenta's price-volume race or every surface at launch. Copy the operating discipline beneath its story, then counter-position on evidence, control, voice fidelity, and receipts.
 
-See [source register](source-register.md), [market comparison](market-and-competitors.md), and [ATS automation](../architecture/ats-automation.md).
-
+See the [backend operating model](../architecture/backend-operating-model.md) for RoleDawn's evidence-labeled implementation response, plus the [source register](source-register.md), [market comparison](market-and-competitors.md), and [ATS automation](../architecture/ats-automation.md).

@@ -1,56 +1,53 @@
 ---
 title: RoleDawn documentation map
 status: active
-last_updated: 2026-08-06
+last_updated: 2026-08-12
 ---
 
 # Documentation map
 
-The files are arranged from thesis to evidence to execution. Each document is written to be usable by a founder, designer, engineer, or LLM without relying on hidden chat context.
+Start with current evidence, then read only the specification relevant to the
+decision at hand. Research and vendor material inform decisions; they never
+override accepted product or safety contracts.
 
-```mermaid
-flowchart TD
-    F["Founder brief"] --> R["Research"]
-    R --> S["Positioning and brand"]
-    S --> P["Product and landing page"]
-    P --> A["Architecture and trust"]
-    A --> E["Roadmap and GTM"]
-    E --> D["Decision log"]
-    D -. "updates" .-> F
-```
-
-Source quality follows this order: official platform documentation; directly observed public product behavior; reputable research; company self-report; user review; archived or mirrored material. The last three categories are useful signals, not verified independent truth.
-
-## Canonical reading paths
+## Required reading paths
 
 ### Founder or investor
 
-1. [Founder brief](00-founder-brief.md)
-2. [Positioning and ICP](strategy/positioning-and-icp.md)
-3. [PRD](product/prd.md)
-4. [Go-to-market](execution/go-to-market.md)
-5. [Decision log](execution/decision-log.md)
+1. [Current state](execution/current-state.md)
+2. [Founder brief](00-founder-brief.md)
+3. [Positioning and ICP](strategy/positioning-and-icp.md)
+4. [Roadmap](execution/roadmap.md)
 
-### Product and design
+### Product or design
 
-1. [Brand kit](brand/brand-kit.md)
-2. [Viktor design study](research/viktor-design-study.md)
-3. [Landing-page blueprint](product/landing-page-blueprint.md)
-4. [Night-shift storyboard](product/night-shift-storyboard.md)
-5. [Dashboard and responsive experience](product/dashboard-and-responsive-experience.md)
-6. [Onboarding and messaging](product/onboarding-and-messaging.md)
+1. [Current state](execution/current-state.md)
+2. [PRD](product/prd.md)
+3. [Dashboard and responsive experience](product/dashboard-and-responsive-experience.md)
+4. [Onboarding and messaging](product/onboarding-and-messaging.md)
+5. [Brand kit](brand/brand-kit.md)
 
 ### Engineering
 
-1. [Implementation handoff](execution/implementation-handoff.md)
-2. [Claude handoff reconciliation](research/claude-handoff-reconciliation.md)
-3. [System architecture](architecture/system-architecture.md)
-4. [Scale, cost, and capacity](architecture/scale-cost-and-capacity.md)
-5. [Integrations and OAuth](architecture/integrations-and-oauth.md)
-6. [Job discovery](architecture/job-discovery.md)
-7. [ATS automation](architecture/ats-automation.md)
-8. [Data, security, and trust](architecture/data-security-and-trust.md)
-9. [Model routing and evals](architecture/model-routing-and-evals.md)
+1. [Current state](execution/current-state.md)
+2. [Backend build status](execution/backend-build-status.md)
+3. [Implementation handoff](execution/implementation-handoff.md)
+4. [Backend architecture operating model](architecture/backend-operating-model.md)
+5. [Frontend-to-backend contract](architecture/frontend-backend-contract.md)
+
+Use these routed references when working on a subsystem:
+
+| Subsystem | Specification |
+|---|---|
+| Pasted-link product slice | [Pasted-link application engine](architecture/pasted-link-application-engine.md) |
+| Current resolver/worker | [Job-ingestion runtime](architecture/job-ingestion-runtime.md) |
+| Discovery and catalog | [Job discovery](architecture/job-discovery.md) |
+| Evidence and models | [Model routing and evals](architecture/model-routing-and-evals.md) |
+| Browser and submit | [ATS automation](architecture/ats-automation.md) |
+| Security and data | [Data, security, and trust](architecture/data-security-and-trust.md) |
+| Channels and OAuth | [Integrations and OAuth](architecture/integrations-and-oauth.md) |
+| Scale and cost | [Scale, cost, and capacity](architecture/scale-cost-and-capacity.md) |
+| Full trust-zone map | [System architecture](architecture/system-architecture.md) |
 
 ### Evidence and research
 
@@ -58,7 +55,21 @@ Source quality follows this order: official platform documentation; directly obs
 2. [Tsenta teardown](research/tsenta-teardown.md)
 3. [Market and competitors](research/market-and-competitors.md)
 4. [Claude handoff reconciliation](research/claude-handoff-reconciliation.md)
+5. [Clay design study](research/clay-design-study.md)
+6. [Viktor design study](research/viktor-design-study.md)
 
-## Authority rule
+## Status, history, and authority
 
-If documents appear to conflict, use the most recent accepted entry in the [decision log](execution/decision-log.md), then the implementation handoff, then the specialized architecture or product specification. Research and external handoffs inform decisions; they do not override them.
+- [Current state](execution/current-state.md) is the dated project snapshot.
+- [Backend build status](execution/backend-build-status.md) is the database and
+  worker recovery record.
+- [Decision log](execution/decision-log.md) records consequential choices and
+  reversal triggers.
+- The root [changelog](../CHANGELOG.md) records worktree/release history.
+- Removed sample-runtime documents are preserved by Git history, not in the
+  active documentation set.
+
+If documents conflict, follow the newest accepted decision, then current state,
+then the implementation handoff, then the specialized specification. Never turn
+a repository implementation or previous tool report into a claim of current
+hosted deployment without fresh evidence.

@@ -1,10 +1,12 @@
 ---
 title: ATS automation and browser execution
 status: MVP engineering strategy
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 ---
 
 # ATS automation
+
+The [backend operating model](backend-operating-model.md) is the canonical end-to-end context. This document owns browser, form, submission, takeover, and reconciliation behavior.
 
 ## Core conclusion
 
@@ -71,6 +73,15 @@ reconcile(application) -> Confirmed | NotSubmitted | NeedsUser
 ```
 
 All outputs are typed. Unknown fields remain unknown; an adapter may not coerce a value simply to make the form advance.
+
+Keep provider and driver contracts separate:
+
+- `BrowserSessionBroker` provisions an isolated session, profile, live view, takeover lease, checkpoint, and close behavior.
+- `InteractionDriver` implements deterministic Playwright, constrained DOM reasoning, or full computer-use fallback.
+- `AtsAdapter` knows one ATS family and converts portal behavior into normalized form, fill, pre-submit, commit, and reconciliation results.
+- `SecretBroker` releases credentials only to the allowed ATS tenant; the model never receives raw credentials.
+
+Persist login state by candidate and ATS tenant rather than one global profile per candidate. Use ephemeral sessions for hosted forms that do not require an account.
 
 ## Field taxonomy
 
@@ -169,6 +180,8 @@ Takeover link requirements:
 
 CAPTCHA is always a takeover, never a solver or bypass service.
 
+Agent and candidate control are mutually exclusive. The browser worker must release its input lease while the candidate controls the live session.
+
 ## Browser security
 
 - Treat job descriptions, labels, scripts, uploads, and portal messages as untrusted data.
@@ -191,3 +204,18 @@ CAPTCHA is always a takeover, never a solver or bypass service.
 
 Never market “official integration” from a public job-feed API alone.
 
+## First vendor benchmark
+
+**Recommendation pending O-002:** benchmark Browserbase as browser infrastructure, Playwright as the primary driver, Stagehand as a constrained observe/validate/act repair layer, and Orgo as the desktop-only escape hatch. Benchmark Browser Use Cloud as the second full-stack option.
+
+Measure at minimum:
+
+- confirmed and uncertain submission rates;
+- field and artifact-upload accuracy;
+- human-takeover rate;
+- profile persistence failures;
+- median and p95 duration;
+- browser/model/support cost per confirmed application;
+- adapter repair frequency by ATS and tenant.
+
+Vendor CAPTCHA or anti-bot claims are vendor statements, not guarantees of ATS compatibility, and do not change RoleDawn's human-takeover rule.

@@ -1,7 +1,7 @@
 ---
 title: Omnichannel product strategy
 status: staged recommendation
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 ---
 
 # Channel strategy
@@ -94,7 +94,7 @@ Provider webhooks are signed, deduplicated, acknowledged quickly, and processed 
 
 ## Cross-channel approval rule
 
-The wording may change by channel; authority does not. Every approval resolves to the same server-side single-use object. Rich buttons, typed `YES 1842`, a web click, or a future biometric action all consume one immutable approval token.
+The wording may change by channel; authority does not. Every approval resolves to the same server-side single-use object. A rich button, `APPROVE` reply bound to one trusted application context, web click, or future biometric action consumes one immutable approval token. An unscoped reply with multiple pending applications approves nothing.
 
 No channel can broaden a user's standing rules. No provider delivery receipt means the user read or authorized a message.
 

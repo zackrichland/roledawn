@@ -17,11 +17,11 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "RoleDawn | Your job search has a night shift",
+    default: "RoleDawn",
     template: "%s | RoleDawn",
   },
   description:
-    "RoleDawn finds fresh roles, prepares evidence-backed applications, and asks for your approval before anything goes out.",
+    "A persistent queue for preparing job applications from supported public postings.",
   manifest: "/manifest.webmanifest",
 };
 

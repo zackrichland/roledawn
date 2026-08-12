@@ -2,7 +2,7 @@
 title: Clay design study
 status: research snapshot and transfer guidance
 owner: product and design
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 decision_state: adapt principles, not trade dress
 ---
 
@@ -93,11 +93,11 @@ If RoleDawn later licenses Roobert, compare it with Manrope for readability, loa
 | Clay principle | RoleDawn translation | Required difference |
 |---|---|---|
 | Floating navigation | Compact floating rail with brand, four anchors, sign-in, and `Text RoleDawn` | Use RoleDawn geometry, colors, type, and controls |
-| Tactile full-bleed hero | A night-work landscape where evidence cards move toward an Approval Queue at dawn | No Clay objects, artwork, background, or customer marks |
+| Tactile full-bleed hero | A night-work landscape where evidence cards move toward the Queue at dawn | No Clay objects, artwork, background, or customer marks |
 | Two-column hero copy | Human dream on the left; mechanism, calls to action, and launch guardrail on the right | Lead with the candidate's morning, not a generic growth claim |
 | Early proof mosaic | Evidence source, immutable approval, safe pause, and confirmation tiles | Use illustrative product proof until real outcome evidence exists |
 | Use-case tabs | `Wake to a ready queue`, `Approve by text`, `Know what went out` | Use accessible tabs tied to real RoleDawn states |
-| Large feature chapters | Career Vault, Approval Queue, and Application Receipt in 1,216 px max-width chapters with 48 px radii | Keep the midnight/coral/yellow/mint story and original compositions |
+| Large feature chapters | Career Vault, Queue, and Application Receipt in 1,216 px max-width chapters with 48 px radii | Keep the midnight/coral/yellow/mint story and original compositions |
 | Infrastructure proof | Three concrete breadcrumbs about provenance, approval scope, and ATS confirmation | Do not publish architecture theater or unsupported scale claims |
 | Case studies | Consent-backed candidate stories labeled by application, reply, interview, offer, or hire | Never borrow company marks or blur outcome types |
 | Learning/community mosaic | RoleDawn guides, office hours, safety notes, and Pulse research when those assets exist | Label planned content and do not invent a community |
@@ -112,7 +112,7 @@ Build a small object vocabulary from RoleDawn's product contract:
 - **Evidence cards:** matte index-card slabs with a source edge, fact state, and allowed-use chip.
 - **Approval seal:** a coral control with `YES`, `EDIT`, and `SKIP`; it is visibly bound to one named role.
 - **State rail:** a midnight track with one First Light bead moving from match to approval to confirmation.
-- **Receipt ribbon:** a mint confirmation strip carrying the company, requisition, timestamp, filenames, and evidence mark.
+- **Receipt ribbon:** a mint confirmation strip carrying the company, role, timestamp, filenames, and evidence mark.
 - **Safe-pause block:** a raised neutral object labeled `Needs you`, used for CAPTCHA, work authorization, or an unresolved field.
 - **Morning queue:** a shallow tray that holds a small number of verified applications rather than an endless pile.
 
@@ -160,7 +160,7 @@ Repeat the same trust contract at increasing depth:
 |---|---|---|
 | Hero | One source chip, one approval, one confirmation strip | Illustrative workflow only |
 | Early mosaic | Evidence, safe pause, approval scope, receipt anatomy | Product behavior supported by the prototype/specification |
-| Feature chapters | Reusable Career Vault, Approval Queue, and Receipt components | No production performance claim without measured data |
+| Feature chapters | Reusable Career Vault, Queue, and Receipt components | No production performance claim without measured data |
 | Infrastructure/case-study chapter | System breadcrumb or consent-backed outcome | Label source, sample, date, and outcome type |
 | Final call to action | Draft-only start and candidate control | No unattended-submission promise during MVP |
 
@@ -197,7 +197,7 @@ The implementation should still read as RoleDawn if every reference to Clay is r
 - The hero leads with the candidate's desired morning and states the draft-only launch boundary.
 - The first viewport contains a real RoleDawn product state, not an abstract agent claim.
 - Proof appears in the hero, early mosaic, and feature chapters without inventing outcomes.
-- Career Vault, Approval Queue, and Application Receipt use the canonical product terms.
+- Career Vault, Queue, and Application Receipt use the canonical product terms.
 - The page contains only two or three technical breadcrumbs.
 - Manrope is the shipped sans family unless a valid Roobert license and migration decision are recorded.
 - The page remains recognizable without Clay's palette, objects, customer marks, copy, or compositions.

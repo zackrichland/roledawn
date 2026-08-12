@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Lint and build
+    name: Test, lint, and build
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -34,6 +34,15 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Test domain contracts
+        run: npm test
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Check documentation links
+        run: npm run check:docs
 
       - name: Build production bundle
         run: npm run build

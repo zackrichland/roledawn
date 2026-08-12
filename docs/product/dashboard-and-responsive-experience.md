@@ -1,695 +1,325 @@
 ---
-title: Dashboard and responsive experience
-status: implementation specification
-owner: product and design
-last_updated: 2026-08-06
-decision_state: recommended MVP information architecture
+title: Lean candidate application experience
+status: canonical frontend specification
+owner: product and frontend
+last_updated: 2026-08-12
+decision_state: persistent-only runtime accepted in D-044
 ---
 
-# Dashboard and responsive experience
+# Lean candidate application experience
 
-## Product job
+## Product contract
 
-The dashboard answers four questions:
+RoleDawn gives candidates one place to see every selected job, what the agent is doing, and where a decision is required. The interface stays small enough to understand at a glance.
 
-1. What needs me now?
-2. What is RoleDawn working on?
-3. What changed in each application?
-4. What was confirmed?
+The executable frontend loop is:
 
-The interface should reduce uncertainty, not reward application volume. This document expands the dashboard requirements in the [PRD](prd.md) and the trust behavior in [onboarding and messaging](onboarding-and-messaging.md).
+```mermaid
+flowchart LR
+    L["Paste an official job link"] --> Q["Persistent Queue"]
+    Q --> D["Application detail"]
+    D -. "next milestone" .-> P["Prepare from reviewed facts"]
+    P -. "later gated milestone" .-> S["One approved submit attempt"]
+    S --> C["Evidence-backed receipt"]
+```
 
-## Reference status
+The interface never implies that saving, viewing, queueing, or drafting grants submission authority.
 
-### User-provided observation
+## Lean UI rules
 
-The user supplied a Tsenta dashboard screenshot captured on 2026-08-06 as a visual reference. The screenshot shows:
-
-- A left sidebar with Dashboard, Browse jobs, Applications, Inbox, Tracker, Profile, and Settings.
-- A global search field.
-- Four top-match cards with circular percentage scores and Apply buttons.
-- An application table with resume, cover-letter, status, and applied columns.
-- Filters for all, in flight, needs you, failed, and skipped.
-- Open Tracker and Submit all controls.
-- A credit balance in the account panel.
-
-The screenshot records one visible interface state. It does not verify current Tsenta behavior, underlying logic, accessibility, or submission semantics.
-
-### Recommendation
-
-Keep the useful operational visibility. Replace opaque scoring, ambiguous bulk submission, billing prominence, and mixed job/application concepts with RoleDawn's authority, evidence, and receipt model.
-
-## Experience principles
-
-1. Needs You appears before new matches.
-2. Every application has one clear state and next action.
-3. Authority is visible at all times.
-4. Match explanations show rules and evidence, not a decorative percentage alone.
-5. A receipt requires confirmation evidence.
-6. Pause is always available.
-7. Mobile shows the same authority and workflow, not a reduced-permission version.
-8. The database and workflow state determine the interface. Chat text does not.
+1. Show information only when it helps the candidate understand state or make a decision.
+2. Keep one primary action per row, card, dialog, or mobile action rail.
+3. Keep internal application, job, revision, approval, attempt, workflow, provider, and requisition identifiers in the data model. Do not render them in ordinary candidate UI.
+4. Use company, role, location, source age, and posting snapshot as human-readable identity.
+5. Put technical references in exported receipts or an optional support disclosure only when they solve a real support problem.
+6. Keep activity inside an application. Do not create a global Activity Feed.
+7. Keep Settings behind the account menu. Do not add it to primary navigation.
+8. Use direct labels. Do not repeat a title with an eyebrow that says the same thing.
+9. Keep prototype limitations visible without repeating them in every component.
+10. Preserve stable row positions while work progresses.
 
 ## Information architecture
 
-### Desktop navigation
+| Surface | Purpose | Primary action |
+|---|---|---|
+| Queue | See every selected job and current state | Open the next relevant step |
+| Paste a job | Add one supported official posting | Create durable preparation intent |
+| Application Workspace | Inspect and control one application | Resolve, edit, approve, or stop |
+| Career Vault | Later: review the facts and files RoleDawn may use | Verify or correct evidence |
+| Settings | Later: set preparation and account policy | Save a bounded preference |
+| Onboarding | Later: establish evidence, rules, and authority | Activate draft-only preparation |
 
-~~~text
-Today
-Approval Queue
-Search
-Applications
-Inbox
-──────────────
-Career Vault
-Rules
-──────────────
-Settings
-~~~
+The current runtime has no multi-item primary navigation. Queue is the
+authenticated home, Paste a job is a dialog, and Application Workspace is a
+routed detail. Restore another destination only after it has persistent data
+and accepted end-to-end evidence.
 
-Do not create a separate Tracker page in MVP. Applications already own pipeline, events, outcomes, and receipts.
+## Shared shell
 
-Suggested routes:
+The current shell contains the brand, Queue search, signed-in identity, and sign
+out. Desktop and mobile use the same responsive route. A concise system notice
+appears when the persistent Queue cannot be read. Global pause and multi-surface
+navigation are later capabilities.
 
-| Route | Purpose |
-|---|---|
-| <code>/app/today</code> | Morning brief, attention queue, working items, recent receipts |
-| <code>/app/queue</code> | Ready, Needs You, and takeover work |
-| <code>/app/search</code> | Active searches, new matches, and exclusions |
-| <code>/app/applications</code> | Full pipeline, history, and outcomes |
-| <code>/app/applications/:id</code> | Match, materials, answers, activity, and receipt |
-| <code>/app/inbox</code> | Recruiter messages and response state |
-| <code>/app/vault</code> | Facts, sources, answer policies, and profile versions |
-| <code>/app/rules</code> | Search constraints, authority, caps, and quiet hours |
-| <code>/app/settings</code> | Security, channels, billing, export, deletion, and support |
+## Queue
 
-Receipts belong to application records. Recent Receipts can be a dashboard module without becoming a separate primary route.
+Queue is the default authenticated screen and the canonical pipeline.
 
-### Mobile navigation
+### Banner
 
-~~~text
-Today · Queue · Search · Inbox · More
-~~~
+- Heading: **Queue**.
+- Action: **Paste a job link**.
+- No eyebrow or redundant explanatory sentence.
 
-More contains Applications, Career Vault, Rules, Settings, export, and deletion. Deep links from iMessage may open any application directly.
+### Default ordering
 
-## Desktop shell
+Sort by the time the application entered Queue:
 
-At 1200 px and above:
+```text
+queued_at DESC, application_id ASC
+```
 
-- Sidebar width: 240–256 px.
-- Header height: 64–72 px.
-- Main content maximum width: 1440 px.
-- Main gutters: 24–32 px.
-- Use a twelve-column content grid.
-- Keep the sidebar and authority bar stable while the application list scrolls.
-- Open application details in a right panel only when at least 520 px remains for the list.
-- Use a full application route at narrower widths.
+Newest appears at the top and oldest at the bottom. Do not sort by `updated_at`; background progress must not make rows jump.
 
-### Header
+### Desktop row
 
-Include:
+Each row contains:
 
-- Current page title.
-- Global search by role, company, requisition, and application ID.
-- Current authority label.
-- Pause control.
-- Notifications.
-- Help.
-- Account menu.
+1. Company, role, and location.
+2. One status label.
+3. Latest meaningful update.
+4. Candidate-friendly updated time.
+5. One contextual action: Review, Answer, Check, Receipt, Details, or Progress.
 
-Do not show a credit balance as a primary operating control.
-
-### Authority bar
-
-The authority bar stays visible at the top of Today, Queue, and Applications:
-
-~~~text
-Agent active · Per-application approval · Quiet hours 10 PM–7 AM
-[Pause all]
-~~~
-
-States:
-
-- Draft-only.
-- Per-application approval.
-- Narrow standing authorization, future.
-- Paused by user.
-- Paused by security.
-- Channel disconnected.
-
-The bar must explain what the agent may do now. A model cannot change this state.
-
-## Today
-
-### Page order
-
-1. Authority bar.
-2. Morning brief.
-3. Needs You.
-4. Approval Queue.
-5. Working.
-6. Recent Receipts.
-7. New matches.
-
-Actionable uncertainty stays above discovery content.
-
-### Morning brief
-
-Use actual account data:
-
-~~~text
-Good morning, Alex.
-RoleDawn prepared 2 applications overnight.
-1 needs your travel answer. 1 is ready for review.
-~~~
-
-Do not show a number when its source state is stale or unknown.
-
-Summary cards:
-
-- Ready for approval.
-- Needs You.
-- Working.
-- Confirmed in the selected period.
-
-Each count links to a filtered list. Confirmed must mean portal or email evidence exists.
-
-### Needs You
-
-Rank by expiry and consequence:
-
-1. Security or credential event.
-2. Live takeover in progress.
-3. Expiring named approval.
-4. Login, OTP, or CAPTCHA.
-5. Sensitive or legal question.
-6. Missing exact fact.
-7. Preference outside the user's current rules.
-
-Each item must state:
-
-- Role and company.
-- Why work stopped.
-- What has been saved.
-- What action resumes it.
-- Whether anything was submitted.
-
-### Approval Queue
-
-Each item shows:
-
-- Company, role, location, requisition, and canonical source.
-- Posting age and source freshness.
-- Passed hard rules and unresolved gap.
-- Changed resume fields and generated answers.
-- Artifact and fact-set versions.
-- Approval expiration.
-- Review, edit, skip, and pause controls.
-
-There is no Submit all control in MVP.
-
-### Working
-
-Use user-facing workflow terms and the last meaningful event:
-
-~~~text
-Preparing materials
-Mapped 14 of 17 fields · waiting on no one
-Last update 2 minutes ago
-~~~
-
-Do not expose model chain-of-thought, internal retries, or noisy tool logs.
-
-### Recent Receipts
-
-Show:
-
-- Company and role.
-- Confirmed timestamp.
-- ATS family.
-- Receipt evidence type.
-- Resume and answer-set versions.
-- Open receipt action.
-
-If the outcome is uncertain, place the item under Checking submission instead.
-
-## Search
-
-Search separates jobs from applications.
-
-### Match card
-
-Show:
-
-- Company, role, location, work mode, and posting age.
-- Source and requisition.
-- Hard-rule result.
-- Supporting evidence.
-- Gaps.
-- Save, skip, explain, or prepare actions.
-
-Replace a circular score such as “71%” with an explanation such as:
-
-~~~text
-8 of 10 rules passed
-Strong evidence: healthcare rollout, multi-site operations
-Gaps: payments experience, weekly travel
-~~~
-
-A numeric model score may appear as supporting detail after calibration, never as the only explanation.
-
-Company artwork inside the authenticated product is context, not outcome proof. Treat it as decorative when the company name is already visible. Do not reuse it in marketing as an endorsement.
-
-## Applications
-
-### Desktop table
-
-Use a semantic table with these columns:
-
-| Column | Content |
-|---|---|
-| Application | Company, role, location, requisition |
-| Search | Source, posting age, rule version |
-| Match | Rule result and open explanation |
-| Materials | Resume, letter, answers, material change count |
-| Status | Text, icon, last meaningful event |
-| Next action | One contextual action |
-| Updated | Absolute time available with relative label |
-
-The row opens application details. Every inline control remains independently keyboard accessible.
+Do not show requisition codes, application IDs, workflow IDs, internal revision IDs, raw model state, token counts, or browser session details.
 
 ### Mobile card
 
-Use this vertical order:
+The same information becomes a compact card. Keep the status and latest update visible without opening the application. The full card is one target and meets a 44 CSS px minimum touch area.
 
-1. Status and posting age.
-2. Company and role.
-3. Rule result.
-4. Material changes.
-5. Missing decision or next workflow event.
-6. Primary and secondary actions.
+### Search
 
-Do not force the desktop table into a horizontal scroller.
+Search company, role, and location only. Status filters are deferred until a
+real candidate Queue is large enough to justify them.
 
-## Application detail
+### Empty and error states
 
-Use a right panel on wide desktop and a full route on tablet and mobile.
+- Empty Queue: Paste a job link.
+- Empty search: clear the search.
+- Stale projection: show the last refresh time and disable approval.
+- Failed job link: preserve the pasted URL and offer correction.
 
-Tabs:
+## Later surfaces
 
-- Overview.
-- Match.
-- Materials.
-- Answers.
-- Activity.
-- Receipt.
+Browse Jobs, Swipe, Career Vault, Settings, and onboarding remain product
+specifications, not current routes. Their contracts below are retained to avoid
+losing product intent; they do not describe implemented runtime capability.
 
-### Overview
+### Browse Jobs
 
-- Immutable job snapshot.
-- Current workflow state.
-- Current authority.
-- Next action.
-- Supporting and missing evidence.
-- Application owner and source.
-
-### Match
-
-- Hard constraints first.
-- Preferences second.
-- Evidence references.
-- Missing qualifications.
-- User feedback action for future ranking.
+Browse is the deliberate catalog.
 
-### Materials
+### Card content
 
-- Resume and cover-letter versions.
-- Unified or side-by-side diff.
-- Source chips beside material claims.
-- Allowed-use state.
-- Edit history.
-
-### Answers
-
-- Exact prompt snapshot.
-- Proposed answer.
-- Source and answer-policy references.
-- Sensitive classification.
-- User approval state.
-
-Sensitive answers must come from structured approved records or live user input. Do not present embedding retrieval as authority.
-
-### Activity
-
-Show a redacted, user-meaningful event timeline:
-
-- Job captured.
-- Fit checked.
-- Materials prepared.
-- Approval requested.
-- Approval consumed.
-- Applying.
-- Takeover requested.
-- Checking submission.
-- Confirmed.
-- Corrected or reconciled.
-
-Do not show secrets, OTP values, hidden form values, raw model reasoning, or unredacted screenshots.
-
-### Receipt
-
-Minimum fields:
-
-- Company, role, location, requisition, and canonical URL.
-- Submission and confirmation timestamps.
-- Confirmation evidence type and reference.
-- Final field values and exact filenames.
-- Resume, letter, answer-set, fact-set, policy, and adapter versions.
-- Approval reference and approved material diff.
-- Reconciliation or correction events.
-
-## Action rail
-
-For a pending application, keep a compact action rail visible:
-
-~~~text
-Example Co.
-Customer Success Manager · Req 1842
-
-3 material changes
-1 travel decision
-Approval expires in 20 minutes
-
-[Review and approve]
-[Edit]
-[Skip]
-~~~
-
-The approval flow must:
-
-1. Refresh the application version.
-2. Verify the immutable diff hash.
-3. Name the company, role, and requisition.
-4. Show unresolved decisions.
-5. Confirm expiration.
-6. Consume one single-use approval.
-
-Any material change invalidates the approval and returns the item to review.
-
-## User-facing workflow language
-
-| Internal state | User-facing label | Required supporting text |
-|---|---|---|
-| Discovered or FitScored | New match | Why it passed or failed rules |
-| Drafting | Preparing | Current bounded task |
-| NeedsFacts | Needs You | Exact missing fact |
-| NeedsReview | Ready for review | Change count and gaps |
-| Ready | Approved | Named scope and expiration |
-| Applying | Applying | Last meaningful portal step |
-| NeedsUser | Needs You | Login, OTP, CAPTCHA, certification, or answer |
-| Reconciling | Checking submission | Why retry is paused |
-| Confirmed | Confirmed | Evidence type and timestamp |
-| Response | Recruiter replied | Message source and action |
-| Interview | Interview | User-entered or confirmed event |
-| Offer | Offer | User-entered or confirmed event |
-| Rejected | Closed | Source and date |
-| Failed | Failed | Reason and recovery |
-| Canceled | Canceled | Actor, time, and retained state |
-
-Status uses an icon, label, and next action. Color is supporting information.
-
-## Visual tokens
-
-Use the [brand kit](../brand/brand-kit.md):
-
-- Cloud page background.
-- White working surfaces.
-- Midnight text and primary controls.
-- First Light for the main candidate action.
-- Signal Mint only for safe or confirmed states.
-- Dawn Coral for focused attention.
-- Error Rose for destructive or blocked states.
-- Slate for neutral history.
-
-Suggested support colors must be checked before shipping:
-
-~~~css
---rd-surface: #ffffff;
---rd-border: #dde2ec;
---rd-working-bg: #eef3ff;
---rd-working-fg: #214da6;
---rd-warning-bg: #fff3cc;
---rd-warning-fg: #664900;
---rd-confirmed-bg: #dff8ef;
---rd-confirmed-fg: #075b46;
---rd-error-bg: #fde8ed;
---rd-error-fg: #8c1d3d;
-~~~
-
-Keep product controls flat. The marketing sky gradient should not enter tables, forms, or receipts.
-
-## Responsive behavior
-
-### Wide desktop, 1440 px and above
-
-- Full sidebar.
-- Table and application detail may share the viewport.
-- Four summary cards fit in one row.
-- Material diff may use side-by-side columns.
-
-### Desktop, 1024–1439 px
-
-- Full or condensed sidebar based on available content width.
-- Three summary cards plus wrapping fourth card.
-- Application detail opens as a route if the list would fall below 520 px.
-- Use a unified diff when either diff column falls below 360 px.
-
-### Tablet, 768–1023 px
-
-- Collapsed navigation rail or drawer.
-- Two summary cards per row.
-- Application list uses cards.
-- Detail uses a full route.
-- Filters wrap into a disclosure control.
-
-### Mobile, below 768 px
-
-- Bottom navigation.
-- One summary card per row or a compact two-column grid when labels fit.
-- No horizontally scrolling match carousel.
-- Application cards replace tables.
-- Detail and takeover use full-screen routes.
-- Approval uses a safe-area-aware sticky action bar.
-- Cached offline views are read-only.
-
-### Compact mobile, below 480 px
-
-- 20 px page gutters.
-- 16–20 px card radius.
-- Unified diffs.
-- Definition lists for receipt metadata.
-- Full-width primary actions.
-- Minimum 44 by 44 CSS-pixel touch targets.
-
-Use container queries for reusable modules. Breakpoints are fallbacks, not a reason to truncate essential information.
-
-## Mobile approval pattern
-
-The sticky bar must name the target:
-
-~~~text
-Example Co. · Customer Success Manager
-[Review and approve]
-~~~
-
-The confirmation sheet shows:
-
-- Company, role, and requisition.
-- Changed field and file count.
-- Missing decisions.
-- Approval expiration.
-- A plain statement that one approval affects one application.
-
-If the device is offline, disable approval and explain that RoleDawn must verify the latest application version first.
-
-## Component inventory
-
-### Shared with marketing
-
-- <code>MessageBubble</code>
-- <code>StoryTimestamp</code>
-- <code>RuleResultChip</code>
-- <code>EvidenceSourceChip</code>
-- <code>MaterialDiff</code>
-- <code>ApprovalPrompt</code>
-- <code>ApplicationReceipt</code>
-- <code>StatusBadge</code>
-- <code>EventTimeline</code>
-
-### Product shell
-
-- <code>AppShell</code>
-- <code>DesktopSidebar</code>
-- <code>MobileTabBar</code>
-- <code>AppHeader</code>
-- <code>AuthorityBar</code>
-- <code>PauseAllControl</code>
-- <code>MorningBrief</code>
-- <code>QueueSummary</code>
-- <code>ApplicationTable</code>
-- <code>ApplicationCard</code>
-- <code>ApplicationDetailPanel</code>
-- <code>NeedsUserPanel</code>
-- <code>TakeoverLauncher</code>
-- <code>CareerVaultFactRow</code>
-- <code>ReceiptViewer</code>
-- <code>OfflineReadOnlyBanner</code>
-
-Every data component requires loading, empty, stale, blocked, permission-denied, and error states.
-
-## View-model contract
-
-The interface should consume a stable server view model instead of rebuilding workflow meaning from event text:
-
-~~~typescript
-interface ApplicationListItem {
-  applicationId: string;
-  version: number;
-  company: string;
-  role: string;
-  location: string | null;
-  requisition: string | null;
-  source: {
-    family: string;
-    canonicalUrl: string;
-    postedAt: string | null;
-    checkedAt: string;
-  };
-  match: {
-    hardRulesPassed: number;
-    hardRulesTotal: number;
-    explanationAvailable: boolean;
-    unresolvedGapCount: number;
-  };
-  materials: {
-    resumeVersion: string | null;
-    answerSetVersion: string | null;
-    materialChangeCount: number;
-  };
-  status: {
-    code: string;
-    label: string;
-    nextAction: string | null;
-    updatedAt: string;
-  };
-  approval: {
-    state: "none" | "pending" | "approved" | "expired" | "invalidated";
-    expiresAt: string | null;
-  };
-  receipt: {
-    state: "none" | "reconciling" | "confirmed";
-    confirmedAt: string | null;
-  };
-}
-~~~
-
-The server supplies labels and allowed actions from policy. The browser may format them but cannot invent authority.
-
-## Empty, stale, and failure states
-
-### Empty Today
-
-~~~text
-Nothing needs you right now.
-RoleDawn is checking the searches you left active.
-~~~
-
-Show the next scheduled check and a link to Search.
-
-### Stale source
-
-~~~text
-This posting has not been rechecked in 9 hours.
-RoleDawn will not prepare or submit it until the source is fresh.
-~~~
-
-### Checking submission
-
-~~~text
-The connection dropped after Submit.
-RoleDawn is checking the portal and confirmation inbox before any retry.
-~~~
-
-### CAPTCHA
-
-~~~text
-The portal asked for a CAPTCHA.
-Twenty-three fields and both files are saved. Nothing was submitted.
-~~~
-
-### Expired approval
-
-~~~text
-This approval expired. Review the latest application before approving again.
-~~~
-
-## Accessibility
-
-- Meet WCAG 2.2 AA.
-- Add a skip link and semantic landmarks.
-- Keep focus indicators at least 3:1 against adjacent colors.
-- Use actual table markup on desktop.
-- Keep row actions as named buttons, not clickable rows alone.
-- Pair status color with icon and text.
-- Give circular or numeric scores a complete textual explanation.
-- Expose absolute timestamps alongside relative time.
-- Trap focus inside dialogs and return it to the triggering control.
-- Announce one meaningful state change through a polite live region. Do not stream internal activity.
-- Support 200 percent zoom and 320 CSS-pixel reflow.
-- Keep sticky controls clear of browser and PWA safe-area insets.
-- Respect reduced motion.
-- Do not autoplay a dashboard theme based on local time. The authenticated product follows the user's system theme or explicit setting.
-
-## Motion and perceived speed
-
-- Use 120–200 ms transitions for filters, panels, and status updates.
-- Skeletons should preserve final layout.
-- Do not animate rows into new positions while the user is reviewing an approval.
-- When a state changes, preserve the row position and announce the update.
-- Use a quiet progress indicator for Applying.
-- Use a static label for Checking submission. Avoid a spinner that implies retry.
-- Never pulse Confirmed.
-
-## Instrumentation
-
-Record workflow events by internal IDs without application answers or resume text:
-
-- <code>dashboard_viewed</code>
-- <code>attention_item_opened</code>
-- <code>application_diff_opened</code>
-- <code>approval_review_started</code>
-- <code>approval_confirmed</code>
-- <code>approval_expired</code>
-- <code>takeover_started</code>
-- <code>receipt_opened</code>
-- <code>pause_all_used</code>
-- <code>match_explanation_opened</code>
-
-Measure whether users resolve Needs You items, inspect diffs, approve applications, and open receipts. Do not optimize the dashboard for raw time spent.
+- Company and role.
+- Location and work mode.
+- Posted time and source freshness.
+- Short description.
+- Up to two evidence-backed reasons it surfaced.
+- One honest item to check.
+- Save, Details, and Add to Queue.
+
+Saving never creates an application. Adding creates one Queue item and no submission authority.
+
+### Filters
+
+Desktop may show compact inline controls. Mobile uses one **Filters** button that opens a sheet, with active filters summarized above the results. The first set is work mode, location, role family, experience, employment type, date, and saved jobs.
+
+Salary, sponsorship, and source filters follow when the backend can return trustworthy normalized values.
+
+### Job detail
+
+The detail dialog or route shows the official job facts, why it surfaced, one gap, and the boundary around Add to Queue. Requisition IDs remain internal by default.
+
+### Swipe
+
+Swipe is a fast view over the same job records used by Browse. It is not a second job database.
+
+Each card shows company, role, location, work mode, short summary, up to two reasons, and one check. Actions are Pass and Add to Queue. Support left/right keyboard controls and touch drag.
+
+The action rail remains above the mobile bottom navigation and safe area. Add Undo before storing pass reasons as durable learning. A pass reason may propose a search-rule change; it never changes policy silently.
+
+## Application Workspace
+
+Route shape:
+
+```text
+/app/applications/:applicationId
+```
+
+The opaque route key is never displayed as page copy. Desktop may intercept the route into a wide panel; mobile uses a full page. Browser back and deep links must work.
+
+### Header
+
+- Company and role.
+- Location and official-source link.
+- Current status and next action.
+- Last meaningful update.
+- Pause or stale-state warning when relevant.
+
+### Tabs
+
+| Tab | Contents |
+|---|---|
+| Overview | State, next step, job snapshot, rules, unresolved risks |
+| Match | Hard constraints, preferences, supporting evidence, honest gaps |
+| Materials | Resume and cover-letter previews, changes, versions, download |
+| Answers | Exact ATS prompts, proposed answer, source, requiredness, reuse scope |
+| Activity | Candidate-facing semantic timeline for this application |
+| Receipt | Immutable confirmation evidence and later outcome history |
+
+Tabs may collapse into sections during the prototype, but the information boundaries remain distinct.
+
+### Approval rail
+
+The fixed action area names the company and role, files, material changes, open decisions, expiration, and permitted action. The candidate can edit, skip, cancel, or approve one unchanged revision.
+
+Cancel and close must always dismiss the dialog without being blocked by confirmation-field validation. A material edit invalidates unused approval.
+
+### Answer cards
+
+Each blocking question shows:
+
+- Exact employer wording.
+- Required or optional.
+- Proposed answer or blank state.
+- Source and sensitivity.
+- Use once or save as a narrowly scoped policy.
+- Takeover requirement.
+
+Do not generalize one application answer into a global policy without explicit scope and confirmation.
+
+### Receipt and outcomes
+
+The default receipt shows a human-readable receipt reference, company, role, files, submitted values, time, source, and confirmation evidence. Internal approval, attempt, workflow, and revision IDs remain in the audit/export record. The UI may say **Submitted** only when the application is `CONFIRMED` and a stored receipt exists.
+
+Recruiter response, interview, rejection, offer, hire, and withdrawal are later outcome events. They never rewrite the immutable submission receipt.
+
+### Career Vault
+
+Career Vault groups documents, verified facts, answer policies, and blocking gaps.
+
+The first server-backed version needs:
+
+- Add and remove a source document.
+- Review extracted facts.
+- Verify, correct, or restrict a fact.
+- See source provenance.
+- See which applications a missing fact blocks.
+- Export and deletion entry points.
+
+On mobile, use a segmented view for Overview, Facts, Answers, and Files so verified facts are not buried below the document list.
+
+### Settings
+
+Settings is a secondary account utility with four summary cards and focused edit panels.
+
+1. **Search rules:** roles, seniority, locations, work mode, salary floor, authorization, sponsorship, posting age, and exclusions. Separate Must match from Prefer.
+2. **Application behavior:** prepare matching jobs, daily preparation cap, verified-fact tailoring, cover-letter policy, and unknown-question handling. Submission stays **Ask every time** for MVP.
+3. **Notifications:** Needs-you alerts, ready summary, receipt alerts, morning summary, quiet hours, email, web, and later iMessage.
+4. **Account and data:** identity, channels, sessions, Career Vault, export, deletion, and support.
+
+“Auto-apply” may appear in explanatory copy. The section title is **Application behavior** because the MVP never grants unattended submission.
+
+Changes affect future jobs by default. Rechecking existing Queue items requires an impact preview and separate confirmation.
+
+### Onboarding
+
+The resumable sequence is:
+
+1. Create account.
+2. Upload resume.
+3. Review extracted facts.
+4. Set hard rules and preferences.
+5. See one sourced first match.
+6. Resolve only facts that block that match.
+7. Review draft-only authority.
+8. Optionally connect iMessage.
+9. Open Queue.
+
+Do not end onboarding on an Activity Feed. Do not collect reusable ATS passwords or voluntary protected answers globally.
+
+## Candidate-facing identifier policy
+
+| Identifier | Stored | Shown by default |
+|---|---:|---:|
+| Company, role, location | Yes | Yes |
+| Canonical job URL and source | Yes | In detail |
+| Employer requisition ID | Yes | No |
+| Internal job/application ID | Yes | No |
+| Revision number | Yes | When it explains a material change |
+| Revision hash/internal revision ID | Yes | No |
+| Approval/attempt/workflow ID | Yes | No |
+| Human-readable receipt reference | Yes | In receipt |
+
+Internal identifiers remain necessary for dedupe, routing, approval binding, idempotency, reconciliation, and support. Hiding them is a presentation rule, not a data deletion rule.
+
+## Required frontend states
+
+Before enabling each later capability, deterministic tests must cover:
+
+- Empty Queue.
+- Preparing.
+- Needs an exact fact.
+- Ready for review.
+- Approval expired or invalidated.
+- Paused.
+- Login, OTP, or CAPTCHA takeover.
+- Checking an uncertain submission.
+- Failed safely.
+- Closed job.
+- Confirmed receipt.
+- Recruiter response, interview, rejection, offer, and withdrawal.
+- Loading, no results, offline read-only, session expired, and server error.
+
+Use a development-only state gallery to check every state at 390, 768, 1024, and 1440 CSS px.
+
+## Accessibility and performance
+
+- Visible focus for every control.
+- Complete dialog focus management and Escape behavior.
+- `aria-current` or equivalent for the current destination.
+- No color-only status meaning.
+- 44 CSS px touch targets for primary mobile controls.
+- WCAG 2.2 AA contrast.
+- Reflow at 320 CSS px and 200 percent zoom.
+- Reduced-motion support for swipe, drawers, and status transitions.
+- Stable shell and list skeletons during loading.
+- No raw activity logs, chain-of-thought, secrets, or sensitive browser screenshots.
+
+## Current runtime boundary
+
+**Implemented locally:** Supabase Auth boundaries, persistent newest-first Queue,
+paste-a-job intake for supported public postings, RLS-scoped database-backed
+application detail, explicit empty/error states, and responsive layouts.
+
+**Implemented but not accepted live:** official Greenhouse, Lever, and Ashby
+resolution worker, pending hosted migrations and a server secret.
+
+**Designed, not implemented end to end:** Career Vault, packet preparation,
+approval, browser fill, reconciliation, receipts, Browse, Swipe, Settings,
+onboarding, messaging, billing, analytics, and outcome tracking.
+
+The backend requirements for each screen live in the [frontend-to-backend contract](../architecture/frontend-backend-contract.md). Current implementation status lives in [current state](../execution/current-state.md).
 
 ## Acceptance criteria
 
-- Needs You appears above new matches.
-- Authority and Pause are visible on every operating page.
-- No bulk submission control exists.
-- Match UI names passed rules and gaps.
-- A confirmed state always links to receipt evidence.
-- Reconciling never appears as failed or confirmed.
-- Sensitive answers display structured source or live-user provenance.
-- Desktop tables become semantic mobile cards.
-- Approval names one company, role, and requisition.
-- Offline views cannot approve.
-- Every status includes text, icon, and next action.
-- All components define empty, stale, blocked, and failure states.
-- Marketing and product reuse the same approval, diff, and receipt components.
+- Queue opens first and shows newest applications at the top.
+- Queue order uses `queuedAt`, not status update time.
+- No candidate-facing Queue row, detail header, approval dialog, Browse detail, or ordinary message exposes opaque IDs or requisition codes.
+- “Your queue” has no redundant “Your job search” eyebrow.
+- Every application state has one clear next action.
+- The paste-link dialog closes by Cancel and Escape.
+- Mobile actions never overlap fixed navigation or safe areas.
+- Desktop and mobile show the same state and authority.
+- `Submitted` requires `CONFIRMED` plus a stored receipt.

@@ -12,6 +12,7 @@ export type IconName =
   | "arrow"
   | "clock"
   | "document"
+  | "bookmark"
   | "spark"
   | "close"
   | "menu";
@@ -43,6 +44,7 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     arrow: <><path d="M5 12h14M14 7l5 5-5 5"/></>,
     clock: <><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></>,
     document: <><path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v5h4M9 13h6M9 17h6"/></>,
+    bookmark: <path d="M7 4.5h10v15l-5-3.2-5 3.2z"/>,
     spark: <><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3Z"/><path d="m18.5 15 .7 2.2 2.3.8-2.3.8-.7 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></>,
     close: <><path d="m6 6 12 12M18 6 6 18"/></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16"/></>,

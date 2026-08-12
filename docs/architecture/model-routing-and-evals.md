@@ -1,10 +1,12 @@
 ---
 title: Model routing, prompts, tools, and evaluation
 status: current recommendation; model names and prices require launch-time verification
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 ---
 
 # Model routing and evaluation
+
+The [backend operating model](backend-operating-model.md) is the canonical end-to-end context. This document owns task routing, prompts, tools, customization, evaluation, and release behavior.
 
 ## Operating principle
 
@@ -27,7 +29,11 @@ As of 2026-08-06, official OpenAI guidance identifies GPT-5.6 Sol as the flagshi
 | User conversation | Terra | Sol for consequential ambiguity | Natural interaction with bounded tools |
 | Final permission and submit | Deterministic code only | Human | Models never grant authority |
 
-Use the Responses API when RoleDawn owns the custom tool loop and state. Use Agents SDK capabilities when its sessions, traces, guardrails, and resumable human approvals reduce implementation burden. In either case, PostgreSQL remains authoritative for domain facts/policy/application records, Temporal for in-flight execution history, and the append-only ledger for consequential proof. Models own none of them.
+Use direct Responses API calls for one-shot typed transforms and custom loops where RoleDawn owns branching. Use the Agents SDK for bounded multi-tool research or unfamiliar-form planning when its tool loop, guardrails, interruptions, and traces reduce implementation burden. Both run inside typed Temporal activities; neither replaces the business workflow or domain database.
+
+Start with one focused agent per bounded task. Add manager/specialist patterns only when an evaluation set proves that one focused run is insufficient. Every run has an allowed-tool list, turn cap, wall-clock limit, cost reservation, structured result, and typed failure.
+
+PostgreSQL remains authoritative for domain facts, policy, application records, and approvals; Temporal for in-flight execution history; and the append-only ledger for consequential proof. Models own none of them.
 
 ## Tool design
 
@@ -81,7 +87,21 @@ Treat resumes, job pages, recruiter messages, and uploaded files as untrusted co
 6. Reject, remove, or ask for any unsupported claim.
 7. Render artifact and bind its hash/version to the application.
 
-No “aggressive” mode can relax factual validation.
+Expose three editing strengths: `AS_UPLOADED`, `REORDER_AND_TIGHTEN`, and `REWRITE_FROM_VERIFIED_FACTS`. The strongest mode may rewrite structure and bullets from supported evidence, but no mode can relax factual validation.
+
+## Personalization and later customization
+
+Candidate-specific quality should initially come from evidence packets, exact answer policies, approved voice examples, prompt/tool releases, and deterministic validators—not one trained model per candidate.
+
+Consider fine-tuning or distillation only after:
+
+1. the bounded task is stable;
+2. a consented labeled corpus and separate holdout set exist;
+3. prompt, evidence, tool, and routing improvements have plateaued;
+4. training retention/deletion consent is separate from inference consent; and
+5. the route improves safety, accepted-output quality, latency, and cost under the same contract.
+
+Fine-tuning is not a way to inject current company knowledge, repair weak evidence, or make final submission autonomous.
 
 ## Evaluation suite
 
@@ -151,6 +171,8 @@ For every prompt/model/tool/adapter change:
 7. Roll back on any safety invariant breach.
 
 Never silently change model aliases in a high-consequence path. Pin snapshots where available and record actual model ID per run.
+
+Vendor traces and evaluation systems are debugging aids, not the application audit ledger. Redact or suppress raw candidate content until retention, region, DPA, and zero-data-retention choices are documented. Keep an owned checked-in evaluation harness even when vendor datasets or trace graders are used.
 
 ## Online metrics
 

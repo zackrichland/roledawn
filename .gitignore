@@ -3,6 +3,7 @@ node_modules/
 .next/
 out/
 coverage/
+artifacts/acceptance/
 *.tsbuildinfo
 
 # Local environment and secrets
@@ -25,4 +26,3 @@ yarn-debug.log*
 yarn-error.log*
 .DS_Store
 Thumbs.db
-

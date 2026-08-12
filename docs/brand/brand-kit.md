@@ -1,14 +1,14 @@
 ---
 title: RoleDawn brand kit
 status: working brand, pending legal clearance and user testing
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 ---
 
 # RoleDawn brand kit
 
 Working visual board: [editable SVG](../../assets/brand/role-dawn-brand-board.svg) 路 [PNG preview](../../assets/brand/role-dawn-brand-board.png)
 
-Implementation references: [Clay design study](../research/clay-design-study.md) 路 [Viktor design study](../research/viktor-design-study.md) 路 [night-shift storyboard](../product/night-shift-storyboard.md) 路 [dashboard and responsive experience](../product/dashboard-and-responsive-experience.md).
+Implementation references: [Clay design study](../research/clay-design-study.md) 路 [Viktor design study](../research/viktor-design-study.md) 路 [landing-page blueprint](../product/landing-page-blueprint.md) 路 [dashboard and responsive experience](../product/dashboard-and-responsive-experience.md).
 
 **Verified:** Clay and Viktor provide useful public references for hierarchy, proof, pacing, and finished product scenes.
 
@@ -37,7 +37,7 @@ On 2026-08-06, exact-name web and USPTO searches found no obvious commercial or 
 | Product concept | Customer-facing name |
 |---|---|
 | Canonical evidence store | Career Vault |
-| Human-in-the-loop worklist | Approval Queue |
+| Human-in-the-loop worklist | Queue |
 | Verified record of a submission | Application Receipt |
 | Recruiter correspondence | Inbox |
 | Preferences, constraints, and authority | Rules |
@@ -122,7 +122,7 @@ Use generous line height, sentence-case labels, and a restrained weight range. T
 - Use a compact floating navigation rather than Clay's exact shell.
 - Lead the hero with the candidate's desired morning, then explain the verified queue and single-application approval.
 - Repeat proof in the hero, an early mosaic, and the feature chapters.
-- Give Career Vault, Approval Queue, and Application Receipt separate chapters up to 1,216 px wide with 48 px desktop radii.
+- Give Career Vault, Queue, and Application Receipt separate chapters up to 1,216 px wide with 48 px desktop radii.
 - Use two or three technical breadcrumbs about provenance, approval scope, and confirmation evidence. Keep infrastructure names in technical documentation.
 - End with a quiet RoleDawn dawn landscape and one call to action, not Clay's scenery or composition.
 
@@ -145,7 +145,7 @@ Avoid robot mascots, briefcases, floating orbs, glassmorphism, galaxies, neon 鈥
 - **Evidence card:** matte index-card slab with a visible source edge and allowed-use chip.
 - **Approval seal:** coral `YES / EDIT / SKIP` control bound to one named role.
 - **State rail:** midnight track with one First Light bead moving toward confirmation.
-- **Receipt ribbon:** mint strip with company, requisition, timestamp, filenames, and confirmation mark.
+- **Receipt ribbon:** mint strip with company, role, timestamp, filenames, and confirmation mark.
 - **Safe-pause block:** neutral raised object labeled `Needs you` for CAPTCHA or a sensitive answer.
 - **Morning queue:** shallow tray holding a bounded set of verified applications.
 

@@ -1,7 +1,7 @@
 ---
 title: RoleDawn product requirements
 status: MVP specification
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 ---
 
 # Product requirements document
@@ -146,35 +146,26 @@ Initial targets are hypotheses to validate, not marketing claims:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Discovered
-    Discovered --> Ineligible: hard rule failed
-    Discovered --> FitScored
-    FitScored --> Skipped: user or threshold
-    FitScored --> Drafting
-    Drafting --> NeedsFacts: missing exact fact
-    NeedsFacts --> Drafting: user answers
-    Drafting --> NeedsReview
-    NeedsReview --> Skipped: user skips
-    NeedsReview --> Ready: single-use approval
-    Ready --> Applying
-    Applying --> NeedsUser: login / OTP / CAPTCHA / certification
-    NeedsUser --> Applying: takeover completed
-    Applying --> Reconciling: submit outcome uncertain
-    Reconciling --> Applying: confirmed not submitted and safe retry
-    Applying --> Confirmed: portal or email evidence
+    [*] --> Drafting: candidate queues eligible job
+    Drafting --> NeedsUser: exact fact or decision missing
+    NeedsUser --> Drafting: user supplies exact answer
+    Drafting --> Ready: immutable revision passes validation
+    Ready --> Authorized: single-use approval consumed
+    Ready --> Skipped: user skips
+    Authorized --> Executing
+    Executing --> Takeover: login / OTP / CAPTCHA / certification
+    Takeover --> Executing: takeover completed
+    Executing --> Reconciling: submit outcome uncertain
+    Reconciling --> Executing: confirmed not submitted and bounded retry authorized
+    Executing --> Confirmed: portal or email evidence
     Reconciling --> Confirmed: confirmation found
-    Confirmed --> Response
-    Response --> Interview
-    Response --> Rejected
-    Interview --> Offer
-    Interview --> Rejected
-    Ineligible --> [*]
+    Reconciling --> FailedSafe: no confirmation after bounded checks
     Skipped --> [*]
-    Offer --> [*]
-    Rejected --> [*]
+    Confirmed --> [*]
+    FailedSafe --> [*]
 ```
 
-`Failed` and `Canceled` are valid terminal states from any non-confirmed step, with reason and recovery metadata. Confirmed applications are not deleted from the audit record when a user cancels the broader search.
+This is the canonical production application state machine. Discovery, eligibility, fit, and viewed/saved/passed/queued decisions live on separate candidate-job records; queueing is the boundary that creates an application in `Drafting`. Recruiter response, interview, rejection, offer, and hire are separate outcome events linked to a confirmed application; they do not rewrite submission history. `Canceled` is a valid terminal state from any non-confirmed step, with actor, reason, and recovery metadata. Confirmed applications remain in the audit record when a user cancels the broader search.
 
 ## Invariants
 
@@ -202,22 +193,24 @@ No flow may enter standing authorization if it includes new legal certification,
 ## Dashboard information architecture
 
 ```text
-Today
-├── Approval Queue
-├── Needs You
-├── Working
-└── Recent Receipts
+Queue (default)
+├── Every selected or pasted job
+├── Newest queued first; background updates do not reorder rows
+├── Status and latest meaningful update
+├── Needs You and Ready filters
+└── Application Workspace route for detail, approval, activity, and receipt
 
-Searches
-├── Active rules
-├── Match explanations
-└── Paused / archived
+Browse Jobs
+├── Search and filter the available job catalog
+├── Save without creating an application
+├── Open concise job details and match rationale
+└── Add one job to Queue to start preparation
 
-Applications
-├── Pipeline
-├── Diffs and artifacts
-├── Events and receipts
-└── Outcomes
+Swipe
+├── One concise job at a time
+├── Pass
+├── Add to Queue
+└── Paste a job link
 
 Career Vault
 ├── Facts and provenance
@@ -225,19 +218,14 @@ Career Vault
 ├── Answer policies
 └── Profile versions
 
-Rules
-├── Roles and locations
-├── Salary and work mode
-├── Sponsorship and exclusions
-├── Authority and caps
-└── Channels and quiet hours
-
-Settings
-├── Security and sessions
-├── Data export / deletion
-├── Billing
-└── Support
+Settings (secondary utility)
+├── Search rules
+├── Application behavior; Ask every time is locked for MVP
+├── Notifications and channels
+└── Account, security, export, and deletion
 ```
+
+Internal job, requisition, application, revision, approval, attempt, workflow, and provider identifiers remain in the domain model for routing, deduplication, authority, and audit. Ordinary candidate UI uses company, role, location, status, time, and human actions instead. See the [frontend specification](dashboard-and-responsive-experience.md) and [frontend-to-backend contract](../architecture/frontend-backend-contract.md).
 
 ## Acceptance tests for one confirmed application
 

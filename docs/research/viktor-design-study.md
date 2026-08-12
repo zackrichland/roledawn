@@ -2,7 +2,7 @@
 title: Viktor design study
 status: research snapshot and transfer guidance
 owner: product and design
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 decision_state: use as visual reference, not as a template
 ---
 
@@ -12,7 +12,7 @@ decision_state: use as visual reference, not as a template
 
 This study explains why Viktor's landing page feels polished, which principles can transfer to RoleDawn, and which visual and verbal signatures must remain Viktor's.
 
-The page implementation should use RoleDawn's [brand kit](../brand/brand-kit.md), [landing-page blueprint](../product/landing-page-blueprint.md), and [night-shift storyboard](../product/night-shift-storyboard.md). This document does not authorize copying Viktor's assets, layouts, language, or identity.
+The page implementation should use RoleDawn's [brand kit](../brand/brand-kit.md), [landing-page blueprint](../product/landing-page-blueprint.md), and [dashboard specification](../product/dashboard-and-responsive-experience.md). This document does not authorize copying Viktor's assets, layouts, language, or identity.
 
 ## Evidence status
 
@@ -216,4 +216,3 @@ Use gradients only for large atmosphere. Keep controls, receipts, diffs, and sta
 - Status, approval, and confirmation use the same terms as the product state machine.
 - Product components remain legible in day and night themes.
 - The page still explains the product when motion is disabled.
-

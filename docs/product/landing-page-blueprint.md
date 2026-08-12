@@ -1,13 +1,19 @@
 ---
 title: Landing-page blueprint and launch copy
-status: Clay-informed local prototype implemented; production claims remain gated
-last_updated: 2026-08-06
+status: future launch specification; not in the current runtime
+last_updated: 2026-08-12
 copy_standard: no-slop pass applied; claims remain gated by product evidence
 ---
 
 # Landing-page blueprint
 
-The day-to-night interaction, reduced-motion behavior, tokens, and acceptance criteria are specified in the [night-shift storyboard](night-shift-storyboard.md). The hierarchy, tactile-system research, type measurements, and trade-dress boundary are in the [Clay design study](../research/clay-design-study.md). The local implementation lives in `src/components/landing/LandingExperience.tsx`, with original tactile artwork at `public/brand/roledawn-night-shift-machine.png`. It implements this revision as an illustrative prototype; production claims remain gated by measured evidence.
+This document preserves the future landing specification. The executable landing
+route and its sample product scenes were removed under D-044 so engineering can
+finish one persistent application path first. The hierarchy, tactile-system
+research, type measurements, and trade-dress boundary are in the [Clay design
+study](../research/clay-design-study.md). Original RoleDawn artwork remains at
+`public/brand/roledawn-night-shift-machine.png`; production claims remain gated
+by measured evidence.
 
 ## Page objective
 
@@ -111,7 +117,7 @@ Get your evenings back without giving up the final say.
 **Body**  
 New tabs. The same address again. Another resume edit. Another portal password. Another spreadsheet that is already out of date. RoleDawn takes the repeat work and brings back the decisions that need your name.
 
-Visual: late-night sequence of job tab → form → resume → tracker, collapsing into one morning Approval Queue.
+Visual: late-night sequence of job tab → form → resume → tracker, collapsing into one morning Queue.
 
 ## 5. How it works
 
@@ -147,7 +153,7 @@ Three product cards:
 
 ## 7. Feature chapters
 
-**Recommendation:** Give Career Vault, Approval Queue, and Application Receipt separate full-width chapters. On large screens, each chapter uses a maximum content width of 1,216 px and a 48 px radius. Reduce the radius on smaller screens. Keep the geometry consistent while changing the scene and argument.
+**Recommendation:** Give Career Vault, Queue, and Application Receipt separate full-width chapters. On large screens, each chapter uses a maximum content width of 1,216 px and a 48 px radius. Reduce the radius on smaller screens. Keep the geometry consistent while changing the scene and argument.
 
 Each chapter follows the human-dream copy grammar and contains one real reusable product component. The chapter backgrounds remain RoleDawn Midnight, Cloud, Dawn Coral, First Light, or Signal Mint combinations; controls and receipts stay flat and legible.
 
@@ -162,7 +168,7 @@ Supporting copy:
 
 > RoleDawn can emphasize what matters. It cannot create experience you did not have.
 
-### 7.2 Approval Queue
+### 7.2 Queue
 
 **Headline**  
 Spend five minutes on the decisions that carry your name.
@@ -182,7 +188,7 @@ Close the tab knowing exactly what happened.
 
 Receipt fields:
 
-- Company, role, location, requisition, and canonical URL.
+- Company, role, location, and canonical source.
 - Submission time and confirmation evidence.
 - Answers and exact upload filenames.
 - Resume, letter, fact-set, and policy versions.
@@ -198,7 +204,7 @@ See the whole search without living in it.
 
 Pipeline:
 
-`New match → Drafting → Needs you → Applying → Confirmed → Recruiter replied → Interview`
+`New match → Queue → Preparing → Needs you → Applying → Confirmed → Recruiter replied → Interview`
 
 Show cost/time only internally during alpha. Customer-facing counters should favor confirmed applications and outcomes, not activity volume.
 
@@ -341,9 +347,18 @@ Start in draft-only mode. Nothing goes out until you approve it.
 - Description: `Find fresh roles, review tailored applications by text, and approve every submission before it goes out.`
 - Suggested social image: timestamped message thread bending into a sunrise line, plus one confirmed receipt.
 
+## Accessibility and performance
+
+- Keep one stable server-rendered H1 and call to action. Decorative day/night changes stay `aria-hidden`; do not announce the marketing sequence through a live region.
+- Every tab, dialog, menu, and control must work by keyboard. Give dialogs an accessible name and description, return focus on close, and never use color as the only status signal.
+- Meet WCAG AA contrast and preserve reading order at 320 CSS px and 200 percent text zoom.
+- Label every fictional company, metric, message, and receipt as illustrative or sample data.
+- Reserve hero media dimensions to prevent layout shift. Prefer still images and short CSS transitions over autoplay video, animated blur, or continuous parallax.
+- Under `prefers-reduced-motion`, show the final static composition without crossfades, pinned scenes, or automatic timeline changes.
+
 ## Design handoff
 
-Desktop artboard: 1440 px; mobile-first component behavior at 390 px. Use Manrope through `next/font` behind the [brand kit](../brand/brand-kit.md) sans token; do not ship Roobert without the required license. Build the hero, proof mosaic, use-case tabs, Career Vault provenance view, Approval Queue, Receipt, and final landscape as original RoleDawn components. Use a 1,216 px maximum width and 48 px desktop radius for the major feature chapters, then reduce the radius responsively. Verify contrast, keyboard path, reduced motion, focus order, 200 percent text zoom, and message-demo labels.
+Desktop artboard: 1440 px; mobile-first component behavior at 390 px. Use Manrope through `next/font` behind the [brand kit](../brand/brand-kit.md) sans token; do not ship Roobert without the required license. Build the hero, proof mosaic, use-case tabs, Career Vault provenance view, Queue, Receipt, and final landscape as original RoleDawn components. Use a 1,216 px maximum width and 48 px desktop radius for the major feature chapters, then reduce the radius responsively. Verify contrast, keyboard path, reduced motion, focus order, 200 percent text zoom, and message-demo labels.
 
 ## Launch-copy QA
 

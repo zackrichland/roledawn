@@ -1,12 +1,12 @@
 ---
 title: System and cloud architecture
 status: recommended MVP architecture
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 ---
 
 # System architecture
 
-Companion specifications: [scale, cost, and capacity](scale-cost-and-capacity.md) defines bounded work and overload behavior; [integrations and OAuth](integrations-and-oauth.md) defines provider resources, user bindings, credential references, and connector authority. The [implementation handoff](../execution/implementation-handoff.md) is the canonical build sequence.
+Companion specifications: the [backend operating model](backend-operating-model.md) is the canonical end-to-end job, candidate, preparation, model, and execution design; the [frontend-to-backend contract](frontend-backend-contract.md) maps every screen to reads, commands, events, and ownership; [scale, cost, and capacity](scale-cost-and-capacity.md) defines bounded work and overload behavior; [integrations and OAuth](integrations-and-oauth.md) defines provider resources, user bindings, credential references, and connector authority. The [implementation handoff](../execution/implementation-handoff.md) is the canonical build sequence.
 
 ## Architecture decision
 
@@ -25,31 +25,46 @@ Each user has a logical agent, not a dedicated daemon.
 
 ```mermaid
 flowchart LR
-    U["Candidate"] --> CH["iMessage / Web / SMS"]
-    CH --> CG["Channel Gateway"]
-    CG --> API["Identity + API Control Plane"]
-    API --> POL["Policy and Approval Service"]
-    API --> WF["Temporal Workflows"]
-
+    U["Candidate"] --> WEB["Responsive PWA"]
+    U --> CH["iMessage / SMS"]
+    WEB --> API["Identity + API Control Plane"]
+    CH --> CG["Channel Gateway"] --> API
+    API --> CMD["Typed Domain Commands"]
+    CMD --> PG[("PostgreSQL")]
+    PG --> OUT["Transactional Outbox"]
+    OUT --> WF["Temporal Workflows"]
     WF --> DISC["Discovery Workers"]
     WF --> MR["Model Router"]
     WF --> DOC["Profile + Document Services"]
-    WF --> BB["Browser Session Broker"]
+    WF --> POL["Policy and Approval Service"]
+    POL --> CAP["Capability / Token Broker"]
+    CAP --> BB["Browser Session Broker"]
     BB --> ATS["Versioned ATS Adapters"]
     ATS --> HT["Secure Human Takeover"]
-
-    API --> PG[("PostgreSQL")]
+    ATS --> REC["Confirmation Reconciler"]
+    REC --> CMD
     DOC --> OBJ[("Object Storage + KMS")]
-    WF --> AUD[("Redacted Audit + Cost Ledger")]
-    ATS --> AUD
-    POL --> ATS
-    WF --> CG
-
+    OUT --> RM["Read-model Projections"]
+    OUT --> AUD[("Redacted Audit + Cost Ledger")]
+    RM --> API
+    WF --> NOTIFY["Notification Worker"] --> CG
     OPS["Support + Observability"] --> WF
     OPS --> AUD
 ```
 
 PostgreSQL, Temporal, and the audit ledger have different authority; the dashboard and messages do not. The exact ownership and recovery contract appears below.
+
+## Experience-to-runtime map
+
+| Candidate surface | Read authority | Command destination | Long-running work |
+|---|---|---|---|
+| Queue and Application Workspace | Application projections from PostgreSQL domain events | Application and approval modules | One Temporal workflow per active application |
+| Browse Jobs and Swipe | Discovery and matching projections | Saved-job, job-decision, and application commands | Source polling and bounded matching workflows |
+| Career Vault | Candidate facts, sources, and usage policy in PostgreSQL | Vault and document-ingestion modules | Scanning, parsing, extraction, and affected-approval invalidation |
+| Settings | Search, authority, notification, consent, and data-rights projections | Policy, channel, export, and deletion modules | Rechecks, exports, deletion, and channel lifecycle workflows |
+| Onboarding | The same Vault, search, authority, and channel records used after activation | Existing module commands; no wizard-only truth | Resumable document and first-match workflows |
+
+These are logical modules, not a mandate for one microservice per screen. The lean alpha should deploy one Next.js web application, one modular TypeScript API/control plane, bounded Temporal worker pools, PostgreSQL, object storage, and managed browser infrastructure. Split a module only after measured isolation, queueing, cost, security, or scaling pressure justifies it.
 
 ## Recommended stack
 
@@ -63,14 +78,14 @@ PostgreSQL, Temporal, and the audit ledger have different authority; the dashboa
 | Narrative retrieval | `pgvector` or external vector index behind a retrieval interface | Useful for source passages; never authoritative for exact facts |
 | Documents | S3-compatible object storage with KMS envelope encryption and malware scanning | Durable versioned artifacts and isolated ingestion |
 | Secrets | AWS Secrets Manager + KMS, tenant-scoped short-lived worker credentials | Keep passwords/tokens outside prompts, DB rows, and normal logs |
-| Browser | Managed isolated browser sessions; persistent encrypted profile per user/ATS, ephemeral session per attempt | Faster alpha, geographic controls, replay/takeover support |
+| Browser | Benchmark Browserbase + Playwright first; persistent encrypted profile per user/ATS tenant, ephemeral session per attempt; Stagehand/Orgo behind owned fallbacks | Deterministic adapter first, managed replay/takeover, provider portability |
 | Messaging | Photon alpha behind `ChannelAdapter`; PWA and consented SMS fallback | Tests iMessage quickly while containing provider/platform risk |
 | AI | OpenAI Responses API and Agents SDK where useful, behind task router/provider interface | Structured tools, approval/tracing support, and routing flexibility |
 | Observability | OpenTelemetry + Sentry or Datadog; separate redacted append-only audit ledger | Operational telemetry and candidate/auditor proof serve different purposes |
 
 Avoid Kubernetes, a self-hosted browser fleet, custom auth, fine-tuning, and native mobile until measured constraints require them.
 
-The specific database/auth provider and primary model routes remain open. Supabase and Anthropic are benchmark candidates, not implicit replacements for PostgreSQL's domain contract, Temporal's workflow authority, or RoleDawn's deterministic policy service.
+The specific database/auth provider and primary model routes remain open. Supabase Postgres/Auth is the recommended alpha benchmark, not a settled provider or an implicit replacement for PostgreSQL's domain contract, Temporal's workflow authority, or RoleDawn's deterministic policy service. OpenAI is the first model-route benchmark and Anthropic the alternative; both must pass the same task-level evals.
 
 ## Service boundaries
 
@@ -94,7 +109,7 @@ This service is deterministic. Model output and webpage text cannot grant author
 
 ### Temporal workflow service
 
-- Owns durable application state and transition rules.
+- Owns in-flight execution history, timers, waits, retries, and replay for application workflows.
 - Schedules discovery and queue preparation.
 - Coordinates activities with idempotency keys.
 - Waits on approval, OTP, CAPTCHA takeover, support, and reconciliation signals.

@@ -4159,11 +4159,11 @@
       "locked": false,
       "fontSize": 14,
       "fontFamily": 2,
-      "text": "Today • queue • timeline • counts\nnotification projections.\nNever permission authority.",
+      "text": "Queue • application timeline • attention counts\nnotification projections.\nNever permission authority.",
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": null,
-      "originalText": "Today • queue • timeline • counts\nnotification projections.\nNever permission authority.",
+      "originalText": "Queue • application timeline • attention counts\nnotification projections.\nNever permission authority.",
       "autoResize": false,
       "lineHeight": 1.25
     },

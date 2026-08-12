@@ -1,10 +1,12 @@
 ---
 title: Continuous job-discovery architecture
 status: MVP engineering strategy
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 ---
 
 # Job discovery
+
+The [backend operating model](backend-operating-model.md) is the canonical end-to-end context. This document owns the detailed source, identity, freshness, and closure contract.
 
 ## Objective
 
@@ -19,8 +21,8 @@ Use the most authoritative permitted source available:
 1. Official public ATS job API or feed.
 2. Official employer career-page feed or structured data.
 3. Official employer career-page HTML.
-4. User-added employer or job URL.
-5. Licensed job-data partner.
+4. User-added employer or job URL using permitted structured data or visible content.
+5. Licensed job-data partner with explicit storage, redisplay, attribution, and commercial rights.
 
 Aggregators can suggest a role but do not become the authoritative application snapshot. Resolve the official employer URL before eligibility, drafting, or application.
 
@@ -33,13 +35,15 @@ Each source record contains:
 ```text
 source_id
 employer_id and employer ATS tenant
-source_type: greenhouse_api / lever_api / ashby_api / employer_feed / employer_html / user_url
+source_type: greenhouse_api / lever_api / ashby_api / workable_api / employer_feed / employer_html / user_url / licensed_feed
 base_url and permitted endpoint pattern
 ATS family and tenant identifier
 acquisition method and parser version
 policy status: allowed / review / disabled
 policy evidence URL, reviewer, reviewed_at, review_due_at
 robots result where applicable
+commercial use, full-text storage, redisplay, and attribution status
+application-automation policy status
 poll interval, jitter window, and request budget
 conditional-fetch cursor: ETag / Last-Modified / API cursor
 locale, region, and time zone
@@ -96,8 +100,12 @@ Fallback identity uses verified employer identity plus canonical employer URL an
 Core entities:
 
 - `employer`: canonical company identity and domains.
-- `source`: one monitored feed/page/API.
+- `career_source`: one monitored employer/ATS tenant, feed, page, or licensed API.
+- `ingestion_run`: one fetch/reconciliation attempt with completeness and anomaly status.
+- `source_job_observation`: immutable raw-payload reference and parser inputs.
+- `source_job_listing`: provider-scoped listing identity and lifecycle.
 - `job`: stable logical requisition.
+- `job_episode`: one open/reopen cycle.
 - `job_version`: immutable observed representation.
 - `job_alias`: source URLs/IDs that resolve to the same job.
 - `job_source_event`: first seen, changed, closed, reopened, or source error.
@@ -147,6 +155,8 @@ Deduplicate in this order:
 2. Exact official canonical application URL/ID.
 3. Verified cross-source alias.
 4. Candidate duplicate proposal using employer, normalized title, location, description similarity, and time window.
+
+An identical normalized description hash may support an automatic merge only within the same employer and only when provider/requisition evidence does not conflict. Similarity without exact identity creates a review cluster rather than a silent merge.
 
 Low-confidence proposals go to a merge queue or remain separate. Preserve all source aliases and never lose which posting the candidate approved.
 
@@ -222,11 +232,14 @@ See the broader [system consistency contract](system-architecture.md#state-autho
 ## MVP rollout
 
 1. Select 100–300 employers relevant to two initial role families.
-2. Register official Greenhouse, Lever, and Ashby sources.
+2. Register official Greenhouse, Lever, Ashby, and Workable sources.
 3. Build a benchmark with independently known openings and timestamps.
 4. Run read-only for two weeks; measure detection lag, parse accuracy, closure, and duplicates.
 5. Enable candidate matching only for healthy sources.
-6. Expand sources through observed candidate demand, not vanity count.
+6. Add user-pasted official links with JSON-LD/visible-content provenance and a bounded browser fallback.
+7. Pilot a small allowlisted set of Workday tenants; do not market universal support.
+8. Compare licensed Adzuna, Lightcast, and LinkUp data against direct ATS truth before selecting a contract.
+9. Expand sources through observed candidate demand, not vanity count.
 
 ## Safety and policy gates
 
@@ -236,4 +249,3 @@ See the broader [system consistency contract](system-architecture.md#state-autho
 - Keep public-job data separate from candidate private data.
 - Disable a source on legal, platform, or reliability concern through one kill switch.
 - Pursue licensed feeds and ATS partnerships as scale increases.
-

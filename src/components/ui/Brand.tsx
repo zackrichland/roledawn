@@ -29,7 +29,7 @@ export function DawnMark({ inverse = false }: { inverse?: boolean }) {
 
 export function Brand({ href = "/", compact = false, inverse = false }: BrandProps) {
   return (
-    <Link className={`brand ${inverse ? "brand--inverse" : ""}`} href={href}>
+    <Link aria-label={compact ? "RoleDawn home" : undefined} className={`brand ${inverse ? "brand--inverse" : ""}`} href={href}>
       <DawnMark inverse={inverse} />
       {!compact && <span>RoleDawn</span>}
     </Link>

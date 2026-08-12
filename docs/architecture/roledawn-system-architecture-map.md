@@ -2,12 +2,12 @@
 title: RoleDawn system architecture map
 status: visual companion to canonical architecture
 owner: product and engineering
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 ---
 
 # RoleDawn system architecture map
 
-The editable canvas is [`roledawn-system-architecture.excalidraw`](roledawn-system-architecture.excalidraw). Import it into Excalidraw with **Open → Open from device**, then ungroup a trust zone if you want to rearrange its individual components.
+The editable canvas is [`roledawn-system-architecture.excalidraw`](roledawn-system-architecture.excalidraw). Import it into Excalidraw with **Open → Open from device**, then ungroup a trust zone if you want to rearrange its individual components. The [backend operating model](backend-operating-model.md) contains the deeper job-catalog, candidate-relation, preparation, model, browser, and vendor diagrams added after this trust-zone overview.
 
 This map explains the current recommended system to a founder. It does not create a new architecture decision. When this page or the canvas conflicts with the [decision log](../execution/decision-log.md), the newest accepted decision wins.
 
@@ -167,6 +167,7 @@ Temporal is the current recommended workflow engine and is labeled accordingly. 
 
 ## Canonical detail
 
+- [Frontend-to-backend contract](frontend-backend-contract.md) — Queue-first screens, reads, commands, events, states, and backend ownership.
 - [Implementation handoff](../execution/implementation-handoff.md) — build order, domain contracts, release gates, and alpha definition.
 - [System architecture](system-architecture.md) — service boundaries, consistency contract, state ownership, recovery, and scaling stages.
 - [Scale, cost, and capacity](scale-cost-and-capacity.md) — bounded work, queues, reservations, backpressure, and overload behavior.
