@@ -4,18 +4,6 @@
   color: #121a2a;
 }
 
-.topbar {
-  align-items: center;
-  background: #fff;
-  border-bottom: 1px solid #e6e9ef;
-  display: grid;
-  gap: 28px;
-  grid-template-columns: 200px minmax(260px, 620px) 1fr;
-  min-height: 72px;
-  padding: 0 clamp(20px, 4vw, 64px);
-}
-
-.search,
 .mobileSearch {
   align-items: center;
   background: #f3f5f7;
@@ -28,13 +16,11 @@
   padding: 0 13px;
 }
 
-.search:focus-within,
 .mobileSearch:focus-within {
   border-color: #9aa7d8;
   box-shadow: 0 0 0 3px rgb(98 115 190 / 12%);
 }
 
-.search input,
 .mobileSearch input {
   background: transparent;
   border: 0;
@@ -43,34 +29,6 @@
   min-width: 0;
   outline: 0;
   width: 100%;
-}
-
-.account {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-  justify-content: flex-end;
-  min-width: 0;
-}
-
-.account > span {
-  color: #5f6878;
-  font-size: 13px;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.textButton {
-  background: none;
-  border: 0;
-  color: #202b46;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  padding: 8px 0;
 }
 
 .content {
@@ -306,10 +264,6 @@
 .dialogActions .primaryButton { background: #17213d; color: #fff; }
 
 @media (max-width: 760px) {
-  .topbar { gap: 14px; grid-template-columns: 1fr auto; min-height: 64px; padding: 0 16px; }
-  .topbar .search,
-  .account > span { display: none; }
-  .account { gap: 0; }
   .content { padding: 14px 12px 40px; }
   .banner { align-items: flex-start; border-radius: 18px; flex-direction: column; gap: 30px; min-height: 235px; padding: 26px 22px 22px; }
   .banner h1 { font-size: 52px; }

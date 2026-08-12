@@ -13,8 +13,9 @@ prototype_version: 0.1.0
 Build RoleDawn as a multi-tenant, event-driven career application system. The
 current vertical slice is intentionally narrow: one authenticated candidate,
 one persistent Queue, one pasted official job URL, one resolved catalog record,
-and one database-backed application detail. It resolves preparation intent but
-does not prepare or execute an employer application.
+one database-backed application detail, and one persistent résumé source in
+Career Vault. It resolves preparation intent and reviewed résumé text but does
+not prepare or execute an employer application.
 
 Do not add a sample runtime, a permanent general-purpose agent/container per
 candidate, or any path that lets a model authorize a side effect.
@@ -26,6 +27,7 @@ candidate, or any path that lets a model authorize a side effect.
 3. [Decision log](decision-log.md)
 4. [Backend architecture operating model](../architecture/backend-operating-model.md)
 5. [Frontend-to-backend contract](../architecture/frontend-backend-contract.md)
+6. [Career Vault résumé intake](../architecture/career-vault-resume-intake.md)
 
 Use specialized architecture documents only for the subsystem being changed.
 Research and vendor claims are evidence, not authority.
@@ -39,9 +41,10 @@ Research and vendor claims are evidence, not authority.
 | `/auth/confirm` | Establish a normal Supabase session |
 | `/dashboard` | Authenticated RLS-scoped Queue plus pasted-link intake |
 | `/applications/:applicationId` | Database-backed application detail |
+| `/vault` | Private PDF/DOCX résumé source, deterministic transcription, candidate review/edit, replacement, and deletion |
 
-Browse, Swipe, Career Vault fixtures, the landing experience, and browser-local
-sample state are not runtime products. There is no candidate-facing mock data.
+Browse, Swipe, the landing experience, and browser-local sample state are not
+runtime products. Career Vault is persistent. There is no candidate-facing mock data.
 Deterministic fixtures and the in-memory computer-session adapter remain
 isolated under test code.
 
@@ -54,14 +57,18 @@ isolated under test code.
   outbox record.
 - Persistent application detail that uses the application UUID for routing
   without displaying it as ordinary candidate copy.
+- A private Career Vault source file with immutable source, extraction, and
+  candidate-review versions; deterministic PDF/DOCX parsing; replacement; and
+  service-completed deletion.
 - Fixed-origin Greenhouse, Lever, and Ashby resolution.
 - A leased one-shot resolver worker with fixed catalog identity, canonical-job
   conflict reuse only for the same source listing, aligned observation
   timestamps, and `UNSPECIFIED`-to-`UNKNOWN` work-mode persistence.
 - Capped outbox retry, terminal dead-letter, support-only inspection,
   optimistic audited requeue, and terminal intake acknowledgement.
-- Eleven forward migrations through `20260812134739`, aligned with the hosted
-  HireWire development ledger for the accepted run.
+- Eighteen forward migrations through `20260812182500`, aligned with the hosted
+  HireWire development ledger. Milestone 0 and Career Vault have separate
+  accepted hosted runs.
 - Immutable evidence-bound packet and bounded browser-session domain contracts.
 - Deterministic tests plus typecheck, lint, documentation, production-build,
   and whitespace gates.
@@ -77,14 +84,23 @@ support-only requeue, one official-source worker resolution, and cleanup.
 The run created no receipt and granted no submit authority. Its scope ends at a
 resolved job record in the persistent Queue.
 
+Career Vault run `20260812170337` separately passed the two-user upload,
+private-path isolation, finalization, extraction, review, optimistic lock,
+failed-replacement, deletion-pending reservation denial, deletion, and cleanup
+sequence. Neither run proves packet generation, browser fill, or employer
+submission.
+
 ## What is not connected
 
-- Resume upload, scanning, parsing, reviewed facts, or production Career Vault.
+- Malware scanning, quarantine, isolated parsing, OCR, structured reviewed
+  facts, retention-policy scheduling, or candidate export. Source versions are
+  truthfully marked `NOT_SCANNED`.
 - Model/company research, rendering, and artifact persistence.
 - A connected packet-preparation coordinator, live browser/CUA, ATS form fill,
   takeover, approval consumption, submit, reconciliation, and external receipt
   evidence.
-- Messaging, billing, analytics, export, deletion, or support tooling.
+- Messaging, billing, analytics, account-wide export/deletion, or support
+  tooling. Career Vault résumé deletion is implemented separately.
 
 Nothing in the current application state or UI grants employer submission
 authority.
@@ -95,6 +111,8 @@ authority.
 |---|---|
 | Identity and session | Supabase Auth user ID |
 | Candidate facts, jobs, applications, approvals, attempts, receipts | PostgreSQL domain records |
+| Original résumé bytes | Private Supabase Storage object selected by immutable Postgres source version |
+| Résumé transcription and candidate review | Immutable Postgres extraction and review versions |
 | Timers, waits, retries, and replay | Future durable workflow history |
 | Consequential proof | Append-only redacted domain events and evidence |
 | Provider secrets | Future credential/token broker |
@@ -105,7 +123,8 @@ authority.
 1. PostgreSQL is the durable domain source of truth.
 2. Every command authorizes the current principal and uses an idempotency key.
 3. A queued application is preparation intent, not a submission.
-4. Exact facts come from structured candidate-approved records.
+4. Reviewed résumé text is source evidence for narrative drafting; exact facts
+   come from structured candidate-approved records.
 5. A model may draft but cannot grant authority, infer sensitive answers, or
    declare a side effect successful.
 6. One approval binds one candidate, application, immutable packet/diff, action,
@@ -126,17 +145,22 @@ authority.
 
 Exit: run `20260812135034` remains a repeatable gate, not a one-time claim.
 
-### 1. Build reviewed evidence intake
+### 1. Harden reviewed evidence intake for public traffic
 
-- Quarantined upload, type/size checks, malware scan, isolated parse, provenance,
-  candidate review, versioning, retention, export, and deletion skeleton.
+- **Implemented:** private PDF/DOCX upload, bounded validation, deterministic
+  transcription, provenance, candidate text review, immutable versioning,
+  replacement, and deletion.
+- **Next:** add quarantine, malware scanning, isolated parsing, OCR fallback,
+  structured fact review, retention, and export.
 
-Exit: no extracted or generated statement becomes an approved fact silently.
+Exit: public-upload abuse tests prove the application process survives hostile
+files, and no extracted or generated statement becomes an approved fact
+silently. Hosted tenant isolation and lifecycle recovery are already accepted.
 
 ### 2. Produce one immutable no-submit packet
 
 - Consume `application.job_resolved`.
-- Capture reviewed job and candidate snapshots.
+- Capture reviewed job and a named Career Vault review snapshot.
 - Add versioned research/model adapters, claim validation, no-slop evaluation,
   deterministic PDF/DOCX rendering, and artifact persistence.
 
@@ -178,7 +202,7 @@ trigger a blind second submission.
 |---|---|
 | Auth/tenancy | Anonymous denial and two-user negative RLS tests |
 | Commands | Replay, payload mismatch, concurrency, and deduplication |
-| Upload | Quarantine, scan, parse isolation, provenance, deletion |
+| Upload | Private path isolation, quarantine, malware scan, parse isolation, provenance, replacement, deletion |
 | Writing | Exact-field, unsupported-claim, citation, and no-slop tests |
 | Approval | Wrong user/application, edit invalidation, expiry, replay |
 | Browser | Drift, takeover, network-loss, kill-switch, no duplicate submit |

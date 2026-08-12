@@ -6,7 +6,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 
 import { createPastedLinkApplicationRun } from "@/app/dashboard/actions";
 import { signOut } from "@/app/dashboard/sign-out-action";
-import { Brand } from "@/components/ui/Brand";
+import { AuthenticatedHeader, HeaderSearch } from "@/components/ui/AuthenticatedHeader";
 import { Icon } from "@/components/ui/Icon";
 import type {
   ApplicationStatus,
@@ -127,25 +127,18 @@ export function CandidateQueue({ initialData }: { initialData: AuthenticatedDash
 
   return (
     <main className={styles.shell}>
-      <header className={styles.topbar}>
-        <Brand href="/dashboard" />
-        <label className={styles.search}>
-          <span className="sr-only">Search queue</span>
-          <Icon name="search" size={18} />
-          <input
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search company or role"
-            type="search"
-            value={query}
-          />
-        </label>
-        <div className={styles.account}>
-          <span title={initialData.actorLabel}>{initialData.actorLabel}</span>
-          <form action={signOut}>
-            <button className={styles.textButton} type="submit">Sign out</button>
-          </form>
-        </div>
-      </header>
+      <AuthenticatedHeader
+        active="queue"
+        actorLabel={initialData.actorLabel}
+        signOutAction={signOut}
+      >
+        <HeaderSearch
+          label="Search queue"
+          onChange={setQuery}
+          placeholder="Search company or role"
+          value={query}
+        />
+      </AuthenticatedHeader>
 
       <section className={styles.content}>
         <div className={styles.banner}>

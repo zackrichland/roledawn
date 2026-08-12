@@ -299,16 +299,15 @@ Use a development-only state gallery to check every state at 390, 768, 1024, and
 
 ## Current runtime boundary
 
-**Implemented locally:** Supabase Auth boundaries, persistent newest-first Queue,
-paste-a-job intake for supported public postings, RLS-scoped database-backed
-application detail, explicit empty/error states, and responsive layouts.
+**Implemented and accepted live in development:** Supabase Auth boundaries,
+persistent newest-first Queue, paste-a-job intake for supported public postings,
+RLS-scoped application detail, one official Greenhouse/Lever/Ashby resolution
+worker, and persistent Career Vault résumé upload, transcription, review,
+replacement, and deletion. See the dated execution records for each run.
 
-**Implemented but not accepted live:** official Greenhouse, Lever, and Ashby
-resolution worker, pending hosted migrations and a server secret.
-
-**Designed, not implemented end to end:** Career Vault, packet preparation,
-approval, browser fill, reconciliation, receipts, Browse, Swipe, Settings,
-onboarding, messaging, billing, analytics, and outcome tracking.
+**Designed, not implemented end to end:** packet preparation, approval, browser
+fill, reconciliation, receipts, Browse, Swipe, Settings, onboarding, messaging,
+billing, analytics, and outcome tracking.
 
 The backend requirements for each screen live in the [frontend-to-backend contract](../architecture/frontend-backend-contract.md). Current implementation status lives in [current state](../execution/current-state.md).
 

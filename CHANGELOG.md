@@ -4,6 +4,57 @@ This file records material repository changes. Product capability is described
 with evidence labels; repository implementation does not imply hosted activation
 or production readiness.
 
+## 2026-08-12 — Career Vault résumé intake
+
+### Implemented in the repository
+
+- Restored Career Vault as a persistent authenticated route at `/vault`; no
+  browser-local sample state or candidate-facing mock résumé data returned.
+- Added PDF and DOCX upload with filename, media-type, size, signature, document
+  complexity, text-length, PDF-page, timeout, and encrypted-file checks.
+- Stored original bytes in the private Supabase Storage `career-vault` bucket.
+  Each upload uses one non-upsert, tenant-scoped reserved path and records the
+  source hash, byte size, media type, parser release, and scan truth.
+- Added deterministic PDF and DOCX text extraction. Scanned/image-only PDFs stop
+  with `OCR_REQUIRED`; OCR is not implemented.
+- Added immutable Postgres records for upload reservations, source versions,
+  extraction attempts, and candidate text reviews. A replacement appends a new
+  version and does not displace the reviewed version unless extraction succeeds.
+- Added candidate review/edit, replace, and permanent-delete controls. Deletion
+  removes private Storage objects before a service-owned database purge and
+  remains recoverable when the request is already `DELETION_PENDING`.
+- Added seven forward migrations from `20260812150302` through
+  `20260812182500`, bringing the repository migration count to 18. The final
+  hardening closes stale-review retries, duplicate logical résumés during
+  deletion, incomplete extraction replay checks, citation purge, and
+  failed-upload cancellation races.
+- Added a bounded hosted Career Vault acceptance and cleanup harness.
+- Tightened DOCX preflight to 256 entries, 8 MiB expanded total, 4 MiB per
+  part, and a 200:1 per-entry expansion ratio; wrapped PDF opening in a bounded
+  timeout. These are alpha defenses, not process isolation.
+
+### Not connected
+
+- Uploaded source versions remain `NOT_SCANNED`. There is no malware scanner,
+  quarantine service, or isolated parsing worker.
+- There is no OCR fallback, structured candidate-fact review, retention-policy
+  scheduler, or candidate export.
+- Reviewed résumé text does not yet feed a company-research, model-drafting,
+  renderer, application-packet, browser/CUA, approval, or submission runtime.
+
+### Verification boundary
+
+- **Verified locally:** all 77 deterministic tests pass, including bounded PDF
+  and DOCX extraction, hostile-compression rejection, failed-upload cleanup,
+  and hosted-acceptance configuration guards.
+- **Verified live, narrower scope:** Milestone 0 run `20260812135034` still proves
+  the first 11 migrations, Auth/RLS foundation, pasted-link intake, Queue/detail,
+  outbox recovery, and one official-source resolution.
+- **Verified live:** Career Vault run `20260812170337` passed all 12 required
+  checkpoints and cleanup against HireWire after all 18 migrations were
+  recorded. It proved upload, review, replacement, tenant isolation, and
+  deletion—not model drafting or employer submission.
+
 ## 2026-08-12 — hosted foundation baseline
 
 This baseline contains the foundation work completed after `2768e3d`. It is an
@@ -71,7 +122,9 @@ application execution is available.
 
 ### Not connected
 
-- No production document upload, scanner, parser, or reviewed Career Vault flow.
+- No production document upload, scanner, parser, or reviewed Career Vault flow
+  was present in the baseline. The newer section above supersedes this item for
+  the current worktree.
 - No model drafting, company-research provider, PDF/DOCX renderer, or artifact
   upload path.
 - No durable packet-preparation workflow, live browser/CUA driver, ATS form

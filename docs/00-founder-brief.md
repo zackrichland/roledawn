@@ -23,17 +23,23 @@ future control surface; the authenticated web application remains canonical.
 **Implemented:** one persistent-only web path. `/` redirects to the authenticated
 dashboard. A signed-in candidate can view an RLS-scoped Queue, paste a supported
 official Greenhouse, Lever, or Ashby posting, and open its database-backed
-application detail. Repository contracts cover safe resolution, immutable
-packets, approval, reconciliation, and browser-session boundaries.
+application detail. The candidate can also use `/vault` to upload one PDF or
+DOCX résumé, inspect and edit its deterministic text transcription, save the
+reviewed text, replace the source with a new version, or delete it. Repository
+contracts cover safe resolution, immutable packets, approval, reconciliation,
+and browser-session boundaries.
 
-**Not verified live:** the Supabase plugin returned `Unknown tool`; the local CLI
-is unlinked and unauthenticated; `SUPABASE_SECRET_KEY` is absent; two migrations
-remain pending; and no signed-in multi-user acceptance record exists for this
-worktree.
+**Verified live:** hosted run `20260812135034` proved two-user Auth/RLS
+isolation, pasted-link intake, Queue/detail, bounded outbox recovery, and one
+official-source resolution. Career Vault run `20260812170337` separately proved
+the two-user upload, private object-path isolation, finalization, extraction,
+review, stale-write rejection, replacement safety, deletion, and cleanup path
+after all 18 migrations were present.
 
-**Not connected:** reviewed resume ingestion, model drafting, artifact rendering,
-durable workflows, live browser/CUA, ATS fill or submit, messaging, and external
-receipt evidence. Nothing in the repository can submit a real job application.
+**Not connected:** malware scanning and isolated parsing, OCR, structured
+reviewed facts, model drafting, artifact rendering, durable workflows, live
+browser/CUA, ATS fill or submit, messaging, and external receipt evidence.
+Nothing in the repository can submit a real job application.
 
 See [current state](execution/current-state.md), [backend status](execution/backend-build-status.md),
 and the root [changelog](../CHANGELOG.md).
@@ -91,6 +97,11 @@ flowchart LR
 PostgreSQL owns candidate facts, applications, approvals, attempts, and receipts.
 Workflow history owns timers and replay. Models own neither.
 
+Career Vault uses three distinct evidence layers: the private original file, an
+immutable deterministic transcription, and an immutable candidate-reviewed text
+version. Reviewed résumé text may support later narrative drafting. Exact
+application answers still require structured candidate-approved records.
+
 ## Business model hypothesis
 
 Do not compete on price per application. Test pricing only after measuring
@@ -100,11 +111,13 @@ should not count. Current price points remain hypotheses in the decision log.
 
 ## Immediate founder priorities
 
-1. Restore Supabase access and accept one persistent signed-in journey.
-2. Add quarantined resume intake and candidate-reviewed facts.
-3. Produce one immutable, cited, no-submit application packet.
-4. Benchmark 100 forms without submitting and graduate Greenhouse first.
-5. Continue counsel, design-partner, Photon, browser, model, and trademark work
+1. Move untrusted parsing behind quarantine, malware scanning, and an isolated
+   worker; add OCR only as a reviewed fallback.
+2. Add structured candidate fact review, retention, and export.
+3. Produce one immutable, cited, no-submit application packet from a named
+   reviewed résumé version.
+4. Benchmark 100 forms without submitting and continue counsel, browser, model,
+   channel, and trademark work
    in parallel.
 
 The go/no-go bar is zero invented claims, zero unauthorized or duplicate

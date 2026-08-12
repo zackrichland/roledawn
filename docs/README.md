@@ -32,8 +32,9 @@ override accepted product or safety contracts.
 1. [Current state](execution/current-state.md)
 2. [Backend build status](execution/backend-build-status.md)
 3. [Implementation handoff](execution/implementation-handoff.md)
-4. [Backend architecture operating model](architecture/backend-operating-model.md)
-5. [Frontend-to-backend contract](architecture/frontend-backend-contract.md)
+4. [Career Vault hosted acceptance](execution/career-vault-hosted-acceptance.md)
+5. [Backend architecture operating model](architecture/backend-operating-model.md)
+6. [Frontend-to-backend contract](architecture/frontend-backend-contract.md)
 
 Use these routed references when working on a subsystem:
 
@@ -41,6 +42,7 @@ Use these routed references when working on a subsystem:
 |---|---|
 | Pasted-link product slice | [Pasted-link application engine](architecture/pasted-link-application-engine.md) |
 | Current resolver/worker | [Job-ingestion runtime](architecture/job-ingestion-runtime.md) |
+| Career Vault résumé intake | [Career Vault résumé intake](architecture/career-vault-resume-intake.md) |
 | Discovery and catalog | [Job discovery](architecture/job-discovery.md) |
 | Evidence and models | [Model routing and evals](architecture/model-routing-and-evals.md) |
 | Browser and submit | [ATS automation](architecture/ats-automation.md) |

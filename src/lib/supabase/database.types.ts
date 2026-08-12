@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.15"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       application_attempts: {
@@ -1430,6 +1455,281 @@ export type Database = {
           },
         ]
       }
+      source_document_extractions: {
+        Row: {
+          attempt_number: number
+          candidate_id: string
+          completed_at: string
+          document_aggregate_version: number
+          document_id: string
+          document_version_id: string
+          extracted_text: string | null
+          extractor_kind: string
+          extractor_release: string
+          failure_code: string | null
+          id: string
+          language_code: string | null
+          output_schema_version: string
+          page_count: number | null
+          resulting_document_status: string
+          source_sha256: string
+          started_at: string
+          status: string
+          text_sha256: string | null
+          warnings: Json
+          workspace_id: string
+        }
+        Insert: {
+          attempt_number: number
+          candidate_id: string
+          completed_at?: string
+          document_aggregate_version: number
+          document_id: string
+          document_version_id: string
+          extracted_text?: string | null
+          extractor_kind: string
+          extractor_release: string
+          failure_code?: string | null
+          id?: string
+          language_code?: string | null
+          output_schema_version: string
+          page_count?: number | null
+          resulting_document_status: string
+          source_sha256: string
+          started_at: string
+          status: string
+          text_sha256?: string | null
+          warnings?: Json
+          workspace_id: string
+        }
+        Update: {
+          attempt_number?: number
+          candidate_id?: string
+          completed_at?: string
+          document_aggregate_version?: number
+          document_id?: string
+          document_version_id?: string
+          extracted_text?: string | null
+          extractor_kind?: string
+          extractor_release?: string
+          failure_code?: string | null
+          id?: string
+          language_code?: string | null
+          output_schema_version?: string
+          page_count?: number | null
+          resulting_document_status?: string
+          source_sha256?: string
+          started_at?: string
+          status?: string
+          text_sha256?: string | null
+          warnings?: Json
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_document_extractions_workspace_id_candidate_id_doc_fkey1"
+            columns: [
+              "workspace_id",
+              "candidate_id",
+              "document_id",
+              "document_version_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "source_document_versions"
+            referencedColumns: [
+              "workspace_id",
+              "candidate_id",
+              "document_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "source_document_extractions_workspace_id_candidate_id_docu_fkey"
+            columns: ["workspace_id", "candidate_id", "document_id"]
+            isOneToOne: false
+            referencedRelation: "source_documents"
+            referencedColumns: ["workspace_id", "candidate_id", "id"]
+          },
+          {
+            foreignKeyName: "source_document_extractions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      source_document_text_reviews: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          created_by: string
+          document_aggregate_version: number
+          document_id: string
+          document_version_id: string
+          extraction_id: string
+          id: string
+          review_version_number: number
+          reviewed_text: string
+          text_sha256: string
+          workspace_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          created_by: string
+          document_aggregate_version: number
+          document_id: string
+          document_version_id: string
+          extraction_id: string
+          id?: string
+          review_version_number: number
+          reviewed_text: string
+          text_sha256: string
+          workspace_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          created_by?: string
+          document_aggregate_version?: number
+          document_id?: string
+          document_version_id?: string
+          extraction_id?: string
+          id?: string
+          review_version_number?: number
+          reviewed_text?: string
+          text_sha256?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_document_text_reviews_workspace_id_candidate_id_do_fkey1"
+            columns: [
+              "workspace_id",
+              "candidate_id",
+              "document_id",
+              "document_version_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "source_document_versions"
+            referencedColumns: [
+              "workspace_id",
+              "candidate_id",
+              "document_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "source_document_text_reviews_workspace_id_candidate_id_doc_fkey"
+            columns: ["workspace_id", "candidate_id", "document_id"]
+            isOneToOne: false
+            referencedRelation: "source_documents"
+            referencedColumns: ["workspace_id", "candidate_id", "id"]
+          },
+          {
+            foreignKeyName: "source_document_text_reviews_workspace_id_candidate_id_ext_fkey"
+            columns: [
+              "workspace_id",
+              "candidate_id",
+              "extraction_id",
+              "document_id",
+              "document_version_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "source_document_extractions"
+            referencedColumns: [
+              "workspace_id",
+              "candidate_id",
+              "id",
+              "document_id",
+              "document_version_id",
+            ]
+          },
+          {
+            foreignKeyName: "source_document_text_reviews_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      source_document_upload_reservations: {
+        Row: {
+          cancelled_at: string | null
+          candidate_id: string
+          display_name: string
+          document_id: string
+          document_version_id: string
+          expected_byte_size: number
+          expires_at: string
+          finalized_at: string | null
+          id: string
+          mime_type: string
+          reserved_at: string
+          reserved_by: string
+          status: string
+          storage_bucket: string
+          storage_object_path: string
+          version_number: number
+          workspace_id: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          candidate_id: string
+          display_name: string
+          document_id: string
+          document_version_id: string
+          expected_byte_size: number
+          expires_at: string
+          finalized_at?: string | null
+          id?: string
+          mime_type: string
+          reserved_at?: string
+          reserved_by: string
+          status?: string
+          storage_bucket?: string
+          storage_object_path: string
+          version_number: number
+          workspace_id: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          candidate_id?: string
+          display_name?: string
+          document_id?: string
+          document_version_id?: string
+          expected_byte_size?: number
+          expires_at?: string
+          finalized_at?: string | null
+          id?: string
+          mime_type?: string
+          reserved_at?: string
+          reserved_by?: string
+          status?: string
+          storage_bucket?: string
+          storage_object_path?: string
+          version_number?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_document_upload_reserv_workspace_id_candidate_id_do_fkey"
+            columns: ["workspace_id", "candidate_id", "document_id"]
+            isOneToOne: false
+            referencedRelation: "source_documents"
+            referencedColumns: ["workspace_id", "candidate_id", "id"]
+          },
+          {
+            foreignKeyName: "source_document_upload_reservations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       source_document_versions: {
         Row: {
           byte_size: number
@@ -1743,6 +2043,16 @@ export type Database = {
           workspace_id: string
         }[]
       }
+      cancel_resume_upload_reservation: {
+        Args: { p_document_version_id: string }
+        Returns: {
+          cancelled: boolean
+          document_id: string
+          document_version_id: string
+          storage_bucket: string
+          storage_object_path: string
+        }[]
+      }
       claim_outbox_batch: {
         Args: {
           p_lease_seconds?: number
@@ -1759,6 +2069,10 @@ export type Database = {
           topic: string
           workspace_id: string
         }[]
+      }
+      complete_source_document_deletion: {
+        Args: { p_document_id: string }
+        Returns: boolean
       }
       dead_letter_outbox_message: {
         Args: { p_error_code: string; p_outbox_id: string; p_worker_id: string }
@@ -1795,6 +2109,22 @@ export type Database = {
           replayed: boolean
         }[]
       }
+      finalize_resume_upload: {
+        Args: {
+          p_actor_id: string
+          p_byte_size: number
+          p_command_id: string
+          p_document_version_id: string
+          p_sha256: string
+        }
+        Returns: {
+          document_id: string
+          document_status: string
+          document_version_id: string
+          replayed: boolean
+          scan_status: string
+        }[]
+      }
       list_dead_lettered_outbox: {
         Args: { p_before?: string; p_limit?: number }
         Returns: {
@@ -1811,6 +2141,53 @@ export type Database = {
           workspace_id: string
         }[]
       }
+      list_expired_resume_upload_reservations: {
+        Args: { p_limit?: number }
+        Returns: {
+          document_version_id: string
+          storage_bucket: string
+          storage_object_path: string
+        }[]
+      }
+      record_resume_extraction: {
+        Args: {
+          p_attempt_number: number
+          p_document_version_id: string
+          p_extracted_text: string
+          p_extractor_kind: string
+          p_extractor_release: string
+          p_failure_code: string
+          p_language_code: string
+          p_output_schema_version: string
+          p_page_count: number
+          p_source_sha256: string
+          p_started_at: string
+          p_status: string
+          p_text_sha256: string
+          p_warnings: Json
+        }
+        Returns: {
+          aggregate_version: number
+          document_id: string
+          document_status: string
+          document_version_id: string
+          extraction_id: string
+          replayed: boolean
+        }[]
+      }
+      request_source_document_deletion: {
+        Args: {
+          p_command_id: string
+          p_document_id: string
+          p_expected_aggregate_version: number
+        }
+        Returns: {
+          aggregate_version: number
+          document_id: string
+          document_status: string
+          replayed: boolean
+        }[]
+      }
       requeue_dead_lettered_outbox: {
         Args: {
           p_expected_dead_lettered_at: string
@@ -1821,6 +2198,22 @@ export type Database = {
           outbox_id: string
           recovery_action_id: string
           requeued_at: string
+        }[]
+      }
+      reserve_resume_upload: {
+        Args: {
+          p_byte_size: number
+          p_command_id: string
+          p_display_name: string
+          p_mime_type: string
+        }
+        Returns: {
+          document_id: string
+          document_version_id: string
+          replayed: boolean
+          storage_bucket: string
+          storage_object_path: string
+          version_number: number
         }[]
       }
       resolve_pasted_link_intake: {
@@ -1835,6 +2228,26 @@ export type Database = {
           aggregate_version: number
           application_id: string
           replayed: boolean
+        }[]
+      }
+      review_resume_text: {
+        Args: {
+          p_command_id: string
+          p_document_id: string
+          p_expected_aggregate_version: number
+          p_extraction_id: string
+          p_reviewed_text: string
+          p_text_sha256: string
+        }
+        Returns: {
+          aggregate_version: number
+          document_id: string
+          document_status: string
+          document_version_id: string
+          extraction_id: string
+          replayed: boolean
+          review_id: string
+          review_version_number: number
         }[]
       }
     }
@@ -1965,6 +2378,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

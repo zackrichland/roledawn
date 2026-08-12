@@ -15,7 +15,7 @@
   <img alt="React 19.2" src="https://img.shields.io/badge/React-19.2-087ea4?logo=react&logoColor=white" />
   <img alt="TypeScript 6" src="https://img.shields.io/badge/TypeScript-6-3178c6?logo=typescript&logoColor=white" />
   <img alt="CI" src="https://github.com/zackrichland/roledawn/actions/workflows/ci.yml/badge.svg" />
-  <img alt="Status: hosted foundation accepted; application execution unbuilt" src="https://img.shields.io/badge/status-hosted%20foundation%20accepted%20%7C%20execution%20unbuilt-7ac7a5" />
+  <img alt="Status: hosted foundation accepted; Career Vault implemented; application execution unbuilt" src="https://img.shields.io/badge/status-foundation%20accepted%20%7C%20Vault%20implemented%20%7C%20execution%20unbuilt-7ac7a5" />
 </p>
 
 RoleDawn asks a narrow product question: how do you delegate repetitive job
@@ -31,22 +31,26 @@ The current runtime is persistent-only:
 4. Pasting a supported official Greenhouse, Lever, or Ashby URL records durable
    preparation intent.
 5. The candidate can open database-backed application detail.
+6. The candidate can upload one PDF or DOCX résumé in `/vault`, review or edit
+   its extracted text, replace it with a new version, or delete it.
 
-There is no candidate-facing sample workspace, Browse, Swipe, Career Vault
-fixture, or marketing landing route. The only in-memory implementation is an
-explicit test-support adapter for the computer-session contract.
+There is no candidate-facing sample workspace, Browse, Swipe, or marketing
+landing route. The Career Vault is database-backed. The only in-memory
+implementation is an explicit test-support adapter for the computer-session
+contract.
 
 **Verified live:** HireWire development run `20260812135034` passed the hosted
-Milestone 0 harness after all 11 local migration versions, ending with
-`20260812134739`, were present in the remote ledger. The run exercised two
-ordinary Auth sessions, RLS isolation, command and canonical-URL replay,
-database-backed reads, bounded outbox recovery, one official-source resolution,
-and cleanup of the ephemeral users and tenant data.
+Milestone 0 harness for Auth, RLS, Queue, intake, outbox recovery, and one
+official-source resolution. Career Vault run `20260812170337` separately passed
+the complete two-user upload, private-path isolation, finalization, deterministic
+extraction, review, stale-write rejection, replacement-safety, deletion, and
+cleanup sequence after all 18 migrations through `20260812182500` were present
+in the hosted ledger.
 
-That result proves the persistent foundation and narrow resolver. It does not
-prove resume processing, application drafting, browser/CUA form fill, approval
-consumption, employer submission, confirmation, or receipts. Nothing in this
-repository can submit a real job application.
+Those results prove the persistent foundation, narrow resolver, and current
+Career Vault data lifecycle. They do not prove model drafting, browser/CUA form
+fill, approval consumption, employer submission, confirmation, or receipts.
+Nothing in this repository can submit a real job application.
 
 See [current state](docs/execution/current-state.md),
 [backend build status](docs/execution/backend-build-status.md), and the
@@ -61,15 +65,17 @@ See [current state](docs/execution/current-state.md),
 | Pasted-link intake | Identity-derived transactional command and outbox | Replay, mismatch rejection, and canonical-URL dedup verified; preparation intent only |
 | Application detail | Database-backed candidate route | No rendered materials or approval yet |
 | Job resolution | Fixed-origin Greenhouse, Lever, and Ashby adapters | One official-source worker resolution verified live |
-| Database contracts | 11 forward migrations through `20260812134739` | Local and hosted ledgers aligned for the accepted run |
+| Career Vault | Private PDF/DOCX source, deterministic transcription, candidate text review, replacement, and deletion | Two-user hosted acceptance passed in run `20260812170337` |
+| Database contracts | 18 forward migrations through `20260812182500` | Hosted ledger aligned; schema lint returned no errors |
 | Application packet | Immutable snapshots, provenance, citations, diffs, no-slop checks | Offline contract; no model or renderer |
 | Browser lifecycle | Provider-neutral bounded session contract | No live driver, form fill, or submit |
 | Runtime data | Persistent Supabase records only | No candidate-facing mock data or sample workspace; test fixtures remain isolated from runtime |
 
 ## Not connected
 
-- Production resume upload, scanning, parsing, reviewed facts, export, or
-  deletion.
+- Malware scanning, quarantined or isolated parsing, OCR, structured reviewed
+  facts, retention controls, or export. Uploaded versions are recorded as
+  `NOT_SCANNED`.
 - Model/company research, drafting, artifact rendering, or artifact upload.
 - Temporal or another durable workflow deployment.
 - Live browser/CUA, credentials, takeover, ATS fill, submit, reconciliation, or
@@ -94,8 +100,9 @@ flowchart LR
     R --> O["Evidence-backed receipt"]
 ```
 
-Only the path through persistent Queue and job resolution has hosted acceptance
-evidence today. The remaining steps are staged behind explicit release gates.
+Persistent Queue/job resolution and Career Vault now have separate hosted
+acceptance evidence. The remaining steps are staged behind explicit release
+gates.
 
 ## Authority model
 
@@ -169,10 +176,10 @@ draft, fill, approve, or submit.
 
 ```text
 src/app/                 authenticated routes and Server Actions
-src/components/          persistent Queue and application interface
+src/components/          persistent Queue, application, and Career Vault interface
 src/domain/              typed contracts and deterministic tests
 src/lib/supabase/        browser, server, admin, proxy, and generated types
-src/server/              auth, Queue reads, ingestion, and workers
+src/server/              auth, Queue reads, ingestion, resume parsing, Vault, and workers
 scripts/                 bounded operator entrypoints
 supabase/migrations/     forward-only database changes
 docs/                    product, architecture, execution, and research
@@ -183,7 +190,7 @@ docs/                    product, architecture, execution, and research
 | Reader | Start here |
 |---|---|
 | Founder | [Current state](docs/execution/current-state.md) → [Founder brief](docs/00-founder-brief.md) → [Roadmap](docs/execution/roadmap.md) |
-| Engineer | [Backend status](docs/execution/backend-build-status.md) → [Implementation handoff](docs/execution/implementation-handoff.md) → [Backend architecture](docs/architecture/backend-operating-model.md) |
+| Engineer | [Backend status](docs/execution/backend-build-status.md) → [Implementation handoff](docs/execution/implementation-handoff.md) → [Career Vault intake](docs/architecture/career-vault-resume-intake.md) → [Backend architecture](docs/architecture/backend-operating-model.md) |
 | Product | [PRD](docs/product/prd.md) → [Dashboard contract](docs/product/dashboard-and-responsive-experience.md) → [Frontend/backend contract](docs/architecture/frontend-backend-contract.md) |
 | Security | [Data, security, and trust](docs/architecture/data-security-and-trust.md) → [ATS automation](docs/architecture/ats-automation.md) |
 | Research | [Source register](docs/research/source-register.md) → [Market and competitors](docs/research/market-and-competitors.md) |

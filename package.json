@@ -9,19 +9,23 @@
     "start": "next start",
     "lint": "eslint .",
     "check:docs": "node scripts/check-markdown-links.mjs",
-    "test": "node --test --experimental-strip-types src/domain/*.test.ts src/server/auth/*-policy.test.ts src/server/ingestion/*.test.ts src/server/workers/*.test.ts scripts/*.test.ts",
+    "test": "node --test --experimental-strip-types src/domain/*.test.ts src/server/auth/*-policy.test.ts src/server/ingestion/*.test.ts src/server/resume/*.test.ts src/server/vault/*.test.ts src/server/workers/*.test.ts scripts/*.test.ts",
     "typecheck": "tsc --noEmit",
     "worker:once": "node --experimental-strip-types --env-file=.env.local scripts/run-preparation-worker.ts",
     "acceptance:m0": "node --experimental-strip-types --env-file=.env.local scripts/run-milestone-zero-acceptance.ts",
+    "acceptance:vault": "node --experimental-strip-types --env-file=.env.local scripts/run-career-vault-acceptance.ts",
+    "acceptance:vault:cleanup": "node --experimental-strip-types --env-file=.env.local scripts/cleanup-career-vault-acceptance.ts",
     "acceptance:m0:cleanup": "node --experimental-strip-types --env-file=.env.local scripts/cleanup-milestone-zero-acceptance.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.4",
     "@supabase/supabase-js": "2.112.3",
+    "mammoth": "1.12.1",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "server-only": "0.0.1"
+    "server-only": "0.0.1",
+    "unpdf": "1.8.0"
   },
   "devDependencies": {
     "@types/node": "26.1.2",
@@ -29,6 +33,7 @@
     "@types/react-dom": "19.2.4",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.0",
+    "jszip": "3.10.1",
     "supabase": "2.113.0",
     "typescript": "6.0.3"
   },

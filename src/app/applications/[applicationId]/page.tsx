@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { signOut } from "@/app/dashboard/sign-out-action";
+import { AuthenticatedHeader } from "@/components/ui/AuthenticatedHeader";
 import type {
   ApplicationEventDTO,
   ApplicationRunDTO,
@@ -138,13 +140,21 @@ function FailureNotice({ code }: { code: string }) {
   );
 }
 
-function ApplicationWorkspace({ application }: { application: ApplicationWorkspaceDTO }) {
+function ApplicationWorkspace({
+  actorLabel,
+  application,
+}: {
+  actorLabel: string;
+  application: ApplicationWorkspaceDTO;
+}) {
   const status = applicationPresentation(application);
   const sourceHref = application.applyUrl ?? application.sourceUrl;
 
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
+    <>
+      <AuthenticatedHeader active="queue" actorLabel={actorLabel} signOutAction={signOut} />
+      <main className={styles.page}>
+        <div className={styles.shell}>
         <nav aria-label="Application breadcrumb" className={styles.breadcrumb}>
           <Link href="/dashboard">Queue</Link>
           <span aria-hidden="true">/</span>
@@ -287,8 +297,9 @@ function ApplicationWorkspace({ application }: { application: ApplicationWorkspa
             </section>
           </aside>
         </div>
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   );
 }
 
@@ -305,5 +316,10 @@ export default async function ApplicationPage({
     notFound();
   }
 
-  return <ApplicationWorkspace application={application} />;
+  return (
+    <ApplicationWorkspace
+      actorLabel={actor.email?.split("@")[0] ?? "Signed-in candidate"}
+      application={application}
+    />
+  );
 }
