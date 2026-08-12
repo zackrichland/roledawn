@@ -4,7 +4,7 @@
   color: #121a2a;
 }
 
-.mobileSearch {
+.queueSearch {
   align-items: center;
   background: #f3f5f7;
   border: 1px solid transparent;
@@ -16,12 +16,12 @@
   padding: 0 13px;
 }
 
-.mobileSearch:focus-within {
+.queueSearch:focus-within {
   border-color: #9aa7d8;
   box-shadow: 0 0 0 3px rgb(98 115 190 / 12%);
 }
 
-.mobileSearch input {
+.queueSearch input {
   background: transparent;
   border: 0;
   color: #121a2a;
@@ -160,7 +160,9 @@
   padding: 3px 8px;
 }
 
-.mobileSearch { display: none; }
+.queueSearch {
+  flex: 0 1 320px;
+}
 
 .applicationList {
   list-style: none;
@@ -271,7 +273,7 @@
   .systemNotice { align-items: flex-start; flex-direction: column; gap: 4px; }
   .queueCard { border-radius: 15px; margin-top: 14px; }
   .queueHeader { align-items: stretch; flex-direction: column; gap: 13px; padding: 16px; }
-  .mobileSearch { display: flex; }
+  .queueSearch { flex: 1 1 auto; width: 100%; }
   .applicationRow { gap: 13px; grid-template-columns: 1fr 18px; min-height: 0; padding: 18px 16px; }
   .status { grid-column: 1; margin-top: 4px; }
   .applicationRow time { grid-column: 1; }

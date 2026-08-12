@@ -7,8 +7,8 @@ import { getOptionalActor } from "@/server/auth/session";
 import { getQueueWorkspace } from "@/server/dashboard/queue";
 
 export const metadata: Metadata = {
-  title: "Candidate queue",
-  description: "Track real job-application preparation in one persistent queue.",
+  title: "Application Kits",
+  description: "Track each job application and its current preparation status.",
 };
 
 export default async function DashboardPage() {

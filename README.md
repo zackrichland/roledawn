@@ -27,7 +27,7 @@ The current runtime is persistent-only:
 
 1. `/` redirects to `/dashboard`.
 2. Anonymous users are sent to `/login`.
-3. A signed-in candidate sees an RLS-scoped Queue.
+3. A signed-in candidate sees Application Kits backed by an RLS-scoped Queue.
 4. Pasting a supported official Greenhouse, Lever, or Ashby URL records durable
    preparation intent.
 5. The candidate can open database-backed application detail.
@@ -38,6 +38,11 @@ There is no candidate-facing sample workspace, Browse, Swipe, or marketing
 landing route. The Career Vault is database-backed. The only in-memory
 implementation is an explicit test-support adapter for the computer-session
 contract.
+
+The authenticated shell groups **Prepare**, **Apply**, and **Interview**.
+Application Kits and Résumé are live. Cover Letters, Auto Apply, Search, Saved,
+Interview Buddy, and Mock Interviews are labeled **Soon** and do not link to
+empty or mock routes.
 
 **Verified live:** HireWire development run `20260812135034` passed the hosted
 Milestone 0 harness for Auth, RLS, Queue, intake, outbox recovery, and one

@@ -6,7 +6,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 
 import { createPastedLinkApplicationRun } from "@/app/dashboard/actions";
 import { signOut } from "@/app/dashboard/sign-out-action";
-import { AuthenticatedHeader, HeaderSearch } from "@/components/ui/AuthenticatedHeader";
+import { AuthenticatedAppShell } from "@/components/ui/AuthenticatedAppShell";
 import { Icon } from "@/components/ui/Icon";
 import type {
   ApplicationStatus,
@@ -126,23 +126,15 @@ export function CandidateQueue({ initialData }: { initialData: AuthenticatedDash
   }
 
   return (
-    <main className={styles.shell}>
-      <AuthenticatedHeader
-        active="queue"
+    <AuthenticatedAppShell
+        active="application-kits"
         actorLabel={initialData.actorLabel}
         signOutAction={signOut}
       >
-        <HeaderSearch
-          label="Search queue"
-          onChange={setQuery}
-          placeholder="Search company or role"
-          value={query}
-        />
-      </AuthenticatedHeader>
-
+      <main className={styles.shell}>
       <section className={styles.content}>
         <div className={styles.banner}>
-          <h1>Queue</h1>
+          <h1>Application Kits</h1>
           <button className={styles.primaryButton} onClick={() => dialogRef.current?.showModal()} type="button">
             Paste a job link
             <Icon name="arrow" size={18} />
@@ -162,12 +154,12 @@ export function CandidateQueue({ initialData }: { initialData: AuthenticatedDash
               <h2 id="queue-heading">Applications</h2>
               <span>{initialData.applications.length}</span>
             </div>
-            <label className={styles.mobileSearch}>
-              <span className="sr-only">Search queue</span>
+            <label className={styles.queueSearch}>
+              <span className="sr-only">Search application kits</span>
               <Icon name="search" size={17} />
               <input
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search"
+                placeholder="Search company or role"
                 type="search"
                 value={query}
               />
@@ -230,6 +222,7 @@ export function CandidateQueue({ initialData }: { initialData: AuthenticatedDash
           </div>
         </form>
       </dialog>
-    </main>
+      </main>
+    </AuthenticatedAppShell>
   );
 }

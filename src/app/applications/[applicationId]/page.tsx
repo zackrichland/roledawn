@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { signOut } from "@/app/dashboard/sign-out-action";
-import { AuthenticatedHeader } from "@/components/ui/AuthenticatedHeader";
+import { AuthenticatedAppShell } from "@/components/ui/AuthenticatedAppShell";
 import type {
   ApplicationEventDTO,
   ApplicationRunDTO,
@@ -151,12 +151,11 @@ function ApplicationWorkspace({
   const sourceHref = application.applyUrl ?? application.sourceUrl;
 
   return (
-    <>
-      <AuthenticatedHeader active="queue" actorLabel={actorLabel} signOutAction={signOut} />
+    <AuthenticatedAppShell active="application-kits" actorLabel={actorLabel} signOutAction={signOut}>
       <main className={styles.page}>
         <div className={styles.shell}>
         <nav aria-label="Application breadcrumb" className={styles.breadcrumb}>
-          <Link href="/dashboard">Queue</Link>
+          <Link href="/dashboard">Application Kits</Link>
           <span aria-hidden="true">/</span>
           <span>Application</span>
         </nav>
@@ -299,7 +298,7 @@ function ApplicationWorkspace({
         </div>
         </div>
       </main>
-    </>
+    </AuthenticatedAppShell>
   );
 }
 

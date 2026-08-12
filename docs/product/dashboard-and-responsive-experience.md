@@ -3,7 +3,7 @@ title: Lean candidate application experience
 status: canonical frontend specification
 owner: product and frontend
 last_updated: 2026-08-12
-decision_state: persistent-only runtime accepted in D-044
+decision_state: grouped persistent shell accepted in D-049
 ---
 
 # Lean candidate application experience
@@ -42,24 +42,34 @@ The interface never implies that saving, viewing, queueing, or drafting grants s
 
 | Surface | Purpose | Primary action |
 |---|---|---|
-| Queue | See every selected job and current state | Open the next relevant step |
+| Application Kits | See every selected job and current Queue state | Open the next relevant step |
 | Paste a job | Add one supported official posting | Create durable preparation intent |
 | Application Workspace | Inspect and control one application | Resolve, edit, approve, or stop |
-| Career Vault | Later: review the facts and files RoleDawn may use | Verify or correct evidence |
+| Résumé | Review the source file and text RoleDawn may use | Verify or correct evidence |
+| Cover Letters | Later: review source letters and generated variants | Not available |
+| Auto Apply | Later: configure bounded preparation behavior | Not available |
+| Search | Later: search attributable imported jobs | Not available |
+| Saved | Later: return to jobs without queueing them | Not available |
+| Interview Buddy | Later: receive interview support | Not available |
+| Mock Interviews | Later: practice with bounded role context | Not available |
 | Settings | Later: set preparation and account policy | Save a bounded preference |
 | Onboarding | Later: establish evidence, rules, and authority | Activate draft-only preparation |
 
-The current runtime has no multi-item primary navigation. Queue is the
-authenticated home, Paste a job is a dialog, and Application Workspace is a
-routed detail. Restore another destination only after it has persistent data
-and accepted end-to-end evidence.
+The authenticated shell groups product destinations under **Prepare**,
+**Apply**, and **Interview**. Application Kits and Résumé are the only live
+destinations. All other rows are non-interactive and labeled **Soon** until
+they have persistent data and accepted end-to-end evidence. Application detail
+keeps Application Kits active in the shell.
 
 ## Shared shell
 
-The current shell contains the brand, Queue search, signed-in identity, and sign
-out. Desktop and mobile use the same responsive route. A concise system notice
-appears when the persistent Queue cannot be read. Global pause and multi-surface
-navigation are later capabilities.
+Desktop uses a fixed grouped sidebar with the brand, active destination, honest
+planned states, signed-in identity, and sign out. At 900 CSS px and below, a
+sticky header opens an accessible drawer containing the same hierarchy. The
+drawer traps focus, closes with Escape or the backdrop, and restores focus to
+the menu button. Queue search belongs to Application Kits rather than the
+global shell. A concise system notice appears when the persistent Queue cannot
+be read.
 
 ## Queue
 
@@ -67,7 +77,7 @@ Queue is the default authenticated screen and the canonical pipeline.
 
 ### Banner
 
-- Heading: **Queue**.
+- Heading: **Application Kits**.
 - Action: **Paste a job link**.
 - No eyebrow or redundant explanatory sentence.
 
@@ -111,9 +121,10 @@ real candidate Queue is large enough to justify them.
 
 ## Later surfaces
 
-Browse Jobs, Swipe, Career Vault, Settings, and onboarding remain product
-specifications, not current routes. Their contracts below are retained to avoid
-losing product intent; they do not describe implemented runtime capability.
+Search, Saved, Auto Apply, Cover Letters, Interview Buddy, Mock Interviews,
+Swipe, Settings, and onboarding remain product specifications, not current
+routes. Their contracts below are retained to avoid losing product intent; they
+do not describe implemented runtime capability.
 
 ### Browse Jobs
 

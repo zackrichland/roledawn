@@ -2,8 +2,8 @@
 title: Frontend-to-backend screen contract
 status: canonical implementation map
 owner: product and engineering
-last_updated: 2026-08-11
-decision_state: logical contracts accepted; vendors and deployment boundaries remain open
+last_updated: 2026-08-12
+decision_state: grouped shell accepted in D-049; unfinished destinations remain contract-only
 ---
 
 # Frontend-to-backend screen contract
@@ -12,7 +12,11 @@ decision_state: logical contracts accepted; vendors and deployment boundaries re
 
 This document maps each candidate screen to the smallest truthful backend contract needed to support it. It is the handoff between the [frontend specification](../product/dashboard-and-responsive-experience.md) and the [system architecture](system-architecture.md).
 
-Primary navigation stays Queue, Browse Jobs, Swipe, and Career Vault. Application Workspace is a routed detail. Settings is an account utility. Onboarding reuses the same Career Vault, search-rule, channel, and authority contracts used after signup.
+The candidate shell is grouped under Prepare, Apply, and Interview. Application
+Kits maps to the persistent Queue, and Résumé maps to the current Career Vault
+source. Cover Letters, Auto Apply, Search, Saved, Interview Buddy, and Mock
+Interviews remain disabled until each has a persistent contract. Application
+Workspace is a routed detail that keeps Application Kits active.
 
 ## Rules shared by every screen
 
@@ -26,7 +30,7 @@ Primary navigation stays Queue, Browse Jobs, Swipe, and Career Vault. Applicatio
 - PostgreSQL domain state authorizes visible state. Temporal coordinates work but is not the UI source of truth.
 - A submission becomes Confirmed only when a receipt has confirmation evidence.
 - Candidate timelines contain bounded semantic events, not raw model traces, browser logs, or hidden reasoning.
-- Pause blocks new queue additions, preparation, approval, and execution. Browse, Save, inspection, export, and Resume remain available.
+- Pause blocks new queue additions, preparation, approval, and execution. Search, Saved, inspection, export, and Résumé remain available.
 
 ### Shared command envelope
 
@@ -62,14 +66,23 @@ Use `Idempotency-Key` for commands and `If-Match` or `expectedVersion` for aggre
 
 | Screen | Primary read | Candidate commands | Backend owner |
 |---|---|---|---|
-| Global shell | `/v1/app-shell` | Pause, resume, logout | Identity, Policy, Notifications |
+| Global shell | Current session + route state | Logout | Identity |
 | Onboarding | `/v1/onboarding` | Upload, verify, set rules, activate | Identity, Vault, Matching, Channels |
-| Queue | `/v1/applications` | Add, skip, cancel | Application Domain, Job Intake |
-| Browse Jobs | `/v1/jobs` | Save, unsave, add to Queue | Discovery, Matching, Application Domain |
+| Application Kits | `/v1/applications` | Add, skip, cancel | Application Domain, Job Intake |
+| Search | `/v1/jobs` | Save, add to Application Kits | Discovery, Matching, Application Domain |
+| Saved | `/v1/jobs?saved=true` | Unsave, add to Application Kits | Discovery, Candidate Decisions, Application Domain |
 | Swipe | `/v1/swipe/deck` | Pass, queue, undo | Discovery projection, Application Domain |
-| Career Vault | `/v1/vault` | Upload, verify, edit, restrict, remove | Document Ingestion, Vault, Policy |
+| Résumé | Current server read/actions; later `/v1/vault` | Upload, review text, replace, remove | Document Ingestion, Vault |
+| Cover Letters | `/v1/cover-letters` | Upload, draft, review, remove | Vault, Drafting, Rendering |
+| Auto Apply | `/v1/application-behavior` | Update preparation policy | Policy, Application Domain |
 | Application Workspace | `/v1/applications/:id` | Answer, revise, approve, skip, cancel, takeover, check | Application, Approval, Browser, Reconciliation |
+| Interview Buddy | `/v1/interviews` | Start, pause, finish | Interview Context, Realtime Session |
+| Mock Interviews | `/v1/mock-interviews` | Configure, start, finish | Interview Context, Evaluation |
 | Settings | `/v1/settings` | Update policy, channels, export, delete | Search Rules, Policy, Notifications, Data Rights |
+
+Only Application Kits, Application Workspace, and Résumé have live candidate
+routes today. The remaining rows define future boundaries; they are not API or
+capability claims.
 
 ## Global shell
 
@@ -135,7 +148,10 @@ Identity, employers, titles, dates, contact data, and authorization require cand
 
 Tables: `candidate_profiles`, `source_documents`, `candidate_facts`, `fact_sources`, `fact_usage_policies`, `searches`, `search_rules`, `consent_versions`, and `channel_bindings`.
 
-## Queue
+## Application Kits
+
+Application Kits is the candidate-facing name for the Queue read model. The
+underlying domain remains a newest-first application Queue.
 
 ### Read
 
@@ -177,11 +193,11 @@ A pasted URL creates a durable job intake. The resolver establishes canonical jo
 
 ### States and boundary
 
-States: empty, filtered empty, loading, stale, paused, intake failed, and command conflict. Adding creates work but no submission authority. When paused, new Queue additions return a typed pause response; Save remains available in Browse.
+States: empty, filtered empty, loading, stale, paused, intake failed, and command conflict. Adding creates work but no submission authority. When paused, new Queue additions return a typed pause response; Saved remains available in Search.
 
 Tables: `job_intakes`, `jobs`, `job_versions`, `applications`, `application_revisions`, `domain_events`, `outbox`, and the application-list projection.
 
-## Browse Jobs
+## Search
 
 ### Read
 
@@ -201,7 +217,7 @@ Each job returns source freshness, concise fit reasons, one gap, save state, que
 
 ### States and boundary
 
-States: loading, no results, partial source failure, stale source, closed job, already saved, and already queued. Browse is read-only until Save or Add to Queue. Company, role, location, source age, and official URL are candidate-facing; IDs stay internal.
+States: loading, no results, partial source failure, stale source, closed job, already saved, and already queued. Search is read-only until Save or Add to Application Kits. Company, role, location, source age, and official URL are candidate-facing; IDs stay internal.
 
 Tables: `source_registry`, `jobs`, `job_versions`, `fit_assessments`, `saved_jobs`, and source-health projections.
 
@@ -221,7 +237,7 @@ States: loading next card, caught up, job closed, decision already recorded, und
 
 Tables: `candidate_job_decisions`, `jobs`, `job_versions`, `fit_assessments`, and `applications`.
 
-## Career Vault
+## Résumé and Career Vault
 
 ### Read and commands
 
@@ -427,13 +443,16 @@ These boxes are logical modules, not a microservice mandate. The alpha should us
 
 | Route | Screen |
 |---|---|
-| `/app` | Redirect to Queue |
-| `/app/queue` | Queue |
-| `/app/browse` | Browse Jobs |
-| `/app/swipe` | Swipe |
-| `/app/vault` | Career Vault |
-| `/app/applications/:id` | Application Workspace |
-| `/app/settings` | Settings |
+| `/` | Redirect to Application Kits |
+| `/dashboard` | Application Kits; persistent Queue |
+| `/vault` | Résumé; persistent Career Vault source |
+| `/applications/:id` | Application Workspace |
+| `/cover-letters` | Planned; no route until persistent |
+| `/auto-apply` | Planned; no route until persistent |
+| `/search` | Planned; no route until persistent |
+| `/saved` | Planned; no route until persistent |
+| `/interview-buddy` | Planned; no route until persistent |
+| `/mock-interviews` | Planned; no route until persistent |
 | `/onboarding` | Resumable onboarding |
 | `/takeover/:capability` | Short-lived secure takeover |
 | `/auth/*` | Authentication and recovery |

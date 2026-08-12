@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 
-import { AuthenticatedHeader } from "@/components/ui/AuthenticatedHeader";
+import { AuthenticatedAppShell } from "@/components/ui/AuthenticatedAppShell";
 import { Icon } from "@/components/ui/Icon";
 import type {
   CareerVaultDocumentView,
@@ -239,18 +239,13 @@ export function CareerVault({
   const document = initialData.document;
 
   return (
-    <main className={styles.shell}>
-      <AuthenticatedHeader
-        active="vault"
-        actorLabel={initialData.actorLabel}
-        signOutAction={signOutAction}
-      />
-
+    <AuthenticatedAppShell active="resume" actorLabel={initialData.actorLabel} signOutAction={signOutAction}>
+      <main className={styles.shell}>
       <section className={styles.content}>
         <header className={styles.banner}>
           <div>
-            <span className={styles.eyebrow}>Your source material</span>
-            <h1>Career Vault</h1>
+            <span className={styles.eyebrow}>Career Vault</span>
+            <h1>Résumé</h1>
             <p>Keep one reviewed résumé ready for future application drafts.</p>
           </div>
           <div className={`${styles.status} ${styles[`status--${initialData.status}`]}`}>
@@ -363,6 +358,7 @@ export function CareerVault({
           </aside>
         </div>
       </section>
-    </main>
+      </main>
+    </AuthenticatedAppShell>
   );
 }

@@ -14,7 +14,7 @@ import { getOptionalActor } from "@/server/auth/session";
 import { CareerVaultError, getCareerVault } from "@/server/vault/career-vault";
 
 export const metadata: Metadata = {
-  title: "Career Vault",
+  title: "Résumé",
   description: "Upload and review the résumé source used for future application drafts.",
 };
 

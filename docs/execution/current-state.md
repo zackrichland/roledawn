@@ -9,9 +9,9 @@ scope: current worktree and verified hosted Milestone 0 and Career Vault foundat
 # Current state
 
 RoleDawn is a trust-first career agent. The current executable product is a
-persistent-only Queue for one signed-in candidate: paste a supported official
-job URL, create durable preparation intent, inspect the database-backed
-application record, and see an honest status. The candidate can also upload one
+persistent-only Application Kits view over one signed-in candidate's Queue:
+paste a supported official job URL, create durable preparation intent, inspect
+the database-backed application record, and see an honest status. The candidate can also upload one
 PDF or DOCX résumé, review or edit its extracted text, replace the source, and
 delete the source plus saved text. It cannot prepare or submit a real
 application packet yet, and it cannot fill or submit an employer form. The
@@ -29,9 +29,13 @@ data lifecycle are verified in the hosted HireWire development project.
 | `/applications/:applicationId` | Database-backed application detail | Uses the application UUID for routing; ordinary page copy does not display it |
 | `/vault` | Private résumé upload, deterministic PDF/DOCX transcription, review/edit, replacement, and deletion | Uploaded versions remain `NOT_SCANNED`; no OCR, structured facts, or drafting consumer |
 
-Browse, Swipe, the marketing landing experience, and the browser-local sample
-workspace are not runtime destinations. Career Vault is database-backed. The
-only in-memory implementation is an explicit computer-session test adapter.
+The authenticated shell groups **Prepare**, **Apply**, and **Interview**. Only
+Application Kits (`/dashboard`) and Résumé (`/vault`) are interactive. Cover
+Letters, Auto Apply, Search, Saved, Interview Buddy, and Mock Interviews are
+visible as disabled **Soon** rows; no empty routes or fixture-backed pages were
+added. Browse, Swipe, the marketing landing experience, and the browser-local
+sample workspace are not runtime destinations. Career Vault is database-backed.
+The only in-memory implementation is an explicit computer-session test adapter.
 
 ## Implemented in the repository
 
@@ -46,6 +50,8 @@ only in-memory implementation is an explicit computer-session test adapter.
   preparation run, semantic event, and outbox message committed together.
 - Persistent application detail that keeps the routing UUID out of ordinary
   candidate copy.
+- Shared responsive authenticated shell: fixed grouped desktop sidebar and a
+  focus-managed mobile drawer with truthful unavailable states.
 - Persistent Career Vault with one logical résumé per candidate, a private
   source file, deterministic transcription, candidate text review, replacement,
   and deletion.

@@ -4,6 +4,28 @@ This file records material repository changes. Product capability is described
 with evidence labels; repository implementation does not imply hosted activation
 or production readiness.
 
+## 2026-08-12 — grouped candidate navigation
+
+### Implemented in the repository
+
+- Restored a shared authenticated sidebar across Application Kits, application
+  detail, and Résumé.
+- Grouped destinations under Prepare, Apply, and Interview. Application Kits
+  and Résumé use their real persistent routes; unbuilt destinations are
+  disabled and labeled Soon.
+- Renamed the Queue page heading to Application Kits while preserving the
+  Queue as the underlying newest-first source-of-truth model.
+- Replaced the desktop top navigation with a fixed compact sidebar. Mobile uses
+  a sticky header and focus-managed drawer with the same hierarchy.
+- Moved application search into the Application Kits list header instead of the
+  global shell.
+
+### Not connected
+
+- Cover Letters, Auto Apply, Search, Saved, Interview Buddy, and Mock
+  Interviews have no candidate routes or working controls yet. No fixture data,
+  fake toggle, or placeholder page was added.
+
 ## 2026-08-12 — Career Vault résumé intake
 
 ### Implemented in the repository
