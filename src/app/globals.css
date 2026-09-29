@@ -1,10 +1,44 @@
 :root {
   color-scheme: light;
-  --ink: #121a2a;
-  --muted: #707b8d;
-  --line: #e2e6ed;
+  /* RoleDawn brand */
+  --midnight: #0b1020;
+  --cloud: #f7f8fc;
+  --first-light: #ffd166;
+  --first-light-deep: #f2b233;
+  --coral: #ff6b5f;
+  --mint: #85e0c5;
+  --slate: #667085;
+  --rose: #e0526f;
+
+  /* Interface roles */
+  --ink: #0b1020;
+  --ink-soft: #2b3246;
+  --muted: #667085;
+  --faint: #98a2b3;
+  --line: #e7e9f0;
+  --line-strong: #d6dae4;
   --paper: #ffffff;
-  --canvas: #f6f7f9;
+  --canvas: #f7f8fc;
+  --wash: #f1f3f8;
+  --coral-ink: #b83a30;
+  --coral-wash: #fff1ef;
+  --mint-ink: #147a5c;
+  --mint-wash: #e9f8f2;
+  --amber-ink: #8a5a00;
+  --amber-wash: #fff6dc;
+  --rose-ink: #b3283f;
+  --rose-wash: #fdeef1;
+
+  --radius-sm: 10px;
+  --radius: 14px;
+  --radius-lg: 22px;
+  --shadow-sm: 0 1px 2px rgb(11 16 32 / 5%);
+  --shadow: 0 1px 2px rgb(11 16 32 / 4%), 0 8px 24px rgb(11 16 32 / 6%);
+  --shadow-lg: 0 24px 60px rgb(11 16 32 / 12%);
+
+  --font-sans: var(--font-manrope), system-ui, sans-serif;
+  --font-serif: var(--font-source-serif), Georgia, serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 }
 
 * {
@@ -13,7 +47,9 @@
 
 html {
   background: var(--canvas);
-  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -34,9 +70,24 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
-select:focus-visible {
-  outline: 3px solid rgb(83 107 211 / 35%);
+select:focus-visible,
+summary:focus-visible {
+  outline: 3px solid rgb(242 178 51 / 55%);
   outline-offset: 2px;
+}
+
+::selection {
+  background: rgb(255 209 102 / 55%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .sr-only {

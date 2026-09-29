@@ -16,8 +16,11 @@ export type ArtifactMountId = string & { readonly [artifactMountIdBrand]: true }
 export type LiveViewReference = string & { readonly [liveViewReferenceBrand]: true };
 
 export type ComputerSessionBinding = {
+  workspaceId: string;
   candidateId: string;
   applicationId: string;
+  revisionId: string;
+  fillAttemptId: string;
 };
 
 export type AllowedProtocol = "https:" | "http:";

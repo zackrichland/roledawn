@@ -2,8 +2,8 @@
 title: Frontend-to-backend screen contract
 status: canonical implementation map
 owner: product and engineering
-last_updated: 2026-08-12
-decision_state: grouped shell accepted in D-049; unfinished destinations remain contract-only
+last_updated: 2026-08-18
+decision_state: grouped shell, Search/Saved, reviewed evidence, application preflight, and stale-file refresh are implemented; later destinations remain contract-only
 ---
 
 # Frontend-to-backend screen contract
@@ -13,10 +13,14 @@ decision_state: grouped shell accepted in D-049; unfinished destinations remain 
 This document maps each candidate screen to the smallest truthful backend contract needed to support it. It is the handoff between the [frontend specification](../product/dashboard-and-responsive-experience.md) and the [system architecture](system-architecture.md).
 
 The candidate shell is grouped under Prepare, Apply, and Interview. Application
-Kits maps to the persistent Queue, and Résumé maps to the current Career Vault
-source. Cover Letters, Auto Apply, Search, Saved, Interview Buddy, and Mock
-Interviews remain disabled until each has a persistent contract. Application
-Workspace is a routed detail that keeps Application Kits active.
+Kits maps to the persistent Queue, Résumé maps to the current Career Vault
+source, Verified facts maps to source-linked evidence review, and Search/Saved
+map to the first allowlisted opportunity catalog. Cover Letters, Auto Apply,
+Interview Buddy, and Mock Interviews remain disabled until each has a
+persistent contract. Application Workspace is a routed detail that keeps
+Application Kits active and now shows committed preparation preflight. A shared,
+URL-transparent candidate layout owns session identity, sign out, sidebar, and
+mobile navigation; leaf routes own only their workspace content and data reads.
 
 ## Rules shared by every screen
 
@@ -26,6 +30,8 @@ Workspace is a routed detail that keeps Application Kits active.
 - The frontend renders server-supplied status and allowed actions. It does not infer authority from display text.
 - Every command carries an idempotency key, authenticated actor, and expected aggregate version.
 - A version conflict returns a typed conflict. It never overwrites silently.
+- Candidate-fact stale versions and incomplete duplicate commands return an
+  explicit non-retryable `PT409` conflict rather than a serialization failure.
 - Offline or stale screens are read-only for consequential actions.
 - PostgreSQL domain state authorizes visible state. Temporal coordinates work but is not the UI source of truth.
 - A submission becomes Confirmed only when a receipt has confirmation evidence.
@@ -72,7 +78,9 @@ Use `Idempotency-Key` for commands and `If-Match` or `expectedVersion` for aggre
 | Search | `/v1/jobs` | Save, add to Application Kits | Discovery, Matching, Application Domain |
 | Saved | `/v1/jobs?saved=true` | Unsave, add to Application Kits | Discovery, Candidate Decisions, Application Domain |
 | Swipe | `/v1/swipe/deck` | Pass, queue, undo | Discovery projection, Application Domain |
-| Résumé | Current server read/actions; later `/v1/vault` | Upload, review text, replace, remove | Document Ingestion, Vault |
+| Résumé source | `/vault` server read/actions; later `/v1/vault` | Upload, review text, replace, remove | Document Ingestion, Vault |
+| Verified facts | `/vault/facts` server read | Approve, attested edit, reject, change allowed use | Evidence, Vault |
+| Application answers | `/vault/answers` server read/action | Append candidate-reviewed exact answer | Identity, Vault, Policy |
 | Cover Letters | `/v1/cover-letters` | Upload, draft, review, remove | Vault, Drafting, Rendering |
 | Auto Apply | `/v1/application-behavior` | Update preparation policy | Policy, Application Domain |
 | Application Workspace | `/v1/applications/:id` | Answer, revise, approve, skip, cancel, takeover, check | Application, Approval, Browser, Reconciliation |
@@ -80,9 +88,10 @@ Use `Idempotency-Key` for commands and `If-Match` or `expectedVersion` for aggre
 | Mock Interviews | `/v1/mock-interviews` | Configure, start, finish | Interview Context, Evaluation |
 | Settings | `/v1/settings` | Update policy, channels, export, delete | Search Rules, Policy, Notifications, Data Rights |
 
-Only Application Kits, Application Workspace, and Résumé have live candidate
-routes today. The remaining rows define future boundaries; they are not API or
-capability claims.
+Application Kits, Application Workspace, Résumé source, Verified facts,
+Application answers, Search, and Saved have live candidate routes today. Swipe,
+Cover Letters, Auto Apply, Interview Buddy, Mock Interviews, and most Settings
+groups define future boundaries; they are not API or capability claims.
 
 ## Global shell
 
@@ -174,6 +183,10 @@ type QueueItemVM = {
     tone: "NEUTRAL" | "WORKING" | "ATTENTION" | "SAFE" | "CLOSED";
   };
   latestMeaningfulEvent: { label: string; occurredAt: string };
+  preparation: {
+    stage: "QUEUED" | "FREEZING_INPUTS" | "INPUTS_READY" | "BLOCKED" |
+      "RESEARCHING" | "DRAFTING" | "VALIDATING" | "RENDERING" | "COMPLETE" | null;
+  };
   nextAction: { code: string; label: string } | null;
   allowedActions: string[];
   generatedAt: string;
@@ -193,9 +206,14 @@ A pasted URL creates a durable job intake. The resolver establishes canonical jo
 
 ### States and boundary
 
-States: empty, filtered empty, loading, stale, paused, intake failed, and command conflict. Adding creates work but no submission authority. When paused, new Queue additions return a typed pause response; Saved remains available in Search.
+States: empty, filtered empty, loading, stale, paused, intake failed,
+preflight blocked, and command conflict. Adding creates work but no submission
+authority. When paused, new Queue additions return a typed pause response;
+Saved remains available in Search.
 
-Tables: `job_intakes`, `jobs`, `job_versions`, `applications`, `application_revisions`, `domain_events`, `outbox`, and the application-list projection.
+Tables: `job_intakes`, `jobs`, `job_versions`, `applications`,
+`application_runs`, `application_input_snapshots`, `application_revisions`,
+`domain_events`, `outbox`, and the application-list projection.
 
 ## Search
 
@@ -205,7 +223,11 @@ Tables: `job_intakes`, `jobs`, `job_versions`, `applications`, `application_revi
 GET /v1/jobs?query=&workMode=&location=&roleFamily=&experience=&employment=&postedAfter=&saved=&sort=&cursor=
 ```
 
-Each job returns source freshness, concise fit reasons, one gap, save state, queue state, and allowed actions.
+The current candidate-safe projection returns 15 fields. Candidate copy uses
+employer, role, location, work mode, employment type, a bounded description,
+official apply URL, source provider and dates, save state, and queue state.
+Opaque job/application IDs remain route and command keys. The projection does
+not return a recommendation, match score, fit reason, or inferred gap.
 
 ### Commands and events
 
@@ -219,7 +241,8 @@ Each job returns source freshness, concise fit reasons, one gap, save state, que
 
 States: loading, no results, partial source failure, stale source, closed job, already saved, and already queued. Search is read-only until Save or Add to Application Kits. Company, role, location, source age, and official URL are candidate-facing; IDs stay internal.
 
-Tables: `source_registry`, `jobs`, `job_versions`, `fit_assessments`, `saved_jobs`, and source-health projections.
+Tables: `job_sources`, `jobs`, `job_versions`, `candidate_job_decisions`, and
+source-health projections. `fit_assessments` remains planned.
 
 ## Swipe
 
@@ -248,6 +271,15 @@ Tables: `candidate_job_decisions`, `jobs`, `job_versions`, `fit_assessments`, an
 - Remove a source document.
 - Create or update a scoped answer policy.
 
+Current route split:
+
+- `/vault`: private source file, deterministic transcription, and reviewed text.
+- `/vault/facts`: deterministic source-linked résumé evidence with exact
+  excerpts, immutable citations, approve/edit/reject, attestation, and
+  allowed-use controls.
+- `/vault/answers`: candidate-reviewed legal name, contact, city/region/country,
+  and country-scoped U.S./Canada authorization and sponsorship answers.
+
 The read model groups documents, facts, provenance, verification, usage policy, blocking gaps, and profile completeness.
 
 ### Events and states
@@ -258,24 +290,57 @@ States: empty, uploading, scanning, parsing, unsupported file, corrupt file, mal
 
 ### Boundary
 
-Only candidate-approved structured facts fill exact or sensitive fields. A material fact change invalidates affected unused approvals. Removing evidence previews downstream impact before commit.
+Only candidate-approved structured facts fill exact or sensitive fields. The
+current answer allowlist has canonical server-owned sensitivity and
+`EXACT_FIELDS` use. Work eligibility is separate for each supported country,
+and **I'm not sure** stays unresolved. The model cannot promote it to yes or no.
+A material fact change invalidates affected unused approvals. Removing evidence
+previews downstream impact before commit.
 
-Tables: `source_documents`, `candidate_facts`, `fact_sources`, `fact_usage_policies`, `answer_policies`, and affected-application indexes. File bytes live in encrypted object storage, not database rows.
+Tables: `source_documents`, `source_document_versions`,
+`source_document_extractions`, `source_document_text_reviews`,
+`source_evidence_passages`, `candidate_evidence_items`,
+`candidate_evidence_versions`, `candidate_evidence_citations`,
+`candidate_facts`, `candidate_fact_versions`, `fact_sources`, and
+affected-application indexes. File bytes live in private object storage, not
+database rows.
 
 ## Application Workspace
 
 ### Route and read
 
 ```text
-/app/applications/:applicationId
+/applications/:applicationId
 GET /v1/applications/:id
 POST /v1/artifacts/:id/view-capability
 ```
 
-The aggregate returns the current immutable revision, allowed actions, authority, frozen job snapshot, match evidence, materials, exact questions, semantic timeline, attempt state, and receipt when confirmed.
+**Current read:** the aggregate returns application aggregate version, job and
+intake state, the latest preparation run/stage, latest Application Input
+Snapshot readiness and typed blockers, semantic events, and any revision,
+artifact, fill, session, or receipt rows that exist. It compares the current
+candidate input epoch with the snapshot behind the current revision, or the
+latest blocked snapshot when no revision exists, and exposes only the derived
+`profileChanged` flag to candidate UI code. The version values are not rendered.
+
+**Target read:** add allowed actions, authority, frozen research, candidate-
+visible materials, exact questions, material diff, attempt state, and confirmed
+receipt only as those command paths become real.
 
 ### Commands
 
+- **Current:** candidate retry through the application detail Server Action,
+  backed by `retry_application_preparation`. The command derives the candidate
+  from `auth.uid()`, checks ownership, active workspace and lifecycle, expected
+  aggregate version, state, and deduplication, and creates preparation authority
+  only. Replay returns the original run; stale versions return `PT409`.
+- **Implemented; deployment pending:** a stale-only **Refresh files** Server
+  Action backed by `refresh_stale_application_packet`. It accepts `READY`,
+  `NEEDS_USER`, or `FAILED_SAFE` only when candidate inputs changed and no
+  preparation or fill is active. It preserves the current immutable revision,
+  appends a new preparation run, event, command result, and outbox message, and
+  swaps the current revision only if the replacement kit later commits.
+Planned commands:
 - `POST /v1/applications/:id/answers`
 - `POST /v1/applications/:id/revision-requests`
 - `POST /v1/applications/:id/approval-challenges`
@@ -290,9 +355,17 @@ The aggregate returns the current immutable revision, allowed actions, authority
 
 ### Events and states
 
-Events: revision created, answer required/committed, approval issued/invalidated/consumed, execution started, takeover required, reconciling, confirmed, failed safe, and outcome recorded.
+Current events include preparation requested, input snapshot ready or blocked,
+retry requested, and `application.files_refresh_queued`. Planned events include revision created, answer
+required/committed, approval issued/invalidated/consumed, execution started,
+takeover required, reconciling, confirmed, failed safe, and outcome recorded.
 
-Submission states: loading, not found, wrong owner, job changed, job closed, answer required, preparing, ready, approval expired, approval invalidated, applying, takeover, checking submission, failed safe, and confirmed.
+Current preparation states are queued, freezing inputs, inputs ready, blocked,
+researching, drafting, validating, rendering, and complete. Only the blocked
+preflight path has live acceptance evidence. Planned submission states include
+job changed, job closed, answer required, ready, approval expired, approval
+invalidated, applying, takeover, checking submission, failed safe, and
+confirmed.
 
 Outcome states are a separate projection over `outcomes`: no outcome, recruiter response, interview, rejection, offer, hired, or withdrawn. An outcome event never changes or replaces the immutable submission state or receipt.
 
@@ -300,7 +373,17 @@ Outcome states are a separate projection over `outcomes`: no outcome, recruiter 
 
 The candidate sees the target, files, final field values, unresolved decisions, and material diff before approval. One approval consumes one unchanged revision. Models and browser workers cannot issue or consume approval. Outcome events never rewrite submission history.
 
-Tables: `applications`, `application_revisions`, `application_answers`, `artifacts`, `approval_challenges`, `approval_consumptions`, `application_attempts`, `receipts`, `outcomes`, and `domain_events`.
+The fill boundary rejects `APPLICATION_FILL_INPUTS_STALE` when the current
+revision's snapshot predates the candidate's current input epoch. The
+application page then shows **Profile changed** and only offers **Refresh
+files** for a state the refresh command can accept; it does not expose either
+version number or offer fill authority for the stale revision.
+
+Tables: `applications`, `application_runs`, `application_input_snapshots`,
+`application_snapshot_evidence_refs`, `application_snapshot_fact_refs`,
+`application_revisions`, `application_answers`, `artifact_versions`,
+`approval_challenges`, `approval_consumptions`, `application_attempts`,
+`receipts`, `outcomes`, and `domain_events`.
 
 ### Concierge operations gate
 
@@ -446,18 +529,20 @@ These boxes are logical modules, not a microservice mandate. The alpha should us
 | `/` | Redirect to Application Kits |
 | `/dashboard` | Application Kits; persistent Queue |
 | `/vault` | Résumé; persistent Career Vault source |
+| `/vault/facts` | Verified facts; live source-linked evidence review |
+| `/vault/answers` | Candidate-reviewed application answers |
 | `/applications/:id` | Application Workspace |
 | `/cover-letters` | Planned; no route until persistent |
 | `/auto-apply` | Planned; no route until persistent |
-| `/search` | Planned; no route until persistent |
-| `/saved` | Planned; no route until persistent |
+| `/search` | Live allowlisted catalog search and queue actions |
+| `/saved` | Live candidate-private saved-job view |
 | `/interview-buddy` | Planned; no route until persistent |
 | `/mock-interviews` | Planned; no route until persistent |
 | `/onboarding` | Resumable onboarding |
 | `/takeover/:capability` | Short-lived secure takeover |
 | `/auth/*` | Authentication and recovery |
 
-## First backend slice
+## First backend slice — complete
 
 Build only the contracts needed to replace browser-local Queue and Career Vault state:
 
@@ -468,3 +553,9 @@ Build only the contracts needed to replace browser-local Queue and Career Vault 
 5. Signed upload intent, quarantine state, and metadata-only document record before parsing.
 6. SSE or polling projection refresh.
 7. No model, live ATS submission, iMessage, or billing until this server-side trust loop passes authorization, concurrency, replay, export, and deletion tests.
+
+The persistent foundation, reviewed résumé/evidence/answer paths, Search/Saved,
+and first preparation preflight now extend beyond that original slice. The next
+frontend/backend seam is one `READY_FOR_DRAFTING` Application Input Snapshot,
+then research/drafting/rendering into a persisted no-submit revision. No browser
+work starts before that revision is candidate-visible and hash-bound.

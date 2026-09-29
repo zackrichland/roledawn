@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 
 import { createSupabaseAdminClient } from "../../lib/supabase/admin.ts";
 import { handleApplicationQueued } from "./application-queued.ts";
+import { handleApplicationPreparationRequested } from "./application-preparation.ts";
+import { handleCareerProfileRequested } from "./career-profile-worker.ts";
 import { decideOutboxFailureDisposition } from "./outbox-retry-policy.ts";
 
 function firstBoolean(value: unknown): boolean {
@@ -10,18 +12,34 @@ function firstBoolean(value: unknown): boolean {
   return value === true;
 }
 
-export async function runPreparationWorkerOnce(): Promise<Readonly<{
+export type PreparationOutboxHandlerKind = "JOB_RESOLVER" | "INPUT_SNAPSHOT" | "CAREER_PROFILE";
+
+export function preparationOutboxHandlerKind(topic: string): PreparationOutboxHandlerKind | null {
+  if (topic === "application.queued") return "JOB_RESOLVER";
+  if (topic === "application.job_resolved" || topic === "application.preparation_requested") {
+    return "INPUT_SNAPSHOT";
+  }
+  if (topic === "candidate.career_profile_requested") return "CAREER_PROFILE";
+  return null;
+}
+
+export async function runPreparationWorkerOnce(environment: NodeJS.ProcessEnv = process.env): Promise<Readonly<{
   claimed: number;
   completed: number;
   failed: number;
 }>> {
-  const supabase = createSupabaseAdminClient();
+  const supabase = createSupabaseAdminClient("preparation-worker/1", environment);
   const workerId = `${hostname()}:${process.pid}:${randomUUID()}`.slice(0, 120);
   const { data, error } = await supabase.rpc("claim_outbox_batch", {
     p_worker_id: workerId,
     p_limit: 10,
     p_lease_seconds: 120,
-    p_topics: ["application.queued"],
+    p_topics: [
+      "application.queued",
+      "application.job_resolved",
+      "application.preparation_requested",
+      "candidate.career_profile_requested",
+    ],
   });
   if (error) throw new Error("OUTBOX_CLAIM_FAILED");
 
@@ -30,7 +48,16 @@ export async function runPreparationWorkerOnce(): Promise<Readonly<{
   let failed = 0;
   for (const message of messages) {
     try {
-      await handleApplicationQueued(supabase, message.payload);
+      const handlerKind = preparationOutboxHandlerKind(message.topic);
+      if (handlerKind === "JOB_RESOLVER") {
+        await handleApplicationQueued(supabase, message.payload);
+      } else if (handlerKind === "INPUT_SNAPSHOT") {
+        await handleApplicationPreparationRequested(supabase, message.payload, workerId, environment);
+      } else if (handlerKind === "CAREER_PROFILE") {
+        await handleCareerProfileRequested(supabase, message.payload, environment);
+      } else {
+        throw new Error("OUTBOX_TOPIC_UNSUPPORTED");
+      }
       const { data: acked, error: ackError } = await supabase.rpc("ack_outbox_message", {
         p_worker_id: workerId,
         p_outbox_id: message.outbox_id,

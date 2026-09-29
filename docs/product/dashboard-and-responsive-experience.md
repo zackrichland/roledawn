@@ -45,7 +45,9 @@ The interface never implies that saving, viewing, queueing, or drafting grants s
 | Application Kits | See every selected job and current Queue state | Open the next relevant step |
 | Paste a job | Add one supported official posting | Create durable preparation intent |
 | Application Workspace | Inspect and control one application | Resolve, edit, approve, or stop |
-| Résumé | Review the source file and text RoleDawn may use | Verify or correct evidence |
+| Résumé | Review the source file and text RoleDawn may use | Verify or correct source text |
+| Verified facts | Review source-linked résumé facts | Not available until extractor is connected |
+| Application answers | Save stable exact fields under candidate control | Review or update one answer |
 | Cover Letters | Later: review source letters and generated variants | Not available |
 | Auto Apply | Later: configure bounded preparation behavior | Not available |
 | Search | Later: search attributable imported jobs | Not available |
@@ -56,8 +58,10 @@ The interface never implies that saving, viewing, queueing, or drafting grants s
 | Onboarding | Later: establish evidence, rules, and authority | Activate draft-only preparation |
 
 The authenticated shell groups product destinations under **Prepare**,
-**Apply**, and **Interview**. Application Kits and Résumé are the only live
-destinations. All other rows are non-interactive and labeled **Soon** until
+**Apply**, and **Interview**. Application Kits and the Career Vault sections
+Source, Verified facts, and Application answers are live. Verified facts is an
+honest empty surface until its extractor exists. All other sidebar rows are
+non-interactive and labeled **Soon** until
 they have persistent data and accepted end-to-end evidence. Application detail
 keeps Application Kits active in the shell.
 
@@ -69,7 +73,9 @@ sticky header opens an accessible drawer containing the same hierarchy. The
 drawer traps focus, closes with Escape or the backdrop, and restores focus to
 the menu button. Queue search belongs to Application Kits rather than the
 global shell. A concise system notice appears when the persistent Queue cannot
-be read.
+be read. One shared App Router layout owns the shell across Application Kits,
+application detail, and Résumé. Route transitions replace only the workspace
+content; route-derived active state updates without remounting the shell.
 
 ## Queue
 
@@ -165,7 +171,7 @@ The action rail remains above the mobile bottom navigation and safe area. Add Un
 Route shape:
 
 ```text
-/app/applications/:applicationId
+/applications/:applicationId
 ```
 
 The opaque route key is never displayed as page copy. Desktop may intercept the route into a wide panel; mobile uses a full page. Browser back and deep links must work.
@@ -315,6 +321,11 @@ persistent newest-first Queue, paste-a-job intake for supported public postings,
 RLS-scoped application detail, one official Greenhouse/Lever/Ashby resolution
 worker, and persistent Career Vault résumé upload, transcription, review,
 replacement, and deletion. See the dated execution records for each run.
+
+**Implemented and accepted live in development:** candidate-reviewed
+Application answers and candidate-self fact RLS passed all 13 checkpoints plus
+cleanup in run `20260812195628`. This does not extend to résumé fact extraction
+or packet generation.
 
 **Designed, not implemented end to end:** packet preparation, approval, browser
 fill, reconciliation, receipts, Browse, Swipe, Settings, onboarding, messaging,

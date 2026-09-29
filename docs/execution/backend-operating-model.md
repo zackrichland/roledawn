@@ -1,14 +1,23 @@
 ---
-title: Supabase HireWire backend operating model
-status: verified Milestone 0 baseline and active implementation runbook
+title: Supabase HireWire Milestone 0 operating record
+status: historical Milestone 0 runbook; superseded by current-state and backend-build-status
 owner: founder and engineering
-last_updated: 2026-08-12
-scope: current repository source, verified HireWire development baseline, and explicitly staged future runtime
+last_updated: 2026-08-18
+scope: preserved Milestone 0 chronology; not the current 41-migration recovery point
 ---
 
 # Supabase HireWire backend operating model
 
-This is the operator source of truth for the backend being built now. It records
+> **Historical record:** this file preserves the 11-migration Milestone 0
+> operating snapshot. It predates the connected Career Vault, candidate-reviewed
+> answers, and the later connected foundations. The current recovery point has
+> 41 aligned local and hosted migrations. Use
+> [current state](current-state.md), [backend build status](backend-build-status.md),
+> and [architecture at a glance](../architecture/architecture-at-a-glance.md)
+> for current decisions and build sequencing. Statements below remain bounded
+> to the 2026-08-12 Milestone 0 run unless a section explicitly says otherwise.
+
+This was the operator source of truth for Milestone 0. It records
 the verified hosted Milestone 0 baseline, the boundaries that remain unbuilt,
 and the order in which to add later workers and external side effects. For the
 longer-range design, use the [architecture operating model](../architecture/backend-operating-model.md).

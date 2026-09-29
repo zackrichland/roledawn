@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
   assessApplicationPacketEvidence,
   createApplicationPacketInputSnapshot,
+  finalizeApplicationPacket,
+  narrativeCandidateFactsForModel,
+  narrativeDocumentUsesForCandidateFact,
   prepareApplicationPacket,
   validateApplicationPacketProposal,
 } from "./application-packet.ts";
@@ -75,13 +79,15 @@ function snapshotInput(): ApplicationPacketSnapshotInput {
           label: "Healthcare platform scope",
           value: "Built a regulated healthcare platform spanning a Swift iOS app, JavaScript dashboard, and PostgreSQL services.",
           sensitivity: "STANDARD",
-          allowedUses: ["RESUME", "COVER_LETTER"],
+          usagePolicy: "RESUME_AND_ANSWERS",
+          verificationStatus: "VERIFIED",
           review: {
             status: "REVIEWED",
             reviewedAt: "2026-08-12T14:00:00.000Z",
             reviewedBy: "CANDIDATE",
           },
           provenance: {
+            sourceType: "DOCUMENT_EVIDENCE",
             documentId: "resume-document",
             documentVersionId: "resume-version-7",
             passageId: "experience-1",
@@ -93,13 +99,15 @@ function snapshotInput(): ApplicationPacketSnapshotInput {
           label: "Bounded AI workflows",
           value: "Shipped bounded AI workflows with deterministic eligibility checks and revalidation.",
           sensitivity: "STANDARD",
-          allowedUses: ["COVER_LETTER"],
+          usagePolicy: "NARRATIVE_ONLY",
+          verificationStatus: "VERIFIED",
           review: {
             status: "REVIEWED",
             reviewedAt: "2026-08-12T14:02:00.000Z",
             reviewedBy: "CANDIDATE",
           },
           provenance: {
+            sourceType: "DOCUMENT_EVIDENCE",
             documentId: "resume-document",
             documentVersionId: "resume-version-7",
             passageId: "experience-2",
@@ -222,6 +230,67 @@ test("captures normalized, immutable, hash-bound job and reviewed-fact inputs", 
   assert.equal(captured.job.company, "Example Systems");
 });
 
+test("accepts document evidence and candidate attestation without inventing cross-provenance fields", () => {
+  const input = snapshotInput();
+  const captured = expectOk(createApplicationPacketInputSnapshot({
+    ...input,
+    candidate: {
+      ...input.candidate,
+      reviewedFacts: [
+        input.candidate.reviewedFacts[0],
+        {
+          ...input.candidate.reviewedFacts[1],
+          factId: "fact-attested",
+          factVersionId: "fact-attested-v1",
+          provenance: {
+            sourceType: "CANDIDATE_ATTESTATION",
+            attestationId: "attestation-1",
+            attestedAt: "2026-08-12T14:02:00.000Z",
+            attestedBy: "CANDIDATE",
+          },
+        },
+      ],
+    },
+  }));
+
+  assert.equal(captured.candidate.reviewedFacts[0].provenance.sourceType, "CANDIDATE_ATTESTATION");
+  assert.equal(captured.candidate.reviewedFacts[1].provenance.sourceType, "DOCUMENT_EVIDENCE");
+});
+
+test("maps permissions explicitly and excludes exact, never-autofill, and protected facts from narrative model context", () => {
+  assert.deepEqual(narrativeDocumentUsesForCandidateFact({
+    sensitivity: "STANDARD",
+    usagePolicy: "RESUME_AND_ANSWERS",
+  }), ["RESUME", "COVER_LETTER"]);
+  assert.deepEqual(narrativeDocumentUsesForCandidateFact({
+    sensitivity: "STANDARD",
+    usagePolicy: "NARRATIVE_ONLY",
+  }), ["COVER_LETTER"]);
+  for (const blocked of [
+    { sensitivity: "STANDARD" as const, usagePolicy: "EXACT_FIELDS" as const },
+    { sensitivity: "STANDARD" as const, usagePolicy: "NEVER_AUTOFILL" as const },
+    { sensitivity: "PROTECTED" as const, usagePolicy: "RESUME_AND_ANSWERS" as const },
+  ]) {
+    assert.deepEqual(narrativeDocumentUsesForCandidateFact(blocked), []);
+  }
+
+  const facts = snapshotInput().candidate.reviewedFacts;
+  const filtered = narrativeCandidateFactsForModel([
+    ...facts,
+    { ...facts[0], factVersionId: "exact-v1", usagePolicy: "EXACT_FIELDS" },
+    { ...facts[0], factVersionId: "never-v1", usagePolicy: "NEVER_AUTOFILL" },
+    { ...facts[0], factVersionId: "protected-v1", sensitivity: "PROTECTED" },
+    {
+      ...facts[0],
+      factVersionId: "operator-sensitive-v1",
+      sensitivity: "SENSITIVE",
+      review: { ...facts[0].review, reviewedBy: "AUTHORIZED_OPERATOR" },
+    },
+  ]);
+  assert.deepEqual(filtered.map((fact) => fact.factVersionId), ["fact-platform-v2", "fact-workflows-v1"]);
+  assert.equal(Object.isFrozen(filtered), true);
+});
+
 test("rejects unreviewed, duplicate, unsafe, or unhashed snapshot inputs", () => {
   const input = snapshotInput();
   const invalid = {
@@ -253,13 +322,34 @@ test("rejects unreviewed, duplicate, unsafe, or unhashed snapshot inputs", () =>
   assert.equal(codes.has("UNREVIEWED_FACT"), true);
 });
 
-test("builds one immutable manifest with deterministic proposal, artifact, diff, and packet hashes", () => {
+function renderedArtifacts() {
+  return [
+    {
+      kind: "RESUME" as const,
+      filename: "candidate-resume.pdf",
+      mediaType: "application/pdf" as const,
+      bytes: new TextEncoder().encode("rendered resume bytes"),
+      rendererRelease: "roledawn-pdf-v1",
+    },
+    {
+      kind: "COVER_LETTER" as const,
+      filename: "candidate-cover-letter.pdf",
+      mediaType: "application/pdf" as const,
+      bytes: new TextEncoder().encode("rendered cover letter bytes"),
+      rendererRelease: "roledawn-pdf-v1",
+    },
+  ];
+}
+
+test("prepares logical content, then binds rendered bytes in one deterministic immutable manifest", () => {
   const inputSnapshot = snapshot();
   const proposal = validProposal(inputSnapshot);
-  const first = expectOk(prepareApplicationPacket(inputSnapshot, proposal, "packet-1"));
-  const replay = expectOk(prepareApplicationPacket(inputSnapshot, proposal, "packet-1"));
+  const prepared = expectOk(prepareApplicationPacket(inputSnapshot, proposal, "packet-1"));
+  const first = expectOk(finalizeApplicationPacket(prepared, renderedArtifacts()));
+  const replay = expectOk(finalizeApplicationPacket(prepared, [...renderedArtifacts()].reverse()));
 
   assert.equal(first.immutable, true);
+  assert.equal(first.finalized, true);
   assert.deepEqual(first, replay);
   assert.equal(Object.isFrozen(first.manifest), true);
   assert.match(first.manifest.proposalHash, /^sha256:[a-f0-9]{64}$/);
@@ -280,6 +370,116 @@ test("builds one immutable manifest with deterministic proposal, artifact, diff,
   );
   assert.equal(first.materialDiff.resume.changes[0].claimIds[0], "claim-platform");
   assert.equal(first.materialDiff.coverLetter.paragraphCount, 4);
+  assert.deepEqual(first.manifest.renderedArtifacts.map((artifact) => artifact.kind), ["COVER_LETTER", "RESUME"]);
+  assert.equal(first.manifest.renderedArtifacts[1].rendererRelease, "roledawn-pdf-v1");
+  assert.equal(first.manifest.renderedArtifacts[1].byteSize, new TextEncoder().encode("rendered resume bytes").byteLength);
+  assert.equal(
+    first.manifest.renderedArtifacts[1].contentHash,
+    `sha256:${createHash("sha256").update("rendered resume bytes").digest("hex")}`,
+  );
+});
+
+test("changes the final packet hash when rendered bytes or renderer release changes", () => {
+  const inputSnapshot = snapshot();
+  const prepared = expectOk(prepareApplicationPacket(inputSnapshot, validProposal(inputSnapshot), "packet-rendered"));
+  const original = expectOk(finalizeApplicationPacket(prepared, renderedArtifacts()));
+  const changedBytes = renderedArtifacts().map((artifact) =>
+    artifact.kind === "RESUME"
+      ? { ...artifact, bytes: new TextEncoder().encode("different rendered resume bytes") }
+      : artifact
+  );
+  const changedRenderer = renderedArtifacts().map((artifact) =>
+    artifact.kind === "RESUME"
+      ? { ...artifact, rendererRelease: "roledawn-pdf-v2" }
+      : artifact
+  );
+
+  assert.notEqual(
+    expectOk(finalizeApplicationPacket(prepared, changedBytes)).manifest.packetHash,
+    original.manifest.packetHash,
+  );
+  assert.notEqual(
+    expectOk(finalizeApplicationPacket(prepared, changedRenderer)).manifest.packetHash,
+    original.manifest.packetHash,
+  );
+});
+
+test("refuses to finalize without one valid rendered résumé and cover letter", () => {
+  const inputSnapshot = snapshot();
+  const prepared = expectOk(prepareApplicationPacket(inputSnapshot, validProposal(inputSnapshot), "packet-invalid-render"));
+  const invalid = finalizeApplicationPacket(prepared, [{
+    ...renderedArtifacts()[0],
+    filename: "candidate-resume.docx",
+    bytes: new Uint8Array(),
+  }]);
+
+  assert.equal(invalid.ok, false);
+  if (invalid.ok) return;
+  const codes = new Set(invalid.error.issues.map((entry) => entry.code));
+  assert.equal(codes.has("INPUT_INVALID"), true);
+  assert.equal(codes.has("INPUT_INVALID"), true);
+});
+
+test("refuses to finalize a forged prepared stage whose logical hashes are stale", () => {
+  const inputSnapshot = snapshot();
+  const prepared = expectOk(prepareApplicationPacket(inputSnapshot, validProposal(inputSnapshot), "packet-forged"));
+  const forged = {
+    ...prepared,
+    proposalHash: `sha256:${"f".repeat(64)}` as const,
+  };
+  const result = finalizeApplicationPacket(forged, renderedArtifacts());
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.error.issues.some((entry) => entry.code === "HASH_INVALID"), true);
+});
+
+test("recomputes and rejects forged logical artifacts and citation ledgers", () => {
+  const inputSnapshot = snapshot();
+  const prepared = expectOk(prepareApplicationPacket(inputSnapshot, validProposal(inputSnapshot), "packet-forged-ledger"));
+  const forged = {
+    ...prepared,
+    logicalArtifacts: prepared.logicalArtifacts.map((artifact, index) => index === 0
+      ? { ...artifact, contentHash: `sha256:${"f".repeat(64)}` as const }
+      : artifact),
+    claimCitations: prepared.claimCitations.map((entry, index) => index === 0
+      ? { ...entry, citations: [] }
+      : entry),
+  };
+  const result = finalizeApplicationPacket(forged, renderedArtifacts());
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.error.issues.some((entry) => entry.path === "logicalArtifacts"), true);
+  assert.equal(result.error.issues.some((entry) => entry.path === "claimCitations"), true);
+});
+
+test("rejects unresolved candidate facts before they reach a packet snapshot", () => {
+  const input = snapshotInput();
+  const unresolved = {
+    ...input.candidate.reviewedFacts[0],
+    factId: "fact-work-authorization",
+    factVersionId: "fact-work-authorization-unsure-v1",
+    label: "Work authorization",
+    value: "I'm not sure",
+    sensitivity: "SENSITIVE" as const,
+    usagePolicy: "EXACT_FIELDS" as const,
+    verificationStatus: "NEEDS_REVIEW",
+  };
+  const result = createApplicationPacketInputSnapshot({
+    ...input,
+    candidate: {
+      ...input.candidate,
+      reviewedFacts: [...input.candidate.reviewedFacts, unresolved] as ApplicationPacketSnapshotInput["candidate"]["reviewedFacts"],
+    },
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(
+    result.error.issues.some((entry) => entry.path.endsWith("verificationStatus") && entry.code === "UNREVIEWED_FACT"),
+    true,
+  );
 });
 
 test("fails closed when proposal snapshot, claim, or source résumé references do not match", () => {
@@ -545,16 +745,18 @@ test("never infers a sensitive answer and accepts it only after candidate review
       label: "Work authorization",
       value: "Candidate-supplied answer fixture",
       sensitivity: "SENSITIVE" as const,
-      allowedUses: ["COVER_LETTER" as const],
+      usagePolicy: "NARRATIVE_ONLY" as const,
+      verificationStatus: "VERIFIED" as const,
       review: {
         status: "REVIEWED" as const,
         reviewedAt: "2026-08-12T14:03:00.000Z",
         reviewedBy: "AUTHORIZED_OPERATOR" as const,
       },
       provenance: {
-        documentId: "candidate-answer",
-        documentVersionId: "candidate-answer-v1",
-        passageId: "work-authorization",
+        sourceType: "CANDIDATE_ATTESTATION" as const,
+        attestationId: "candidate-answer-v1",
+        attestedAt: "2026-08-12T14:03:00.000Z",
+        attestedBy: "CANDIDATE" as const,
       },
   };
   const operatorReviewedInput: ApplicationPacketSnapshotInput = {

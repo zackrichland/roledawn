@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 
 import { hashNormalizedJobVersion, hashSourceListingIdentity } from "../ingestion/canonical.ts";
 import type { Database, Json } from "../../lib/supabase/database.types.ts";
-import type { NormalizedSourceJob } from "../ingestion/contracts.ts";
+import type { NormalizedSourceJob, ResolvedPublicJob } from "../ingestion/contracts.ts";
 import { createNativeJobApiFetchPort } from "../ingestion/fetch-port.ts";
 import { resolvePublicJobUrl } from "../ingestion/resolve-job.ts";
 
@@ -96,31 +96,55 @@ async function persistResolvedJob(
 ): Promise<void> {
   const { job, reference } = resolved;
   const observedAt = job.observedAt;
-  const employerName = employerNameFromJob(job);
-  const employerId = deterministicUuid("employer", `${reference.provider}:${reference.tenantKey}`);
-  const { data: employer, error: employerError } = await supabase
-    .from("employers")
-    .upsert({ id: employerId, canonical_name: employerName }, { onConflict: "id" })
-    .select("id")
-    .single();
-  if (employerError || !employer) throw new Error("EMPLOYER_WRITE_FAILED");
-
-  const { data: source, error: sourceError } = await supabase
+  // A reviewed catalog board may already own this provider/tenant. A pasted
+  // link must reuse it, never rename its employer or rewrite its polling
+  // configuration.
+  const { data: existingSource, error: existingSourceError } = await supabase
     .from("job_sources")
-    .upsert({
-      employer_id: employer.id,
-      provider: reference.provider,
-      tenant_key: reference.tenantKey,
-      list_url: null,
-      application_domain: new URL(job.applyUrl).hostname,
-      policy_status: "REVIEW",
-      polling_enabled: false,
-      adapter_release: "direct-public-api/0.1",
-      updated_at: observedAt,
-    }, { onConflict: "provider,tenant_key" })
-    .select("id")
-    .single();
-  if (sourceError || !source) throw new Error("JOB_SOURCE_WRITE_FAILED");
+    .select("id, employer_id")
+    .eq("provider", reference.provider)
+    .eq("tenant_key", reference.tenantKey)
+    .maybeSingle();
+  if (existingSourceError) throw new Error("JOB_SOURCE_READ_FAILED");
+  let source: Readonly<{ id: string }>;
+  let employer: Readonly<{ id: string }>;
+  let employerName = employerNameFromJob(job);
+  if (existingSource?.id && existingSource.employer_id) {
+    source = { id: existingSource.id };
+    employer = { id: existingSource.employer_id };
+    const { data: employerRow } = await supabase
+      .from("employers")
+      .select("canonical_name")
+      .eq("id", existingSource.employer_id)
+      .maybeSingle();
+    if (typeof employerRow?.canonical_name === "string" && employerRow.canonical_name.trim()) {
+      employerName = employerRow.canonical_name.trim();
+    }
+  } else {
+    const employerId = deterministicUuid("employer", `${reference.provider}:${reference.tenantKey}`);
+    const { data: createdEmployer, error: employerError } = await supabase
+      .from("employers")
+      .upsert({ id: employerId, canonical_name: employerName }, { onConflict: "id" })
+      .select("id")
+      .single();
+    if (employerError || !createdEmployer) throw new Error("EMPLOYER_WRITE_FAILED");
+    employer = createdEmployer;
+    const { data: createdSource, error: sourceError } = await supabase
+      .from("job_sources")
+      .upsert({
+        employer_id: employer.id,
+        provider: reference.provider,
+        tenant_key: reference.tenantKey,
+        list_url: null,
+        application_domain: new URL(job.applyUrl).hostname,
+        adapter_release: "direct-public-api/0.1",
+        updated_at: observedAt,
+      }, { onConflict: "provider,tenant_key" })
+      .select("id")
+      .single();
+    if (sourceError || !createdSource) throw new Error("JOB_SOURCE_WRITE_FAILED");
+    source = createdSource;
+  }
 
   const { data: listing, error: listingError } = await supabase
     .from("source_job_listings")
@@ -249,9 +273,23 @@ async function persistResolvedJobVersion(
     jobVersionId = insertedVersion.id;
   }
 
+  await persistResolvedApplicationSchema(
+    supabase,
+    catalogJob.id,
+    jobVersionId,
+    resolved,
+    observedAt,
+  );
+
   const { error: currentError } = await supabase
     .from("jobs")
-    .update({ current_version_id: jobVersionId, updated_at: observedAt })
+    .update({
+      current_version_id: jobVersionId,
+      state: job.listed ? "OPEN" : "CLOSED",
+      last_seen_at: observedAt,
+      closed_at: job.listed ? null : observedAt,
+      updated_at: observedAt,
+    })
     .eq("id", catalogJob.id);
   if (currentError) throw new Error("JOB_CURRENT_VERSION_WRITE_FAILED");
 
@@ -263,6 +301,37 @@ async function persistResolvedJobVersion(
     p_expected_intake_updated_at: intake.updated_at,
   });
   if (resolveError) throw new Error("JOB_INTAKE_RESOLUTION_COMMIT_FAILED");
+}
+
+async function persistResolvedApplicationSchema(
+  supabase: SupabaseClient<Database>,
+  jobId: string,
+  jobVersionId: string,
+  resolved: ResolvedPublicJob,
+  observedAt: string,
+): Promise<void> {
+  const schema = resolved.applicationSchema;
+  if (!schema) return;
+
+  const { data, error } = await supabase
+    .from("job_application_schema_versions")
+    .upsert({
+      job_id: jobId,
+      job_version_id: jobVersionId,
+      provider: schema.provider,
+      adapter_release: schema.adapterRelease,
+      schema_hash: schema.schemaHash,
+      normalized_schema: schema.normalizedSchema as unknown as Json,
+      provider_binding: schema.providerBinding as unknown as Json,
+      observed_at: observedAt,
+    }, {
+      onConflict: "job_version_id,schema_hash",
+      ignoreDuplicates: true,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error("JOB_APPLICATION_SCHEMA_WRITE_FAILED");
+  void data;
 }
 
 export async function handleApplicationQueued(

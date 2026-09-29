@@ -1,0 +1,124 @@
+.lead {
+  color: var(--ink-soft);
+  font-size: 14.5px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.summary {
+  background: var(--mint-wash);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.summary p {
+  align-items: center;
+  color: var(--ink-soft);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 14.5px;
+  gap: 6px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.summary a {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.textWrap {
+  display: block;
+}
+
+.text {
+  background: var(--canvas);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 1.6;
+  min-height: 420px;
+  padding: 18px 20px;
+  resize: vertical;
+  width: 100%;
+}
+
+.text:focus {
+  background: var(--paper);
+  border-color: var(--ink-soft);
+  box-shadow: 0 0 0 4px rgb(255 209 102 / 35%);
+  outline: none;
+}
+
+.reveal {
+  background: none;
+  border: 0;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  justify-self: start;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.manage {
+  gap: 0;
+  padding-bottom: 8px;
+  padding-top: 8px;
+}
+
+.manage details {
+  border-bottom: 1px solid var(--line);
+}
+
+.manage details:last-child {
+  border-bottom: 0;
+}
+
+.manage summary,
+.remove summary {
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  list-style: none;
+  padding: 14px 0;
+}
+
+.manage summary::-webkit-details-marker,
+.remove summary::-webkit-details-marker {
+  display: none;
+}
+
+.manage summary::after,
+.remove summary::after {
+  color: var(--muted);
+  content: " +";
+}
+
+.manage details[open] > summary::after,
+.remove[open] > summary::after {
+  content: " –";
+}
+
+.manageBody,
+.remove form {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  padding: 0 0 18px;
+}
+
+.remove form p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}

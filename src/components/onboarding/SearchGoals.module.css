@@ -1,0 +1,79 @@
+.form {
+  display: grid;
+  gap: 22px;
+}
+
+.optional {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.fieldset {
+  border: 0;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.fieldset legend {
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pills label {
+  cursor: pointer;
+  position: relative;
+}
+
+.pills input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.pills span {
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 650;
+  padding: 9px 16px;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.pills input:checked + span {
+  background: var(--midnight);
+  border-color: var(--midnight);
+  color: #fff;
+}
+
+.pills input:focus-visible + span {
+  outline: 3px solid var(--first-light);
+  outline-offset: 2px;
+}
+
+.pills input:disabled + span {
+  opacity: 0.6;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}

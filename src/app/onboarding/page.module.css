@@ -1,0 +1,161 @@
+.page {
+  background:
+    radial-gradient(60% 40% at 50% -10%, rgb(255 209 102 / 20%), transparent 70%),
+    var(--canvas);
+  min-height: 100dvh;
+  padding: 0 16px 96px;
+}
+
+.topbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: 880px;
+  padding: 18px 0;
+}
+
+.column {
+  margin: 0 auto;
+  max-width: 760px;
+}
+
+.steps {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 16px 0 36px;
+}
+
+.steps a {
+  display: grid;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.stepBar {
+  background: var(--line-strong);
+  border-radius: 999px;
+  height: 4px;
+}
+
+.steps a[data-done="true"] .stepBar {
+  background: var(--midnight);
+}
+
+.steps a[aria-current="step"] .stepBar {
+  background: var(--first-light-deep);
+}
+
+.stepLabel {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.steps a[aria-current="step"] .stepLabel {
+  color: var(--ink);
+}
+
+.intro {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.title {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: clamp(30px, 5vw, 42px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  margin: 0;
+}
+
+.lede {
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 58ch;
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.next {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.next a[aria-disabled="true"] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.summary {
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.summary li {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 24px 1fr auto;
+  padding: 14px 0;
+}
+
+.summary li > span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.summary li[data-done="true"] > span {
+  color: var(--mint-ink);
+}
+
+.summary a {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.summary small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .steps {
+    gap: 6px;
+  }
+
+  .stepLabel {
+    font-size: 11.5px;
+  }
+
+  .card {
+    padding: 18px;
+  }
+
+  .next {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,76 @@
+.page {
+  margin: 0 auto;
+  max-width: 880px;
+  padding: 40px 24px 96px;
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  gap: 10px;
+  margin-top: 8vh;
+  padding: 32px;
+}
+
+.card h1 {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.card p {
+  color: var(--muted);
+  font-size: 15.5px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.skeleton {
+  display: grid;
+  gap: 16px;
+}
+
+.skeleton span {
+  animation: shimmer 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, var(--wash) 0%, #e9ecf3 50%, var(--wash) 100%);
+  background-size: 200% 100%;
+  border-radius: var(--radius);
+  display: block;
+}
+
+.lineShort {
+  height: 12px;
+  width: 90px;
+}
+
+.lineTitle {
+  height: 40px;
+  margin-bottom: 12px;
+  width: min(420px, 70%);
+}
+
+.block {
+  height: 140px;
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton span { animation: none; }
+}

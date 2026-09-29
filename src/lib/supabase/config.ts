@@ -3,10 +3,11 @@ export type SupabasePublicConfig = Readonly<{
   publishableKey: string;
 }>;
 
-export function readSupabasePublicConfig(): SupabasePublicConfig | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
+export function readSupabasePublicConfig(environment?: NodeJS.ProcessEnv): SupabasePublicConfig | null {
+  // Direct references are required for Next to inline public config in browser
+  // and middleware bundles. Workers can still supply their runtime environment.
+  const url = (environment ? environment.NEXT_PUBLIC_SUPABASE_URL : process.env.NEXT_PUBLIC_SUPABASE_URL)?.trim();
+  const publishableKey = (environment ? environment.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY : process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)?.trim();
 
   if (!url || !publishableKey) {
     return null;
@@ -15,8 +16,8 @@ export function readSupabasePublicConfig(): SupabasePublicConfig | null {
   return Object.freeze({ url, publishableKey });
 }
 
-export function requireSupabasePublicConfig(): SupabasePublicConfig {
-  const config = readSupabasePublicConfig();
+export function requireSupabasePublicConfig(environment?: NodeJS.ProcessEnv): SupabasePublicConfig {
+  const config = readSupabasePublicConfig(environment);
 
   if (!config) {
     throw new Error(

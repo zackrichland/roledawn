@@ -22,6 +22,8 @@ import {
   type SupportedResumeMediaType,
 } from "@/server/resume/extract-resume";
 import { cleanupResumeUploadReservation } from "@/server/vault/resume-upload-cleanup";
+import { finalizeDirectResumeUpload, type DirectResumeReservation } from "@/server/vault/resume-direct-upload";
+import { validateDirectResumeUploadRequest, type DirectResumeUploadRequest, type DirectResumeUploadTarget } from "@/domain/resume-direct-upload";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -93,7 +95,7 @@ function firstRpcRow(value: unknown): RpcRow | null {
 function requiredString(row: RpcRow | null, key: string): string {
   const value = row?.[key];
   if (typeof value !== "string" || value.length === 0) {
-    throw new CareerVaultError("VAULT_PROTOCOL_INVALID", "The Career Vault returned an incomplete response.");
+    throw new CareerVaultError("VAULT_PROTOCOL_INVALID", "The profile returned an incomplete response.");
   }
   return value;
 }
@@ -212,17 +214,19 @@ export async function getCareerVault(
   actor: AuthenticatedActor,
 ): Promise<CareerVaultViewModel> {
   const supabase = await createSupabaseServerClient();
-  await bootstrapPersonalWorkspace(supabase, actor, actorLabel(actor));
+  const scope = await bootstrapPersonalWorkspace(supabase, actor, actorLabel(actor));
 
   const { data: documents, error: documentError } = await supabase
     .from("source_documents")
     .select("id, display_name, status, current_version_number, aggregate_version, updated_at")
+    .eq("workspace_id", scope.workspaceId)
+    .eq("candidate_id", scope.candidateId)
     .eq("document_kind", "RESUME")
     .order("created_at", { ascending: false })
     .limit(1);
 
   if (documentError) {
-    throw new CareerVaultError("VAULT_READ_FAILED", "The Career Vault could not be loaded.");
+    throw new CareerVaultError("VAULT_READ_FAILED", "The profile could not be loaded.");
   }
   const document = documents[0];
   if (!document) {
@@ -240,11 +244,22 @@ export async function getCareerVault(
     documentId: document.id,
     documentAggregateVersion: document.aggregate_version,
   });
+  const pendingResult = await asUntyped(supabase).from("source_document_upload_reservations")
+    .select("document_version_id,expected_sha256,status,expires_at,version_number")
+    .eq("workspace_id", scope.workspaceId).eq("candidate_id", scope.candidateId).eq("document_id", document.id)
+    .order("reserved_at", { ascending: false }).limit(1).maybeSingle();
+  if (pendingResult.error) throw new CareerVaultError("VAULT_UPLOAD_READ_FAILED", "The pending upload could not be checked.");
+  const pending = firstRpcRow(pendingResult.data);
+  const pendingUploadVersionId = pending && typeof pending.expected_sha256 === "string" &&
+    Number(pending.version_number) > (document.current_version_number ?? 0) &&
+    (pending.status === "FINALIZED" || (pending.status === "RESERVED" && Date.parse(String(pending.expires_at)) > Date.now()))
+    ? requiredString(pending, "document_version_id") : undefined;
 
   if (document.status === "UPLOADING" || document.status === "SCANNING" || document.status === "PARSING") {
     return Object.freeze({
       actorLabel: actorLabel(actor),
       status: "uploading",
+      pendingUploadVersionId,
       recoveryKind: "upload",
       document: null,
       deletionTarget,
@@ -275,6 +290,8 @@ export async function getCareerVault(
   const { data: version, error: versionError } = await supabase
     .from("source_document_versions")
     .select("id, version_number, mime_type, byte_size, created_at")
+    .eq("workspace_id", scope.workspaceId)
+    .eq("candidate_id", scope.candidateId)
     .eq("document_id", document.id)
     .eq("version_number", document.current_version_number)
     .maybeSingle();
@@ -285,6 +302,8 @@ export async function getCareerVault(
   const extractionQuery = asUntyped(supabase).from("source_document_extractions");
   const extractionResult = await extractionQuery
     .select("id, extracted_text, completed_at")
+    .eq("workspace_id", scope.workspaceId)
+    .eq("candidate_id", scope.candidateId)
     .eq("document_id", document.id)
     .eq("document_version_id", version.id)
     .eq("status", "SUCCEEDED")
@@ -304,6 +323,8 @@ export async function getCareerVault(
     const reviewQuery = asUntyped(supabase).from("source_document_text_reviews");
     const reviewResult = await reviewQuery
       .select("reviewed_text")
+      .eq("workspace_id", scope.workspaceId)
+      .eq("candidate_id", scope.candidateId)
       .eq("document_id", document.id)
       .eq("extraction_id", extraction.id)
       .order("review_version_number", { ascending: false })
@@ -335,6 +356,7 @@ export async function getCareerVault(
     status: document.status === "READY" ? "ready" : "needs-review",
     recoveryKind: null,
     document: view,
+    pendingUploadVersionId,
     deletionTarget,
     errorMessage: null,
   });
@@ -490,21 +512,25 @@ export async function deleteResume(
     throw new CareerVaultError("RESUME_DELETE_INPUT_INVALID", "Reload before removing this résumé.");
   }
   const supabase = await createSupabaseServerClient();
-  await bootstrapPersonalWorkspace(supabase, actor, actorLabel(actor));
+  const scope = await bootstrapPersonalWorkspace(supabase, actor, actorLabel(actor));
 
   const { data: currentDocument, error: currentDocumentError } = await supabase
     .from("source_documents")
     .select("id, status, aggregate_version")
+    .eq("workspace_id", scope.workspaceId)
+    .eq("candidate_id", scope.candidateId)
     .eq("id", command.documentId)
     .maybeSingle();
   if (currentDocumentError || !currentDocument) {
-    throw new CareerVaultError("RESUME_DELETE_NOT_FOUND", "This résumé could not be found in your Career Vault.");
+    throw new CareerVaultError("RESUME_DELETE_NOT_FOUND", "This résumé could not be found in your profile.");
   }
   const deletionAlreadyPending = currentDocument.status === "DELETION_PENDING";
 
   const { data: versions, error: versionsError } = await supabase
     .from("source_document_versions")
     .select("storage_bucket, storage_object_path")
+    .eq("workspace_id", scope.workspaceId)
+    .eq("candidate_id", scope.candidateId)
     .eq("document_id", command.documentId);
   if (versionsError) {
     throw new CareerVaultError("RESUME_DELETE_READ_FAILED", "The résumé file list could not be loaded.");
@@ -512,6 +538,8 @@ export async function deleteResume(
   const reservationQuery = asUntyped(supabase).from("source_document_upload_reservations");
   const reservationsResult = await reservationQuery
     .select("storage_bucket, storage_object_path")
+    .eq("workspace_id", scope.workspaceId)
+    .eq("candidate_id", scope.candidateId)
     .eq("document_id", command.documentId);
   const reservations = (reservationsResult.data ?? []) as Array<{
     storage_bucket: string;
@@ -554,4 +582,93 @@ export async function deleteResume(
   if (completed.error) {
     mapDatabaseError(completed.error, "RESUME_DELETE_FINALIZE_FAILED", "The résumé deletion could not be completed.");
   }
+}
+
+export async function reserveDirectResumeUpload(actor: AuthenticatedActor, command: DirectResumeUploadRequest): Promise<DirectResumeUploadTarget> {
+  validateDirectResumeUploadRequest(command);
+  const client = await createSupabaseServerClient();
+  const scope = await bootstrapPersonalWorkspace(client, actor, actorLabel(actor));
+  if (command.resumeVersionId) {
+    const existing = await asUntyped(client).from("source_document_upload_reservations")
+      .select("document_id,storage_object_path,expected_sha256,expected_byte_size,display_name,mime_type,status,expires_at")
+      .eq("document_version_id", command.resumeVersionId).eq("workspace_id", scope.workspaceId)
+      .eq("candidate_id", scope.candidateId).eq("reserved_by", actor.userId).maybeSingle();
+    const row = firstRpcRow(existing.data);
+    const expectedPath = `${scope.workspaceId}/${scope.candidateId}/resumes/${String(row?.document_id)}/${command.resumeVersionId}.${command.mediaType === "application/pdf" ? "pdf" : "docx"}`;
+    if (existing.error || !row || row.expected_sha256 !== command.sha256 || Number(row.expected_byte_size) !== command.byteSize ||
+      row.display_name !== command.filename || row.mime_type !== command.mediaType || row.storage_object_path !== expectedPath ||
+      !(row.status === "FINALIZED" || (row.status === "RESERVED" && Date.parse(String(row.expires_at)) > Date.now()))) {
+      throw new CareerVaultError("RESUME_UPLOAD_RESUME_MISMATCH", "Select the same file to finish this upload, or remove the unfinished upload first.");
+    }
+    return { documentVersionId: command.resumeVersionId, bucket: RESUME_BUCKET, path: expectedPath, mediaType: command.mediaType, status: row.status as "RESERVED" | "FINALIZED" };
+  }
+  const result = await asUntyped(client).rpc("reserve_direct_resume_upload", {
+    p_command_id: command.commandId, p_display_name: command.filename, p_mime_type: command.mediaType,
+    p_byte_size: command.byteSize, p_sha256: command.sha256,
+  });
+  if (result.error) mapDatabaseError(result.error, "RESUME_RESERVATION_FAILED", "This upload could not be reserved. Reload and try again.");
+  const value = firstRpcRow(result.data);
+  const versionId = requiredString(value, "document_version_id"); const bucket = requiredString(value, "storage_bucket");
+  const path = requiredString(value, "storage_object_path"); const mediaType = requiredString(value, "mime_type");
+  if (!UUID_PATTERN.test(versionId) || bucket !== RESUME_BUCKET || mediaType !== command.mediaType ||
+    (value?.status !== "RESERVED" && value?.status !== "FINALIZED")) throw new CareerVaultError("VAULT_PROTOCOL_INVALID", "This upload could not be prepared.");
+  return { documentVersionId: versionId, bucket, path, mediaType: command.mediaType, status: value.status };
+}
+
+export async function finishDirectResumeUpload(actor: AuthenticatedActor, documentVersionId: string): Promise<void> {
+  const client = await createSupabaseServerClient();
+  const scope = await bootstrapPersonalWorkspace(client, actor, actorLabel(actor));
+  const admin = createSupabaseAdminClient("resume-direct-intake/1");
+  await finalizeDirectResumeUpload({
+    async readReservation(actorId, versionId) {
+      const result = await asUntyped(client).from("source_document_upload_reservations")
+        .select("document_id,document_version_id,workspace_id,candidate_id,reserved_by,storage_bucket,storage_object_path,mime_type,display_name,expected_byte_size,expected_sha256,status,expires_at,reserved_at")
+        .eq("workspace_id", scope.workspaceId).eq("candidate_id", scope.candidateId).eq("reserved_by", actorId).eq("document_version_id", versionId).maybeSingle();
+      if (result.error) throw new CareerVaultError("RESUME_RESERVATION_READ_FAILED", "The upload could not be checked. Try again.");
+      const value = firstRpcRow(result.data);
+      if (!value || value.storage_bucket !== RESUME_BUCKET || typeof value.mime_type !== "string" || !isResumeMediaType(value.mime_type)) return null;
+      const document = await client.from("source_documents").select("id,status").eq("id", String(value.document_id))
+        .eq("workspace_id", scope.workspaceId).eq("candidate_id", scope.candidateId).maybeSingle();
+      if (document.error || !document.data || document.data.status === "DELETION_PENDING") return null;
+      const extraction = await asUntyped(client).from("source_document_extractions").select("id")
+        .eq("document_version_id", versionId).eq("status", "SUCCEEDED").limit(1).maybeSingle();
+      if (extraction.error) throw new CareerVaultError("RESUME_EXTRACTION_READ_FAILED", "The upload could not be checked. Try again.");
+      return { documentVersionId: requiredString(value,"document_version_id"), documentId: requiredString(value,"document_id"),
+        workspaceId: requiredString(value,"workspace_id"), candidateId: requiredString(value,"candidate_id"), reservedBy: requiredString(value,"reserved_by"),
+        path: requiredString(value,"storage_object_path"), mediaType: value.mime_type, filename: requiredString(value,"display_name"),
+        byteSize: Number(value.expected_byte_size), sha256: requiredString(value,"expected_sha256"), status: value.status,
+        expiresAt: requiredString(value,"expires_at"), reservedAt: requiredString(value,"reserved_at"), hasExtraction: Boolean(extraction.data) } as DirectResumeReservation;
+    },
+    async download(reservation) {
+      const result = await admin.storage.from(RESUME_BUCKET).download(reservation.path);
+      if (result.error) return null;
+      return result.data;
+    },
+    async finalize(actorId, reservation, artifact) {
+      const result = await asUntyped(admin).rpc("finalize_resume_upload", {
+        p_actor_id: actorId, p_command_id: reservation.documentVersionId, p_document_version_id: reservation.documentVersionId,
+        p_sha256: artifact.source.sha256, p_byte_size: artifact.source.byteSize,
+      });
+      if (result.error) mapDatabaseError(result.error, "RESUME_FINALIZE_FAILED", "The upload could not be confirmed. Retry to check the same file.");
+    },
+    async recordExtraction(reservation, artifact) {
+      const result = await asUntyped(admin).rpc("record_resume_extraction", {
+        p_attempt_number: 1, p_document_version_id: reservation.documentVersionId, p_extracted_text: artifact.extraction.normalizedText,
+        p_extractor_kind: "LOCAL_DETERMINISTIC", p_extractor_release: artifact.extraction.parserRelease, p_failure_code: null,
+        p_language_code: null, p_output_schema_version: `resume-text/${artifact.schemaVersion}`, p_page_count: artifact.extraction.pageCount,
+        p_source_sha256: artifact.source.sha256, p_started_at: reservation.reservedAt, p_status: "SUCCEEDED",
+        p_text_sha256: artifact.extraction.sha256, p_warnings: [...artifact.extraction.warnings] as Json[],
+      });
+      if (result.error) mapDatabaseError(result.error, "EXTRACTION_RECORD_FAILED", "The text could not be saved yet. Retry to finish this upload.");
+    },
+    async rejectAndCleanup(actorId, reservation) {
+      const rejection = await asUntyped(admin).rpc("reject_direct_resume_upload", {
+        p_actor_id: actorId, p_document_version_id: reservation.documentVersionId, p_expected_sha256: reservation.sha256,
+      });
+      if (rejection.error) throw new CareerVaultError("RESUME_UPLOAD_CLEANUP_FAILED", "Remove the unfinished upload before trying again.");
+      if (rejection.data === false) return;
+      if (rejection.data !== true) throw new CareerVaultError("VAULT_PROTOCOL_INVALID", "The upload could not be checked.");
+      await cancelReservation(reservation.documentVersionId, reservation.path);
+    },
+  }, actor.userId, documentVersionId);
 }

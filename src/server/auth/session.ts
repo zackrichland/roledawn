@@ -4,6 +4,8 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSafeAuthNextPath } from "@/server/auth/auth-redirect-policy";
+import { singleAccountAcceptsUser } from "@/server/auth/single-account-policy";
 
 export type AuthenticatedActor = Readonly<{
   userId: string;
@@ -26,6 +28,8 @@ export const getOptionalActor = cache(
       return null;
     }
 
+    if (!singleAccountAcceptsUser(userId)) return null;
+
     const email = claims.email;
 
     return Object.freeze({
@@ -35,11 +39,13 @@ export const getOptionalActor = cache(
   },
 );
 
-export async function requireActor(): Promise<AuthenticatedActor> {
+export async function requireActor(
+  nextPath = "/dashboard",
+): Promise<AuthenticatedActor> {
   const actor = await getOptionalActor();
 
   if (!actor) {
-    redirect("/login");
+    redirect(`/login?next=${encodeURIComponent(getSafeAuthNextPath(nextPath))}`);
   }
 
   return actor;

@@ -135,6 +135,8 @@ export interface JobSourceAdapter<TSource extends RegisteredJobSource> {
 export type LoadedSourceSnapshot = Readonly<{
   kind: "LOADED";
   endpoint: string;
+  responseStatus: number;
+  observedAt: string;
   etag: string | null;
   rawSha256: string;
   rawBytes: number;
@@ -149,12 +151,100 @@ export type SupportedJobReference = Readonly<{
   canonicalInputUrl: string;
 }>;
 
+export type ApplicationQuestionSection = "CORE" | "LOCATION" | "COMPLIANCE" | "DEMOGRAPHIC";
+
+export type ApplicationFieldControl =
+  | "SHORT_TEXT"
+  | "LONG_TEXT"
+  | "FILE"
+  | "HIDDEN"
+  | "SINGLE_SELECT"
+  | "MULTI_SELECT"
+  | "UNKNOWN";
+
+export type NormalizedApplicationOption = Readonly<{
+  key: string;
+  label: string;
+  allowsFreeForm: boolean;
+}>;
+
+export type NormalizedApplicationField = Readonly<{
+  key: string;
+  control: ApplicationFieldControl;
+  options: readonly NormalizedApplicationOption[];
+}>;
+
+export type NormalizedApplicationQuestion = Readonly<{
+  key: string;
+  section: ApplicationQuestionSection;
+  label: string;
+  descriptionText: string | null;
+  required: boolean;
+  fields: readonly NormalizedApplicationField[];
+}>;
+
+export type NormalizedApplicationCompliance = Readonly<{
+  key: string;
+  kind: "DATA_PROCESSING";
+  requiresConsent: boolean | null;
+  requiresProcessingConsent: boolean | null;
+  requiresRetentionConsent: boolean | null;
+  retentionPeriodDays: number | null;
+  demographicDataConsentApplies: boolean | null;
+}>;
+
+export type NormalizedApplicationSchema = Readonly<{
+  schemaVersion: 1;
+  questions: readonly NormalizedApplicationQuestion[];
+  compliance: readonly NormalizedApplicationCompliance[];
+  demographicNotice: Readonly<{
+    heading: string | null;
+    text: string | null;
+  }> | null;
+  aiUseNotice: Readonly<{
+    enabled: boolean | null;
+    text: string | null;
+    optOutUrl: string | null;
+  }> | null;
+}>;
+
+export type GreenhouseApplicationSchemaBinding = Readonly<{
+  schemaVersion: 1;
+  provider: "GREENHOUSE";
+  questions: readonly Readonly<{
+    questionKey: string;
+    providerQuestionId: string | null;
+    fields: readonly Readonly<{
+      fieldKey: string;
+      providerName: string | null;
+      providerType: string;
+      options: readonly Readonly<{
+        optionKey: string;
+        providerValue: string | number | boolean | null;
+      }>[];
+    }>[];
+  }>[];
+  compliance: readonly Readonly<{
+    complianceKey: string;
+    providerType: string;
+  }>[];
+}>;
+
+export type ResolvedApplicationSchema = Readonly<{
+  provider: "GREENHOUSE";
+  adapterRelease: string;
+  schemaHash: string;
+  normalizedSchema: NormalizedApplicationSchema;
+  providerBinding: GreenhouseApplicationSchemaBinding;
+}>;
+
 export type ResolvedPublicJob = Readonly<{
   reference: SupportedJobReference;
   endpoint: string;
   rawSha256: string;
   rawBytes: number;
   job: NormalizedSourceJob;
+  applicationSchema: ResolvedApplicationSchema | null;
 }>;
 
 export type PublicJobResolutionResult =
@@ -180,13 +270,21 @@ export type PublicJobResolutionResult =
 
 export type SourceLoadResult =
   | LoadedSourceSnapshot
-  | Readonly<{ kind: "NOT_MODIFIED"; endpoint: string; etag: string | null; observedAt: string }>
+  | Readonly<{
+      kind: "NOT_MODIFIED";
+      endpoint: string;
+      responseStatus: 304;
+      etag: string | null;
+      observedAt: string;
+    }>
   | Readonly<{
       kind: "FAILED";
       endpoint: string | null;
       code:
         | "ENDPOINT_INVALID"
+        | "NOT_MODIFIED_UNEXPECTED"
         | "FETCH_FAILED"
+        | "FETCH_TIMEOUT"
         | "HTTP_ERROR"
         | "BODY_TOO_LARGE"
         | "JSON_INVALID"

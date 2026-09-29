@@ -10,6 +10,10 @@ import type {
 } from "./contracts.ts";
 import { DEFAULT_MAX_SOURCE_RESPONSE_BYTES } from "./load-source.ts";
 import { buildSingleJobEndpoint, SourceEndpointError } from "./endpoints.ts";
+import {
+  GreenhouseApplicationSchemaError,
+  normalizeGreenhouseApplicationSchema,
+} from "./greenhouse-application-schema.ts";
 import { parseSupportedJobReference } from "./job-reference.ts";
 
 function normalizeSinglePayload(
@@ -142,6 +146,23 @@ export async function resolvePublicJobUrl(
     };
   }
 
+  let applicationSchema = null;
+  if (parsed.value.provider === "GREENHOUSE") {
+    try {
+      applicationSchema = normalizeGreenhouseApplicationSchema(payload);
+    } catch (error) {
+      return {
+        kind: "FAILED",
+        code: "PAYLOAD_INVALID",
+        message: error instanceof GreenhouseApplicationSchemaError
+          ? error.message
+          : "The Greenhouse application schema could not be normalized.",
+        retryable: false,
+        status: response.status,
+      };
+    }
+  }
+
   return {
     kind: "RESOLVED",
     value: {
@@ -150,6 +171,7 @@ export async function resolvePublicJobUrl(
       rawSha256: sha256Text(response.body),
       rawBytes,
       job,
+      applicationSchema,
     },
   };
 }

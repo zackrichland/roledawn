@@ -10,10 +10,10 @@ export default function MobilePreviewPage() {
     <main className="mobile-preview-page">
       <div className="mobile-preview-copy">
         <span className="qa-badge">Internal QA</span>
-        <h1>390 px Application Kits preview</h1>
+        <h1>390 px Applications preview</h1>
         <p>The frame creates a 390 px browsing context for the authenticated candidate shell.</p>
       </div>
-      <iframe className="mobile-preview-frame" src="/dashboard" title="RoleDawn Application Kits at 390 pixels wide" />
+      <iframe className="mobile-preview-frame" src="/dashboard" title="RoleDawn Applications at 390 pixels wide" />
     </main>
   );
 }

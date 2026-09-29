@@ -1,0 +1,39 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createApplicationDeliveryHarness, type ApplicationDeliveryAgentStore } from "./application-delivery-harness.ts";
+import type { OpenAIAgentsClient } from "./openai-agents-client.ts";
+
+test("delivery harness checks revoked authority at tool time and deletes the model session", async () => {
+  const events: string[] = [];
+  let sentMessage = false;
+  let revoked = false;
+  const client: OpenAIAgentsClient = {
+    async createSession(request) { assert.match(request.input ?? "", /initialization handshake/u); events.push("create"); return { id: "session_1", status: "idle", required_actions: [] }; },
+    async retrieveSession() { revoked = true; return { id: "session_1", status: "requires_action", required_actions: [{ type: "function_call", turn_id: "turn_1", call_id: "call_1", name: "fill_fact", arguments: {} }] }; },
+    async retrieveTurn() { return { id: "turn_1", session_id: "session_1", status: "completed" }; },
+    async retrieveLatestTurn() { return { id: sentMessage ? "turn_1" : "turn_init", session_id: "session_1", status: "completed" }; },
+    async sendToolResults() { throw new Error("unexpected"); },
+    async sendMessage() { events.push("private-input"); sentMessage = true; },
+    async cancelTurn() { events.push("cancel"); },
+    async deleteSession() { events.push("delete"); },
+  };
+  const store: ApplicationDeliveryAgentStore = {
+    async assertLease() { events.push("authority"); if (revoked) throw new Error("PAUSED"); },
+    async setAgentSession(_lease, value) { events.push(value ? "bind" : "deleted"); },
+    ledger() { return { async begin() { return { status: "new" }; }, async complete() {} }; },
+  };
+  let executed = false;
+  await assert.rejects(createApplicationDeliveryHarness({
+    configuration: { driver: "agents", apiKey: "synthetic", model: "test-model", timeoutMs: 5000, maxActions: 5 },
+    client, store, lease: { id: "autopilot", leaseToken: "lease" },
+  }).run({
+    binding: { workspaceId: "w", candidateId: "c", applicationId: "a", revisionId: "r", fillAttemptId: "f", computerSessionId: "s" },
+    instructions: "Synthetic.", toolDefinitions: [{ type: "function", name: "fill_fact", description: "Fill.", parameters: { type: "object" } }],
+    input: { private: "synthetic" }, maxActions: 5,
+    async executeTool() { executed = true; return {}; },
+  }));
+  assert.equal(executed, false);
+  assert.ok(events.indexOf("bind") < events.indexOf("private-input"));
+  assert.ok(events.includes("delete"));
+  assert.ok(events.includes("deleted"));
+});

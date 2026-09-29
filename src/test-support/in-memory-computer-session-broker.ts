@@ -107,10 +107,16 @@ export class InMemoryComputerSessionBroker implements ComputerSessionBroker {
   }
 
   async createSession(request: ComputerSessionRequest): Promise<ComputerSessionResult<ComputerSessionSnapshot>> {
+    const workspaceId = request.binding.workspaceId.trim();
     const candidateId = request.binding.candidateId.trim();
     const applicationId = request.binding.applicationId.trim();
-    if (!candidateId || !applicationId) {
-      return failure("BINDING_INVALID", "A session must bind to one candidate and one application.");
+    const revisionId = request.binding.revisionId.trim();
+    const fillAttemptId = request.binding.fillAttemptId.trim();
+    if (!workspaceId || !candidateId || !applicationId || !revisionId || !fillAttemptId) {
+      return failure(
+        "BINDING_INVALID",
+        "A session must bind to one workspace, candidate, application, revision, and fill attempt.",
+      );
     }
     if (
       !Number.isSafeInteger(request.ttlMs) ||
@@ -154,7 +160,7 @@ export class InMemoryComputerSessionBroker implements ComputerSessionBroker {
 
     const snapshot: MutableComputerSessionSnapshot = {
       sessionId,
-      binding: { candidateId, applicationId },
+      binding: { workspaceId, candidateId, applicationId, revisionId, fillAttemptId },
       state: "ACTIVE",
       startUrl: normalizedStartUrl,
       allowedDomainPolicy: clonePolicy(policy.value),
@@ -268,11 +274,14 @@ export class InMemoryComputerSessionBroker implements ComputerSessionBroker {
     const record = this.#records.get(sessionId);
     if (
       !record ||
+      record.snapshot.binding.workspaceId !== binding.workspaceId ||
       record.snapshot.binding.candidateId !== binding.candidateId ||
-      record.snapshot.binding.applicationId !== binding.applicationId
+      record.snapshot.binding.applicationId !== binding.applicationId ||
+      record.snapshot.binding.revisionId !== binding.revisionId ||
+      record.snapshot.binding.fillAttemptId !== binding.fillAttemptId
     ) {
       // Deliberately hide whether another tenant's session exists.
-      return failure("SESSION_NOT_FOUND", "No session exists for this candidate and application.");
+      return failure("SESSION_NOT_FOUND", "No session exists for this immutable fill binding.");
     }
     return { ok: true, value: record };
   }

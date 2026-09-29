@@ -1,0 +1,381 @@
+{
+  "schemaVersion": 1,
+  "release": "job-source-registry/2026-09-16",
+  "sources": [
+    {
+      "employerName": "Achievement First (Teaching)",
+      "provider": "GREENHOUSE",
+      "tenantKey": "achievementfirst",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/achievementfirst",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/achievementfirst/jobs?content=true",
+      "category": "K–12 education",
+      "verifiedAt": "2026-09-16T23:58:14.969Z",
+      "observedJobs": 66,
+      "observedBytes": 464473,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/achievementfirst",
+        "https://boards-api.greenhouse.io/v1/boards/achievementfirst/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Aledade PBC",
+      "provider": "LEVER",
+      "tenantKey": "aledade",
+      "publicBoardUrl": "https://jobs.lever.co/aledade",
+      "apiUrl": "https://api.lever.co/v0/postings/aledade?mode=json",
+      "category": "Primary healthcare",
+      "verifiedAt": "2026-09-16T23:58:17.105Z",
+      "observedJobs": 36,
+      "observedBytes": 464853,
+      "evidenceUrls": [
+        "https://jobs.lever.co/aledade",
+        "https://api.lever.co/v0/postings/aledade?mode=json"
+      ]
+    },
+    {
+      "employerName": "Anthropic",
+      "provider": "GREENHOUSE",
+      "tenantKey": "anthropic",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/anthropic",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs?content=true",
+      "category": "AI technology",
+      "verifiedAt": "2026-09-16T23:58:14.063Z",
+      "observedJobs": 607,
+      "observedBytes": 7524905,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/anthropic",
+        "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Chime Financial, Inc",
+      "provider": "GREENHOUSE",
+      "tenantKey": "chime",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/chime",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/chime/jobs?content=true",
+      "category": "Financial services",
+      "verifiedAt": "2026-09-16T23:58:14.097Z",
+      "observedJobs": 70,
+      "observedBytes": 1019017,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/chime",
+        "https://boards-api.greenhouse.io/v1/boards/chime/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "CookUnity",
+      "provider": "GREENHOUSE",
+      "tenantKey": "cookunity",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/cookunity",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/cookunity/jobs?content=true",
+      "category": "Food production and culinary",
+      "verifiedAt": "2026-09-16T23:58:14.775Z",
+      "observedJobs": 156,
+      "observedBytes": 2274073,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/cookunity",
+        "https://boards-api.greenhouse.io/v1/boards/cookunity/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "DoorDash USA",
+      "provider": "GREENHOUSE",
+      "tenantKey": "doordashusa",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/doordashusa",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/doordashusa/jobs?content=true",
+      "category": "Local commerce and operations",
+      "verifiedAt": "2026-09-16T23:58:16.609Z",
+      "observedJobs": 465,
+      "observedBytes": 7525082,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/doordashusa",
+        "https://boards-api.greenhouse.io/v1/boards/doordashusa/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Duolingo",
+      "provider": "GREENHOUSE",
+      "tenantKey": "duolingo",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/duolingo",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/duolingo/jobs?content=true",
+      "category": "Education technology",
+      "verifiedAt": "2026-09-16T23:58:16.186Z",
+      "observedJobs": 83,
+      "observedBytes": 851478,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/duolingo",
+        "https://boards-api.greenhouse.io/v1/boards/duolingo/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Everlane",
+      "provider": "GREENHOUSE",
+      "tenantKey": "everlane",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/everlane",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/everlane/jobs?content=true",
+      "category": "Retail and apparel",
+      "verifiedAt": "2026-09-16T23:58:14.850Z",
+      "observedJobs": 47,
+      "observedBytes": 310276,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/everlane",
+        "https://boards-api.greenhouse.io/v1/boards/everlane/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Figure",
+      "provider": "GREENHOUSE",
+      "tenantKey": "figureai",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/figureai",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/figureai/jobs?content=true",
+      "category": "Robotics and manufacturing",
+      "verifiedAt": "2026-09-16T23:58:16.254Z",
+      "observedJobs": 103,
+      "observedBytes": 491359,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/figureai",
+        "https://boards-api.greenhouse.io/v1/boards/figureai/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "HelloFresh",
+      "provider": "GREENHOUSE",
+      "tenantKey": "hellofresh",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/hellofresh",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/hellofresh/jobs?content=true",
+      "category": "Food production and logistics",
+      "verifiedAt": "2026-09-16T23:58:14.765Z",
+      "observedJobs": 444,
+      "observedBytes": 3572202,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/hellofresh",
+        "https://boards-api.greenhouse.io/v1/boards/hellofresh/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Included Health",
+      "provider": "LEVER",
+      "tenantKey": "includedhealth",
+      "publicBoardUrl": "https://jobs.lever.co/includedhealth",
+      "apiUrl": "https://api.lever.co/v0/postings/includedhealth?mode=json",
+      "category": "Healthcare",
+      "verifiedAt": "2026-09-16T23:58:17.226Z",
+      "observedJobs": 62,
+      "observedBytes": 946507,
+      "evidenceUrls": [
+        "https://jobs.lever.co/includedhealth",
+        "https://api.lever.co/v0/postings/includedhealth?mode=json"
+      ]
+    },
+    {
+      "employerName": "Instacart",
+      "provider": "GREENHOUSE",
+      "tenantKey": "instacart",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/instacart",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/instacart/jobs?content=true",
+      "category": "Grocery and commerce",
+      "verifiedAt": "2026-09-16T23:58:14.635Z",
+      "observedJobs": 108,
+      "observedBytes": 1093467,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/instacart",
+        "https://boards-api.greenhouse.io/v1/boards/instacart/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Lyra Health",
+      "provider": "LEVER",
+      "tenantKey": "lyrahealth",
+      "publicBoardUrl": "https://jobs.lever.co/lyrahealth",
+      "apiUrl": "https://api.lever.co/v0/postings/lyrahealth?mode=json",
+      "category": "Mental healthcare",
+      "verifiedAt": "2026-09-16T23:58:20.900Z",
+      "observedJobs": 558,
+      "observedBytes": 8568737,
+      "evidenceUrls": [
+        "https://jobs.lever.co/lyrahealth",
+        "https://api.lever.co/v0/postings/lyrahealth?mode=json"
+      ]
+    },
+    {
+      "employerName": "Notion",
+      "provider": "ASHBY",
+      "tenantKey": "notion",
+      "publicBoardUrl": "https://jobs.ashbyhq.com/notion",
+      "apiUrl": "https://api.ashbyhq.com/posting-api/job-board/notion?includeCompensation=true",
+      "category": "Workplace software",
+      "verifiedAt": "2026-09-16T23:58:17.449Z",
+      "observedJobs": 128,
+      "observedBytes": 2284435,
+      "evidenceUrls": [
+        "https://jobs.ashbyhq.com/notion",
+        "https://api.ashbyhq.com/posting-api/job-board/notion?includeCompensation=true"
+      ]
+    },
+    {
+      "employerName": "OpenAI",
+      "provider": "ASHBY",
+      "tenantKey": "openai",
+      "publicBoardUrl": "https://jobs.ashbyhq.com/openai",
+      "apiUrl": "https://api.ashbyhq.com/posting-api/job-board/openai?includeCompensation=true",
+      "category": "AI technology",
+      "verifiedAt": "2026-09-16T23:58:17.913Z",
+      "observedJobs": 818,
+      "observedBytes": 14282777,
+      "evidenceUrls": [
+        "https://jobs.ashbyhq.com/openai",
+        "https://api.ashbyhq.com/posting-api/job-board/openai?includeCompensation=true"
+      ]
+    },
+    {
+      "employerName": "Oscar Health",
+      "provider": "GREENHOUSE",
+      "tenantKey": "oscar",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/oscar",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/oscar/jobs?content=true",
+      "category": "Health insurance",
+      "verifiedAt": "2026-09-16T23:58:16.190Z",
+      "observedJobs": 292,
+      "observedBytes": 2524042,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/oscar",
+        "https://boards-api.greenhouse.io/v1/boards/oscar/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Palantir Technologies",
+      "provider": "LEVER",
+      "tenantKey": "palantir",
+      "publicBoardUrl": "https://jobs.lever.co/palantir",
+      "apiUrl": "https://api.lever.co/v0/postings/palantir?mode=json",
+      "category": "Enterprise software",
+      "verifiedAt": "2026-09-16T23:58:19.653Z",
+      "observedJobs": 313,
+      "observedBytes": 6038868,
+      "evidenceUrls": [
+        "https://jobs.lever.co/palantir",
+        "https://api.lever.co/v0/postings/palantir?mode=json"
+      ]
+    },
+    {
+      "employerName": "Ramp",
+      "provider": "ASHBY",
+      "tenantKey": "ramp",
+      "publicBoardUrl": "https://jobs.ashbyhq.com/ramp",
+      "apiUrl": "https://api.ashbyhq.com/posting-api/job-board/ramp?includeCompensation=true",
+      "category": "Financial technology",
+      "verifiedAt": "2026-09-16T23:58:17.959Z",
+      "observedJobs": 145,
+      "observedBytes": 2640163,
+      "evidenceUrls": [
+        "https://jobs.ashbyhq.com/ramp",
+        "https://api.ashbyhq.com/posting-api/job-board/ramp?includeCompensation=true"
+      ]
+    },
+    {
+      "employerName": "Rocket Lab Corporation",
+      "provider": "GREENHOUSE",
+      "tenantKey": "rocketlab",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/rocketlab",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/rocketlab/jobs?content=true",
+      "category": "Aerospace and manufacturing",
+      "verifiedAt": "2026-09-16T23:58:14.044Z",
+      "observedJobs": 525,
+      "observedBytes": 8353473,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/rocketlab",
+        "https://boards-api.greenhouse.io/v1/boards/rocketlab/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Spotify",
+      "provider": "LEVER",
+      "tenantKey": "spotify",
+      "publicBoardUrl": "https://jobs.lever.co/spotify",
+      "apiUrl": "https://api.lever.co/v0/postings/spotify?mode=json",
+      "category": "Music and media",
+      "verifiedAt": "2026-09-16T23:58:17.867Z",
+      "observedJobs": 69,
+      "observedBytes": 656718,
+      "evidenceUrls": [
+        "https://jobs.lever.co/spotify",
+        "https://api.lever.co/v0/postings/spotify?mode=json"
+      ]
+    },
+    {
+      "employerName": "sweetgreen",
+      "provider": "GREENHOUSE",
+      "tenantKey": "sweetgreen",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/sweetgreen",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/sweetgreen/jobs?content=true",
+      "category": "Food service",
+      "verifiedAt": "2026-09-16T23:58:13.701Z",
+      "observedJobs": 63,
+      "observedBytes": 593372,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/sweetgreen",
+        "https://boards-api.greenhouse.io/v1/boards/sweetgreen/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Talkspace",
+      "provider": "GREENHOUSE",
+      "tenantKey": "talkspace",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/talkspace",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/talkspace/jobs?content=true",
+      "category": "Mental healthcare",
+      "verifiedAt": "2026-09-16T23:58:14.556Z",
+      "observedJobs": 19,
+      "observedBytes": 354369,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/talkspace",
+        "https://boards-api.greenhouse.io/v1/boards/talkspace/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Toast",
+      "provider": "GREENHOUSE",
+      "tenantKey": "toast",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/toast",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/toast/jobs?content=true",
+      "category": "Hospitality technology",
+      "verifiedAt": "2026-09-16T23:58:13.747Z",
+      "observedJobs": 325,
+      "observedBytes": 3563670,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/toast",
+        "https://boards-api.greenhouse.io/v1/boards/toast/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "WelbeHealth",
+      "provider": "GREENHOUSE",
+      "tenantKey": "welbehealth",
+      "publicBoardUrl": "https://job-boards.greenhouse.io/welbehealth",
+      "apiUrl": "https://boards-api.greenhouse.io/v1/boards/welbehealth/jobs?content=true",
+      "category": "Healthcare and elder care",
+      "verifiedAt": "2026-09-16T23:58:16.298Z",
+      "observedJobs": 139,
+      "observedBytes": 1072946,
+      "evidenceUrls": [
+        "https://boards-api.greenhouse.io/v1/boards/welbehealth",
+        "https://boards-api.greenhouse.io/v1/boards/welbehealth/jobs?content=true"
+      ]
+    },
+    {
+      "employerName": "Zoox",
+      "provider": "LEVER",
+      "tenantKey": "zoox",
+      "publicBoardUrl": "https://jobs.lever.co/zoox",
+      "apiUrl": "https://api.lever.co/v0/postings/zoox?mode=json",
+      "category": "Transportation and robotics",
+      "verifiedAt": "2026-09-16T23:58:18.757Z",
+      "observedJobs": 240,
+      "observedBytes": 2436501,
+      "evidenceUrls": [
+        "https://jobs.lever.co/zoox",
+        "https://api.lever.co/v0/postings/zoox?mode=json"
+      ]
+    }
+  ]
+}

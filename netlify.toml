@@ -1,0 +1,14 @@
+[build]
+command = "npm run build"
+publish = ".next"
+
+[build.environment]
+NODE_VERSION = "22"
+
+[functions]
+directory = "netlify/functions"
+node_bundler = "esbuild"
+external_node_modules = ["pdfkit", "playwright-core", "unpdf"]
+
+[functions."worker-background"]
+included_files = ["policies/application-writing/**", "assets/fonts/**"]

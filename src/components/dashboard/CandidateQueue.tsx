@@ -5,15 +5,21 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
 
 import { createPastedLinkApplicationRun } from "@/app/dashboard/actions";
-import { signOut } from "@/app/dashboard/sign-out-action";
-import { AuthenticatedAppShell } from "@/components/ui/AuthenticatedAppShell";
+import { AutoApplyPanel } from "@/components/dashboard/AutoApplyPanel";
 import { Icon } from "@/components/ui/Icon";
+import { RouteAutoRefresh } from "@/components/ui/RouteAutoRefresh";
 import type {
   ApplicationStatus,
   AuthenticatedDashboardData,
   PersistentQueueApplication,
+  QueueStatusFilter,
 } from "@/domain/dashboard-queue";
-import { canPresentAsSubmitted } from "@/domain/dashboard-queue";
+import type { ApplicationPreparationStage } from "@/domain/application-input-snapshot";
+import {
+  applicationStatusGroup,
+  canPresentAsSubmitted,
+  isApplicationWorkInProgress,
+} from "@/domain/dashboard-queue";
 
 import styles from "./CandidateQueue.module.css";
 
@@ -24,20 +30,50 @@ type StatusPresentation = Readonly<{
 }>;
 
 const APPLICATION_STATUS_COPY: Record<ApplicationStatus, StatusPresentation> = {
-  DRAFTING: { label: "Queued for preparation", detail: "The source job is ready for the next worker.", tone: "working" },
+  DRAFTING: { label: "Waiting to start", detail: "RoleDawn will start preparing this application soon.", tone: "working" },
   NEEDS_USER: { label: "Needs you", detail: "RoleDawn needs an answer before it can continue.", tone: "attention" },
   READY: { label: "Ready to review", detail: "The application materials are ready for your review.", tone: "ready" },
-  AUTHORIZED: { label: "Approved", detail: "Your single-use approval is recorded.", tone: "ready" },
-  EXECUTING: { label: "Applying", detail: "The application is in progress.", tone: "working" },
-  TAKEOVER: { label: "Take over", detail: "The browser needs you to finish a protected step.", tone: "attention" },
+  AUTHORIZED: { label: "Queued", detail: "RoleDawn is waiting to continue this application.", tone: "working" },
+  EXECUTING: { label: "Working on form", detail: "RoleDawn is entering your approved information.", tone: "working" },
+  TAKEOVER: { label: "Needs your help", detail: "Open the application to resolve a question or employer step.", tone: "attention" },
+  PRE_SUBMIT_REVIEW: { label: "Review filled form", detail: "The employer form is filled and waiting for you. It was not submitted.", tone: "ready" },
   RECONCILING: { label: "Checking submission", detail: "RoleDawn is verifying what the employer received.", tone: "working" },
   CONFIRMED: { label: "Submitted", detail: "A submission confirmation was recorded.", tone: "done" },
   SKIPPED: { label: "Skipped", detail: "This application will not continue.", tone: "neutral" },
-  FAILED_SAFE: { label: "Stopped safely", detail: "No submission was attempted after a workflow failure.", tone: "attention" },
+  FAILED_SAFE: { label: "Stopped", detail: "Open the application to see the issue and its recorded outcome.", tone: "attention" },
   CANCELED: { label: "Canceled", detail: "This application was canceled.", tone: "neutral" },
 };
 
-function presentStatus(application: PersistentQueueApplication): StatusPresentation {
+const PREPARATION_STAGE_COPY: Readonly<
+  Record<ApplicationPreparationStage, StatusPresentation>
+> = {
+  QUEUED: { label: "Waiting to start", detail: "RoleDawn will start preparing this application soon.", tone: "working" },
+  FREEZING_INPUTS: { label: "Checking profile", detail: "RoleDawn is checking your reviewed résumé and experience.", tone: "working" },
+  INPUTS_READY: { label: "Ready to write", detail: "RoleDawn has the job details and profile information it needs.", tone: "ready" },
+  BLOCKED: { label: "Needs you", detail: "Finish the missing profile review to continue.", tone: "attention" },
+  RESEARCHING: { label: "Researching role", detail: "RoleDawn is gathering context for the draft.", tone: "working" },
+  DRAFTING: { label: "Writing files", detail: "RoleDawn is writing from your approved profile information.", tone: "working" },
+  VALIDATING: { label: "Checking draft", detail: "RoleDawn is checking claims and citations.", tone: "working" },
+  RENDERING: { label: "Creating review files", detail: "RoleDawn is preparing files for your review.", tone: "working" },
+  COMPLETE: { label: "Files ready", detail: "Open this application to review the files.", tone: "ready" },
+};
+
+type QueuePresentationApplication = PersistentQueueApplication & Readonly<{
+  preparationStage?: ApplicationPreparationStage | null;
+}>;
+
+const STATUS_FILTERS: readonly Readonly<{
+  id: QueueStatusFilter;
+  label: string;
+}>[] = [
+  { id: "ALL", label: "All" },
+  { id: "IN_PROGRESS", label: "In progress" },
+  { id: "NEEDS_YOU", label: "Needs you" },
+  { id: "READY", label: "Ready" },
+  { id: "DONE", label: "Done" },
+];
+
+function presentStatus(application: QueuePresentationApplication): StatusPresentation {
   if (application.intakeStatus === "FAILED") {
     return {
       label: "Could not read job",
@@ -63,6 +99,14 @@ function presentStatus(application: PersistentQueueApplication): StatusPresentat
       detail: "Open this application to verify its submission evidence.",
       tone: "attention",
     };
+  }
+
+  if (application.status === "DRAFTING" && application.preparationStage) {
+    return PREPARATION_STAGE_COPY[application.preparationStage] ?? APPLICATION_STATUS_COPY.DRAFTING;
+  }
+
+  if (application.autoApplySelected && application.status === "READY") {
+    return { label: "Ready for auto-apply", detail: "Your files are ready. Sending waits for the next available slot and current authorization.", tone: "ready" };
   }
 
   return APPLICATION_STATUS_COPY[application.status];
@@ -92,18 +136,60 @@ export function CandidateQueue({ initialData }: { initialData: AuthenticatedDash
   const dialogRef = useRef<HTMLDialogElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<QueueStatusFilter>("ALL");
   const [message, setMessage] = useState("");
   const [isPending, startTransition] = useTransition();
 
+  const statusCounts = useMemo(() => {
+    const counts: Record<QueueStatusFilter, number> = {
+      ALL: initialData.applications.length,
+      IN_PROGRESS: 0,
+      NEEDS_YOU: 0,
+      READY: 0,
+      DONE: 0,
+    };
+    for (const application of initialData.applications) {
+      counts[applicationStatusGroup(
+        application.status,
+        application.intakeStatus,
+        application.hasReceipt,
+      )] += 1;
+    }
+    return counts;
+  }, [initialData.applications]);
+
+  const workingApplications = useMemo(
+    () => initialData.applications.filter((application) =>
+      isApplicationWorkInProgress(application.status, application.intakeStatus)
+    ),
+    [initialData.applications],
+  );
+
+  const refreshCycleKey = workingApplications
+    .map((application) => [
+      application.applicationRouteKey,
+      application.status,
+      application.intakeStatus,
+      application.preparationStage,
+      application.updatedAt,
+    ].join(":"))
+    .join("|");
+
   const applications = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
-    if (!normalizedQuery) return initialData.applications;
-    return initialData.applications.filter((application) =>
-      [application.company, application.role, application.location]
+    return initialData.applications.filter((application) => {
+      const matchesStatus = statusFilter === "ALL" || applicationStatusGroup(
+        application.status,
+        application.intakeStatus,
+        application.hasReceipt,
+      ) === statusFilter;
+      if (!matchesStatus) return false;
+      if (!normalizedQuery) return true;
+      return [application.company, application.role, application.location]
         .filter(Boolean)
-        .some((value) => value!.toLocaleLowerCase().includes(normalizedQuery)),
-    );
-  }, [initialData.applications, query]);
+        .some((value) => value!.toLocaleLowerCase().includes(normalizedQuery));
+    });
+  }, [initialData.applications, query, statusFilter]);
 
   function submitJob(formData: FormData) {
     const jobUrl = String(formData.get("jobUrl") ?? "");
@@ -126,36 +212,47 @@ export function CandidateQueue({ initialData }: { initialData: AuthenticatedDash
   }
 
   return (
-    <AuthenticatedAppShell
-        active="application-kits"
-        actorLabel={initialData.actorLabel}
-        signOutAction={signOut}
-      >
-      <main className={styles.shell}>
+    <main className={styles.shell}>
+      <RouteAutoRefresh
+        active={initialData.backendStatus === "available" && (workingApplications.length > 0 || initialData.autoApply?.enabled === true)}
+        cycleKey={refreshCycleKey}
+        intervalMs={initialData.autoApply?.enabled ? 60_000 : 12_000}
+        maxUnchangedRefreshes={initialData.autoApply?.enabled ? Number.POSITIVE_INFINITY : 25}
+      />
       <section className={styles.content}>
         <div className={styles.banner}>
-          <h1>Application Kits</h1>
-          <button className={styles.primaryButton} onClick={() => dialogRef.current?.showModal()} type="button">
-            Paste a job link
+          <div><h1>Applications</h1><p>Your matches, your applications, one place.</p></div>
+          <button
+            className={styles.secondaryButton}
+            disabled={initialData.backendStatus === "unavailable"}
+            onClick={() => dialogRef.current?.showModal()}
+            type="button"
+          >
+            Add a job link
             <Icon name="arrow" size={18} />
           </button>
         </div>
 
+        <AutoApplyPanel data={initialData} />
+
         {initialData.backendStatus === "unavailable" ? (
           <section className={styles.systemNotice} role="alert">
-            <strong>Queue unavailable</strong>
-            <span>RoleDawn could not read the database. The queue is unavailable until the connection recovers.</span>
+            <div>
+              <strong>Applications unavailable</strong>
+              <span>RoleDawn could not load your applications. Your saved work has not been removed.</span>
+            </div>
+            <button onClick={() => router.refresh()} type="button">Try again</button>
           </section>
         ) : null}
 
-        <section className={styles.queueCard} aria-labelledby="queue-heading">
+        {initialData.backendStatus === "available" ? <section className={styles.queueCard} aria-labelledby="queue-heading">
           <div className={styles.queueHeader}>
             <div>
-              <h2 id="queue-heading">Applications</h2>
-              <span>{initialData.applications.length}</span>
+              <h2 id="queue-heading">Recent applications</h2>
+              <span aria-live="polite">{applications.length}</span>
             </div>
             <label className={styles.queueSearch}>
-              <span className="sr-only">Search application kits</span>
+              <span className="sr-only">Search applications</span>
               <Icon name="search" size={17} />
               <input
                 onChange={(event) => setQuery(event.target.value)}
@@ -166,12 +263,31 @@ export function CandidateQueue({ initialData }: { initialData: AuthenticatedDash
             </label>
           </div>
 
+          {initialData.applications.length === 100 ? <p className={styles.historyNotice}>Showing your latest 100 applications. Earlier records are retained.</p> : null}
+
+          {initialData.applications.length > 0 ? (
+            <div aria-label="Filter applications by status" className={styles.statusFilters} role="group">
+              {STATUS_FILTERS.map((filter) => (
+                <button
+                  aria-pressed={statusFilter === filter.id}
+                  className={statusFilter === filter.id ? styles.statusFilterActive : undefined}
+                  key={filter.id}
+                  onClick={() => setStatusFilter(filter.id)}
+                  type="button"
+                >
+                  {filter.label}
+                  <span>{statusCounts[filter.id]}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           {applications.length === 0 ? (
             <div className={styles.emptyState}>
               <Icon name="document" size={28} />
-              <h3>{query ? "No applications match." : "Your queue is empty."}</h3>
-              <p>{query ? "Try a different search." : "Paste a Greenhouse, Lever, or Ashby job link to start."}</p>
-              {!query ? <button className={styles.secondaryButton} onClick={() => dialogRef.current?.showModal()} type="button">Add the first job</button> : null}
+              <h3>{query || statusFilter !== "ALL" ? "No applications match." : "No applications yet."}</h3>
+              <p>{query || statusFilter !== "ALL" ? "Change the search or status filter." : initialData.autoApply?.enabled ? "Matched applications will appear here as RoleDawn prepares them." : "Turn on auto-apply above, or prepare an application from your matches."}</p>
+              {!query && statusFilter === "ALL" ? <button className={styles.secondaryButton} onClick={() => dialogRef.current?.showModal()} type="button">Start an application</button> : null}
             </div>
           ) : (
             <ol className={styles.applicationList}>
@@ -183,7 +299,7 @@ export function CandidateQueue({ initialData }: { initialData: AuthenticatedDash
                       <span className={styles.applicationIdentity}>
                         <strong>{application.company ?? "Reading company"}</strong>
                         <span>{application.role ?? "Reading job title"}</span>
-                        <small>{[application.location, sourceName(application.sourceUrl)].filter(Boolean).join(" · ")}</small>
+                        <small>{[application.autoApplySelected ? "Auto-apply" : null, application.location, sourceName(application.sourceUrl)].filter(Boolean).join(" · ")}</small>
                       </span>
                       <span className={`${styles.status} ${styles[`status--${status.tone}`]}`}>
                         <i aria-hidden="true" />
@@ -200,14 +316,14 @@ export function CandidateQueue({ initialData }: { initialData: AuthenticatedDash
               })}
             </ol>
           )}
-        </section>
+        </section> : null}
       </section>
 
       <dialog className={styles.dialog} ref={dialogRef} onClose={() => setMessage("")}>
         <div className={styles.dialogHeader}>
           <div>
-            <span className={styles.eyebrow}>Add to queue</span>
-            <h2>Paste the official job link.</h2>
+            <span className={styles.eyebrow}>New application</span>
+            <h2>Paste the official job link</h2>
           </div>
           <button aria-label="Close" className={styles.iconButton} onClick={() => dialogRef.current?.close()} type="button"><Icon name="close" /></button>
         </div>
@@ -218,11 +334,10 @@ export function CandidateQueue({ initialData }: { initialData: AuthenticatedDash
           {message ? <p className={styles.formError} role="alert">{message}</p> : null}
           <div className={styles.dialogActions}>
             <button className={styles.secondaryButton} onClick={() => dialogRef.current?.close()} type="button">Cancel</button>
-            <button className={styles.primaryButton} disabled={isPending} type="submit">{isPending ? "Adding…" : "Add to queue"}</button>
+            <button className={styles.primaryButton} disabled={isPending} type="submit">{isPending ? "Starting…" : "Start application"}</button>
           </div>
         </form>
       </dialog>
-      </main>
-    </AuthenticatedAppShell>
+    </main>
   );
 }

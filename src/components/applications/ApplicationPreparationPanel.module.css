@@ -1,0 +1,191 @@
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.panelWorking,
+.panelReady,
+.panelComplete {
+  border-color: var(--line);
+}
+
+.panelAttention {
+  border-color: #ffd9d4;
+}
+
+.header {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+  padding: 22px 24px;
+}
+
+.panelAttention .header {
+  background: var(--coral-wash);
+}
+
+.header > div {
+  min-width: 0;
+}
+
+.eyebrow {
+  color: var(--muted);
+  display: block;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.panelAttention .eyebrow {
+  color: var(--coral-ink);
+}
+
+.header h2 {
+  color: var(--ink);
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.header p {
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 6px 0 0;
+  max-width: 640px;
+}
+
+.statusDot {
+  background: var(--faint);
+  border-radius: 50%;
+  flex: 0 0 auto;
+  height: 10px;
+  margin-top: 5px;
+  width: 10px;
+}
+
+.statusDotWorking {
+  animation: breathe 1.8s ease-in-out infinite;
+  background: var(--first-light-deep);
+  box-shadow: 0 0 0 4px var(--amber-wash);
+}
+
+.statusDotReady,
+.statusDotComplete {
+  background: var(--mint-ink);
+  box-shadow: 0 0 0 4px var(--mint-wash);
+}
+
+.statusDotAttention {
+  background: var(--coral);
+  box-shadow: 0 0 0 4px #ffe0dc;
+}
+
+@keyframes breathe {
+  50% { box-shadow: 0 0 0 7px var(--amber-wash); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statusDotWorking { animation: none; }
+}
+
+.blockerList {
+  list-style: none;
+  margin: 0;
+  padding: 0 24px 6px;
+}
+
+.blocker {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 16px 0;
+}
+
+.blocker strong,
+.retryRow strong {
+  color: var(--ink);
+  font-size: 14.5px;
+}
+
+.blocker p,
+.fallbackAction p,
+.retryRow p {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
+
+.action,
+.retryRow button {
+  align-items: center;
+  background: var(--midnight);
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 18px;
+  text-decoration: none;
+}
+
+.action:hover,
+.retryRow button:hover:not(:disabled) {
+  background: #1d2438;
+}
+
+.retryRow button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.action:focus-visible,
+.retryRow button:focus-visible {
+  outline: 3px solid var(--first-light);
+  outline-offset: 2px;
+}
+
+.fallbackAction,
+.retryRow {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin: 0 24px;
+  padding: 16px 0 22px;
+}
+
+.fallbackAction p {
+  margin: 0;
+}
+
+.retryRow .retryError {
+  color: var(--rose-ink);
+}
+
+@media (max-width: 620px) {
+  .header { padding: 18px; }
+  .blockerList { padding: 0 18px 4px; }
+  .blocker { align-items: stretch; gap: 12px; grid-template-columns: 1fr; }
+  .action { justify-self: start; }
+  .fallbackAction,
+  .retryRow { align-items: stretch; flex-direction: column; gap: 12px; margin: 0 18px; padding-bottom: 18px; }
+  .fallbackAction .action,
+  .retryRow button { align-self: flex-start; }
+}

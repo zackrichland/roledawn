@@ -28,6 +28,7 @@ export type CareerVaultViewModel = Readonly<{
     documentAggregateVersion: number;
   }> | null;
   errorMessage: string | null;
+  pendingUploadVersionId?: string;
 }>;
 
 export type VaultActionState = Readonly<{

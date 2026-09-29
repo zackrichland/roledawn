@@ -9,14 +9,10 @@ import {
   CareerVaultError,
   deleteResume,
   reviewResumeText,
-  uploadResume,
+  reserveDirectResumeUpload,
+  finishDirectResumeUpload,
 } from "@/server/vault/career-vault";
-import {
-  DOCX_MEDIA_TYPE,
-  MAX_RESUME_FILE_BYTES,
-  PDF_MEDIA_TYPE,
-  type SupportedResumeMediaType,
-} from "@/server/resume/extract-resume";
+import { ResumeDirectUploadError, type DirectResumeUploadRequest, type DirectResumeUploadActionResult } from "@/domain/resume-direct-upload";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,7 +25,7 @@ function actionError(error: unknown, fallback: string): VaultActionState {
 }
 
 function requiredActorMessage(): VaultActionState {
-  return { outcome: "error", message: "Sign in again before changing your Career Vault." };
+  return { outcome: "error", message: "Sign in again before changing your profile." };
 }
 
 function parsePositiveInteger(value: FormDataEntryValue | null): number | null {
@@ -38,60 +34,25 @@ function parsePositiveInteger(value: FormDataEntryValue | null): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function browserMediaType(file: File): SupportedResumeMediaType | null {
-  const declared = file.type.trim().toLowerCase();
-  if (declared === PDF_MEDIA_TYPE || declared === DOCX_MEDIA_TYPE) return declared;
-  const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
-  if (!declared && extension === ".pdf") return PDF_MEDIA_TYPE;
-  if (!declared && extension === ".docx") return DOCX_MEDIA_TYPE;
-  return null;
+export async function reserveDirectResumeUploadAction(command: DirectResumeUploadRequest): Promise<DirectResumeUploadActionResult> {
+  if (!readSupabasePublicConfig()) return { ok: false, message: "The profile database is not configured." };
+  const actor = await getOptionalActor();
+  if (!actor) return { ok: false, message: "Sign in again before uploading." };
+  try { return { ok: true, target: await reserveDirectResumeUpload(actor, command) }; }
+  catch (error) { return { ok: false, message: error instanceof CareerVaultError || error instanceof ResumeDirectUploadError ? error.message : "The upload could not be started. Try again." }; }
 }
 
-export async function uploadResumeAction(
-  _previousState: VaultActionState,
-  formData: FormData,
-): Promise<VaultActionState> {
-  if (!readSupabasePublicConfig()) {
-    return { outcome: "error", message: "The Career Vault database is not configured." };
-  }
+export async function finishDirectResumeUploadAction(documentVersionId: string): Promise<Readonly<{ ok: boolean; message: string }>> {
   const actor = await getOptionalActor();
-  if (!actor) return requiredActorMessage();
-
-  const file = formData.get("resume");
-  if (!(file instanceof File) || file.size === 0) {
-    return {
-      outcome: "error",
-      message: "Choose a PDF or DOCX résumé.",
-      fieldErrors: { resume: "Choose a file before uploading." },
-    };
-  }
-  if (file.size > MAX_RESUME_FILE_BYTES) {
-    return {
-      outcome: "error",
-      message: "Choose a résumé smaller than 10 MB.",
-      fieldErrors: { resume: "The file exceeds the 10 MB limit." },
-    };
-  }
-  const mediaType = browserMediaType(file);
-  if (!mediaType) {
-    return {
-      outcome: "error",
-      message: "Choose a valid PDF or DOCX résumé.",
-      fieldErrors: { resume: "Only PDF and DOCX files are accepted." },
-    };
-  }
-
+  if (!actor) return { ok: false, message: "Sign in again before finishing your upload." };
+  if (!UUID_PATTERN.test(documentVersionId)) return { ok: false, message: "Reload before finishing your upload." };
   try {
-    await uploadResume(actor, {
-      filename: file.name,
-      mediaType,
-      bytes: new Uint8Array(await file.arrayBuffer()),
-    });
-    revalidatePath("/vault");
-    return { outcome: "success", message: "Résumé uploaded. Review the extracted text below." };
+    await finishDirectResumeUpload(actor, documentVersionId);
+    revalidatePath("/vault"); revalidatePath("/onboarding"); revalidatePath("/vault/facts");
+    return { ok: true, message: "Résumé uploaded. Review the extracted text below." };
   } catch (error) {
-    revalidatePath("/vault");
-    return actionError(error, "The résumé could not be uploaded. Try again.");
+    revalidatePath("/vault"); revalidatePath("/onboarding");
+    return { ok: false, message: error instanceof CareerVaultError || error instanceof ResumeDirectUploadError ? error.message : "The upload could not be confirmed. Retry to check the same file." };
   }
 }
 
@@ -124,6 +85,7 @@ export async function saveResumeReviewAction(
       reviewedText,
     });
     revalidatePath("/vault");
+    revalidatePath("/onboarding");
     return { outcome: "success", message: "Reviewed résumé text saved." };
   } catch (error) {
     return actionError(error, "The reviewed résumé text could not be saved.");
@@ -148,6 +110,7 @@ export async function deleteResumeAction(
   try {
     await deleteResume(actor, { documentId, expectedAggregateVersion });
     revalidatePath("/vault");
+    revalidatePath("/onboarding");
     return { outcome: "success", message: "The résumé and saved text were permanently removed." };
   } catch (error) {
     return actionError(error, "The résumé could not be removed.");

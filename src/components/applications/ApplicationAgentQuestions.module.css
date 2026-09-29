@@ -1,0 +1,177 @@
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 22px 24px;
+}
+
+.card h2 {
+  color: var(--ink);
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.card > p {
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 6px 0 18px;
+}
+
+.fields {
+  border: 0;
+  display: grid;
+  gap: 18px;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.field > label,
+.choices legend {
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.required {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.field > input,
+.field > select,
+.field > textarea {
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  min-height: 46px;
+  min-width: 0;
+  padding: 11px 14px;
+  width: 100%;
+}
+
+.field > textarea {
+  resize: vertical;
+}
+
+.field [aria-invalid="true"] {
+  border-color: var(--rose);
+}
+
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+  border-color: var(--ink-soft);
+  box-shadow: 0 0 0 4px rgb(255 209 102 / 35%);
+  outline: none;
+}
+
+.card button:focus-visible {
+  outline: 3px solid var(--midnight);
+  outline-offset: 2px;
+}
+
+.choices {
+  border: 0;
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.choices legend {
+  margin-bottom: 6px;
+}
+
+.choice {
+  align-items: flex-start;
+  color: var(--ink-soft);
+  display: flex;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 0;
+}
+
+.choice input {
+  accent-color: var(--midnight);
+  height: 18px;
+  margin: 2px 0 0;
+  width: 18px;
+}
+
+.choice span {
+  font-size: 14.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.permission {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 18px 0 12px;
+}
+
+.error {
+  color: var(--rose-ink);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.success {
+  color: var(--mint-ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.card button {
+  background: var(--first-light);
+  border: 0;
+  border-radius: 999px;
+  color: var(--midnight);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 800;
+  min-height: 46px;
+  padding: 0 22px;
+}
+
+.card button:hover:not(:disabled) {
+  background: #ffc94a;
+}
+
+.card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.srOnly {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+@media (max-width: 560px) {
+  .card { padding: 18px; }
+  .card button { min-height: 50px; width: 100%; }
+}

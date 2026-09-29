@@ -42,6 +42,10 @@ export const greenhouseAdapter: JobSourceAdapter<GreenhouseSource> = {
 
     const jobs: NormalizedSourceJob[] = [];
     const issues: NormalizationIssue[] = [];
+    if (isRecord(payload.meta) && payload.meta.total !== undefined &&
+      (!Number.isSafeInteger(payload.meta.total) || payload.meta.total !== payload.jobs.length)) {
+      issues.push({ recordIndex: null, code: "PAYLOAD_INVALID", message: "Greenhouse total does not match the complete response." });
+    }
     payload.jobs.forEach((candidate, index) => {
       if (!isRecord(candidate)) {
         issues.push({ recordIndex: index, code: "RECORD_INVALID", message: "Greenhouse job must be an object." });
@@ -52,7 +56,13 @@ export const greenhouseAdapter: JobSourceAdapter<GreenhouseSource> = {
         : null;
       const title = stringValue(candidate.title);
       const canonicalJobUrl = publicHttpsUrl(candidate.absolute_url);
-      const applyUrl = canonicalJobUrl;
+      // Many employers embed Greenhouse on their own careers domain
+      // (absolute_url = careers.example.com/...?gh_jid=123). The hosted form at
+      // job-boards.greenhouse.io/{board}/jobs/{id} is the same application and
+      // is the only destination the delivery adapter may drive.
+      const applyUrl = externalJobId && /^[a-z0-9_-]+$/u.test(context.tenantKey) && /^\d+$/u.test(externalJobId)
+        ? `https://job-boards.greenhouse.io/${context.tenantKey}/jobs/${externalJobId}`
+        : canonicalJobUrl;
       const invalid = requiredRecordFields(index, { title, canonicalJobUrl, applyUrl, externalJobId });
       if (invalid || !title || !canonicalJobUrl || !applyUrl || !externalJobId) {
         issues.push(invalid ?? { recordIndex: index, code: "RECORD_INVALID", message: "Invalid Greenhouse job." });

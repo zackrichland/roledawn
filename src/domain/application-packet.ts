@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { normalizePublicJobUrl } from "./job-url.ts";
+import type { CandidateFactUsagePolicy } from "./candidate-profile.ts";
 
 export const RESUME_TAILORING_MODES = [
   "AS_UPLOADED",
@@ -11,6 +12,26 @@ export const RESUME_TAILORING_MODES = [
 export type ResumeTailoringMode = (typeof RESUME_TAILORING_MODES)[number];
 
 export type PacketDocumentUse = "RESUME" | "COVER_LETTER";
+
+export type PacketCandidateFactSensitivity = "STANDARD" | "SENSITIVE" | "PROTECTED";
+
+export type CandidateFactDocumentEvidenceProvenance = Readonly<{
+  sourceType: "DOCUMENT_EVIDENCE";
+  documentId: string;
+  documentVersionId: string;
+  passageId: string;
+}>;
+
+export type CandidateFactAttestationProvenance = Readonly<{
+  sourceType: "CANDIDATE_ATTESTATION";
+  attestationId: string;
+  attestedAt: string;
+  attestedBy: "CANDIDATE";
+}>;
+
+export type CandidateFactProvenance =
+  | CandidateFactDocumentEvidenceProvenance
+  | CandidateFactAttestationProvenance;
 
 export type SourceResumeItemInput = Readonly<{
   itemId: string;
@@ -36,18 +57,15 @@ export type ReviewedCandidateFactInput = Readonly<{
   factVersionId: string;
   label: string;
   value: string;
-  sensitivity: "STANDARD" | "SENSITIVE";
-  allowedUses: readonly PacketDocumentUse[];
+  sensitivity: PacketCandidateFactSensitivity;
+  usagePolicy: CandidateFactUsagePolicy;
+  verificationStatus: "VERIFIED";
   review: Readonly<{
     status: "REVIEWED";
     reviewedAt: string;
     reviewedBy: "CANDIDATE" | "AUTHORIZED_OPERATOR";
   }>;
-  provenance: Readonly<{
-    documentId: string;
-    documentVersionId: string;
-    passageId: string;
-  }>;
+  provenance: CandidateFactProvenance;
 }>;
 
 export type JobRequirementInput = Readonly<{
@@ -273,8 +291,47 @@ export type ApplicationPacketMaterialDiff = Readonly<{
   }>;
 }>;
 
+export type RenderedApplicationArtifactDescriptor = Readonly<{
+  kind: "RESUME" | "COVER_LETTER";
+  filename: string;
+  mediaType:
+    | "application/pdf"
+    | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  byteSize: number;
+  contentHash: `sha256:${string}`;
+  rendererRelease: string;
+}>;
+
+export type RenderedApplicationArtifactInput = Readonly<{
+  kind: RenderedApplicationArtifactDescriptor["kind"];
+  filename: string;
+  mediaType: RenderedApplicationArtifactDescriptor["mediaType"];
+  bytes: Uint8Array;
+  rendererRelease: string;
+}>;
+
+export type PreparedApplicationPacket = Readonly<{
+  immutable: true;
+  finalized: false;
+  packetId: string;
+  snapshot: ApplicationPacketInputSnapshot;
+  proposal: ApplicationPacketProposal;
+  materialDiff: ApplicationPacketMaterialDiff;
+  proposalHash: `sha256:${string}`;
+  materialDiffHash: `sha256:${string}`;
+  logicalArtifacts: readonly Readonly<{
+    kind: "RESUME_PROPOSAL" | "COVER_LETTER_PROPOSAL";
+    mediaType: "application/vnd.roledawn.proposal+json";
+    contentHash: `sha256:${string}`;
+  }>[];
+  claimCitations: readonly Readonly<{
+    claimId: string;
+    citations: readonly ApplicationClaimCitation[];
+  }>[];
+}>;
+
 export type ApplicationPacketManifest = Readonly<{
-  schemaVersion: 1;
+  schemaVersion: 2;
   packetId: string;
   proposalId: string;
   createdAt: string;
@@ -287,11 +344,8 @@ export type ApplicationPacketManifest = Readonly<{
   snapshotHash: `sha256:${string}`;
   proposalHash: `sha256:${string}`;
   materialDiffHash: `sha256:${string}`;
-  artifacts: readonly Readonly<{
-    kind: "RESUME_PROPOSAL" | "COVER_LETTER_PROPOSAL";
-    mediaType: "application/vnd.roledawn.proposal+json";
-    contentHash: `sha256:${string}`;
-  }>[];
+  logicalArtifacts: PreparedApplicationPacket["logicalArtifacts"];
+  renderedArtifacts: readonly RenderedApplicationArtifactDescriptor[];
   claimCitations: readonly Readonly<{
     claimId: string;
     citations: readonly ApplicationClaimCitation[];
@@ -299,8 +353,9 @@ export type ApplicationPacketManifest = Readonly<{
   packetHash: `sha256:${string}`;
 }>;
 
-export type PreparedApplicationPacket = Readonly<{
+export type FinalizedApplicationPacket = Readonly<{
   immutable: true;
+  finalized: true;
   snapshot: ApplicationPacketInputSnapshot;
   proposal: ApplicationPacketProposal;
   materialDiff: ApplicationPacketMaterialDiff;
@@ -357,6 +412,10 @@ function hashValue(value: unknown): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(serialized).digest("hex")}`;
 }
 
+function hashBytes(bytes: Uint8Array): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
 function deepFreeze<T>(value: T): Readonly<T> {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
     Object.freeze(value);
@@ -365,8 +424,58 @@ function deepFreeze<T>(value: T): Readonly<T> {
   return value;
 }
 
-function copyUses(uses: readonly PacketDocumentUse[]): readonly PacketDocumentUse[] {
-  return [...new Set(uses)].sort();
+/**
+ * Maps the candidate's field-level permission into the two narrative document
+ * surfaces. Exact form answers, prohibited facts, and protected data are never
+ * eligible for model context through this boundary.
+ */
+export function narrativeDocumentUsesForCandidateFact(
+  fact: Pick<ReviewedCandidateFactInput, "sensitivity" | "usagePolicy">,
+): readonly PacketDocumentUse[] {
+  if (fact.sensitivity === "PROTECTED") return Object.freeze([]);
+  if (fact.usagePolicy === "RESUME_AND_ANSWERS") {
+    return Object.freeze(["RESUME", "COVER_LETTER"] as const);
+  }
+  if (fact.usagePolicy === "NARRATIVE_ONLY") {
+    return Object.freeze(["COVER_LETTER"] as const);
+  }
+  return Object.freeze([]);
+}
+
+export function candidateFactMayEnterNarrativeModelContext(
+  fact: Pick<ReviewedCandidateFactInput, "sensitivity" | "usagePolicy" | "review">,
+): boolean {
+  if (fact.sensitivity === "SENSITIVE" && fact.review.reviewedBy !== "CANDIDATE") return false;
+  return narrativeDocumentUsesForCandidateFact(fact).length > 0;
+}
+
+export function narrativeCandidateFactsForModel(
+  facts: readonly ReviewedCandidateFactInput[],
+): readonly ReviewedCandidateFactInput[] {
+  return deepFreeze(
+    facts.filter(candidateFactMayEnterNarrativeModelContext).map((fact) => ({
+      ...fact,
+      review: { ...fact.review },
+      provenance: cloneCandidateFactProvenance(fact.provenance),
+    })),
+  ) as readonly ReviewedCandidateFactInput[];
+}
+
+function cloneCandidateFactProvenance(provenance: CandidateFactProvenance): CandidateFactProvenance {
+  if (provenance.sourceType === "DOCUMENT_EVIDENCE") {
+    return {
+      sourceType: "DOCUMENT_EVIDENCE",
+      documentId: provenance.documentId.trim(),
+      documentVersionId: provenance.documentVersionId.trim(),
+      passageId: provenance.passageId.trim(),
+    };
+  }
+  return {
+    sourceType: "CANDIDATE_ATTESTATION",
+    attestationId: provenance.attestationId.trim(),
+    attestedAt: provenance.attestedAt,
+    attestedBy: provenance.attestedBy,
+  };
 }
 
 function cloneSnapshotBase(input: ApplicationPacketSnapshotInput) {
@@ -412,13 +521,10 @@ function cloneSnapshotBase(input: ApplicationPacketSnapshotInput) {
           label: fact.label.trim(),
           value: fact.value.trim(),
           sensitivity: fact.sensitivity,
-          allowedUses: copyUses(fact.allowedUses),
+          usagePolicy: fact.usagePolicy,
+          verificationStatus: fact.verificationStatus,
           review: { ...fact.review },
-          provenance: {
-            documentId: fact.provenance.documentId.trim(),
-            documentVersionId: fact.provenance.documentVersionId.trim(),
-            passageId: fact.provenance.passageId.trim(),
-          },
+          provenance: cloneCandidateFactProvenance(fact.provenance),
         }))
         .sort((left, right) => left.factVersionId < right.factVersionId ? -1 : left.factVersionId > right.factVersionId ? 1 : 0),
     },
@@ -511,22 +617,29 @@ function validateSnapshotBase(base: ReturnType<typeof cloneSnapshotBase>): Packe
   });
   base.candidate.reviewedFacts.forEach((fact, index) => {
     const path = `candidate.reviewedFacts[${index}]`;
-    if (
-      !isNonEmpty(fact.factId) ||
-      !isNonEmpty(fact.factVersionId) ||
-      !isNonEmpty(fact.label) ||
-      !isNonEmpty(fact.value) ||
-      !isNonEmpty(fact.provenance.documentId) ||
-      !isNonEmpty(fact.provenance.documentVersionId) ||
-      !isNonEmpty(fact.provenance.passageId)
-    ) {
+    if (!isNonEmpty(fact.factId) || !isNonEmpty(fact.factVersionId) || !isNonEmpty(fact.label) || !isNonEmpty(fact.value)) {
       issues.push(issue("INPUT_INVALID", path, "Each candidate fact needs stable identity, reviewed content, and source provenance."));
+    }
+    if (fact.verificationStatus !== "VERIFIED") {
+      issues.push(issue("UNREVIEWED_FACT", `${path}.verificationStatus`, "Only resolved, verified fact versions may enter a packet snapshot."));
+    }
+    if (fact.provenance.sourceType === "DOCUMENT_EVIDENCE") {
+      if (
+        !isNonEmpty(fact.provenance.documentId) ||
+        !isNonEmpty(fact.provenance.documentVersionId) ||
+        !isNonEmpty(fact.provenance.passageId)
+      ) {
+        issues.push(issue("INPUT_INVALID", `${path}.provenance`, "Document evidence needs stable document, version, and passage references."));
+      }
+    } else if (
+      !isNonEmpty(fact.provenance.attestationId) ||
+      !isIsoTimestamp(fact.provenance.attestedAt) ||
+      fact.provenance.attestedBy !== "CANDIDATE"
+    ) {
+      issues.push(issue("INPUT_INVALID", `${path}.provenance`, "Candidate attestation needs a stable ID, candidate actor, and valid timestamp."));
     }
     if (fact.review.status !== "REVIEWED" || !isIsoTimestamp(fact.review.reviewedAt)) {
       issues.push(issue("UNREVIEWED_FACT", `${path}.review`, "Only reviewed fact versions may enter a packet snapshot."));
-    }
-    if (fact.allowedUses.length === 0) {
-      issues.push(issue("INPUT_INVALID", `${path}.allowedUses`, "A packet fact needs at least one candidate-approved document use."));
     }
   });
   return issues;
@@ -612,7 +725,7 @@ export function assessApplicationPacketEvidence(
       });
       continue;
     }
-    if (!fact.allowedUses.includes(requirement.documentUse)) {
+    if (!narrativeDocumentUsesForCandidateFact(fact).includes(requirement.documentUse)) {
       blockers.push({
         requirementId,
         code: "FACT_USE_NOT_ALLOWED",
@@ -742,7 +855,7 @@ function validateClaimUse(
   for (const citation of claim.citations) {
     if (citation.sourceType !== "CANDIDATE_FACT") continue;
     const fact = snapshot.candidate.reviewedFacts.find((item) => item.factVersionId === citation.factVersionId);
-    if (fact && !fact.allowedUses.includes(use)) {
+    if (fact && !narrativeDocumentUsesForCandidateFact(fact).includes(use)) {
       issues.push(issue(
         "FACT_USE_NOT_ALLOWED",
         path,
@@ -996,6 +1109,33 @@ function buildMaterialDiff(
   }) as ApplicationPacketMaterialDiff;
 }
 
+function buildLogicalArtifacts(
+  proposal: ApplicationPacketProposal,
+  materialDiff: ApplicationPacketMaterialDiff,
+): PreparedApplicationPacket["logicalArtifacts"] {
+  return deepFreeze([
+    {
+      kind: "RESUME_PROPOSAL" as const,
+      mediaType: "application/vnd.roledawn.proposal+json" as const,
+      contentHash: hashValue(proposal.resume),
+    },
+    {
+      kind: "COVER_LETTER_PROPOSAL" as const,
+      mediaType: "application/vnd.roledawn.proposal+json" as const,
+      contentHash: materialDiff.coverLetter.contentHash,
+    },
+  ]) as PreparedApplicationPacket["logicalArtifacts"];
+}
+
+function buildClaimCitations(
+  proposal: ApplicationPacketProposal,
+): PreparedApplicationPacket["claimCitations"] {
+  return deepFreeze(proposal.claims.map((claim) => ({
+    claimId: claim.claimId,
+    citations: claim.citations.map((citation) => ({ ...citation })),
+  }))) as PreparedApplicationPacket["claimCitations"];
+}
+
 export function prepareApplicationPacket(
   snapshot: ApplicationPacketInputSnapshot,
   rawProposal: ApplicationPacketProposal,
@@ -1021,49 +1161,155 @@ export function prepareApplicationPacket(
   const materialDiff = buildMaterialDiff(snapshot, frozenProposal);
   const proposalHash = hashValue(frozenProposal);
   const materialDiffHash = hashValue(materialDiff);
-  const manifestBase = {
-    schemaVersion: 1 as const,
-    packetId: packetIdentity,
-    proposalId: frozenProposal.proposalId,
-    createdAt: frozenProposal.createdAt,
-    applicationId: snapshot.applicationId,
-    candidateId: snapshot.candidateId,
-    jobId: snapshot.job.jobId,
-    jobVersionId: snapshot.job.jobVersionId,
-    sourceResumeArtifactVersionId: snapshot.candidate.sourceResume.artifactVersionId,
-    writingPolicyVersionId: snapshot.writingPolicy.policyVersionId,
-    snapshotHash: snapshot.snapshotHash,
-    proposalHash,
-    materialDiffHash,
-    artifacts: [
-      {
-        kind: "RESUME_PROPOSAL" as const,
-        mediaType: "application/vnd.roledawn.proposal+json" as const,
-        contentHash: hashValue(frozenProposal.resume),
-      },
-      {
-        kind: "COVER_LETTER_PROPOSAL" as const,
-        mediaType: "application/vnd.roledawn.proposal+json" as const,
-        contentHash: materialDiff.coverLetter.contentHash,
-      },
-    ],
-    claimCitations: frozenProposal.claims.map((claim) => ({
-      claimId: claim.claimId,
-      citations: claim.citations,
-    })),
-  };
-  const manifest: ApplicationPacketManifest = deepFreeze({
-    ...manifestBase,
-    packetHash: hashValue(manifestBase),
-  }) as ApplicationPacketManifest;
+  const logicalArtifacts = buildLogicalArtifacts(frozenProposal, materialDiff);
+  const claimCitations = buildClaimCitations(frozenProposal);
   return {
     ok: true,
     value: deepFreeze({
       immutable: true as const,
+      finalized: false as const,
+      packetId: packetIdentity,
       snapshot,
       proposal: frozenProposal,
       materialDiff,
-      manifest,
+      proposalHash,
+      materialDiffHash,
+      logicalArtifacts,
+      claimCitations,
     }) as PreparedApplicationPacket,
+  };
+}
+
+function normalizeRenderedArtifact(
+  artifact: RenderedApplicationArtifactInput,
+): RenderedApplicationArtifactDescriptor {
+  const bytes = artifact.bytes;
+  return {
+    kind: artifact.kind,
+    filename: artifact.filename.trim(),
+    mediaType: artifact.mediaType,
+    byteSize: bytes.byteLength,
+    contentHash: hashBytes(bytes),
+    rendererRelease: artifact.rendererRelease.trim(),
+  };
+}
+
+/**
+ * Seals validated logical content only after rendering. The resulting packet
+ * hash therefore binds the exact bytes that may be downloaded or reviewed.
+ */
+export function finalizeApplicationPacket(
+  prepared: PreparedApplicationPacket,
+  rawArtifacts: readonly RenderedApplicationArtifactInput[],
+): PacketResult<FinalizedApplicationPacket> {
+  const invalidByteInputs = rawArtifacts
+    .map((artifact, index) => ({ artifact, index }))
+    .filter(({ artifact }) => !(artifact.bytes instanceof Uint8Array) || artifact.bytes.byteLength === 0);
+  const artifacts = rawArtifacts
+    .filter((artifact) => artifact.bytes instanceof Uint8Array && artifact.bytes.byteLength > 0)
+    .map(normalizeRenderedArtifact).sort((left, right) => {
+    if (left.kind !== right.kind) return left.kind < right.kind ? -1 : 1;
+    return left.filename < right.filename ? -1 : left.filename > right.filename ? 1 : 0;
+  });
+  const issues: PacketValidationIssue[] = [];
+
+  invalidByteInputs.forEach(({ index }) => {
+    issues.push(issue("INPUT_INVALID", `renderedArtifacts[${index}].bytes`, "Rendered artifact bytes must be a non-empty byte array."));
+  });
+
+  const snapshotReport = validateApplicationPacketProposal(prepared.snapshot, prepared.proposal);
+  issues.push(...snapshotReport.issues);
+  const packetIdentity = prepared.packetId.trim();
+  const expectedProposalHash = hashValue(normalizeProposal(prepared.proposal));
+  const expectedMaterialDiff = buildMaterialDiff(prepared.snapshot, prepared.proposal);
+  const expectedMaterialDiffHash = hashValue(expectedMaterialDiff);
+  const expectedLogicalArtifacts = buildLogicalArtifacts(prepared.proposal, expectedMaterialDiff);
+  const expectedClaimCitations = buildClaimCitations(prepared.proposal);
+  if (!packetIdentity || packetIdentity !== prepared.packetId) {
+    issues.push(issue("INPUT_INVALID", "packetId", "The prepared packet needs one canonical stable ID."));
+  }
+  if (prepared.proposalHash !== expectedProposalHash) {
+    issues.push(issue("HASH_INVALID", "proposalHash", "The prepared proposal hash no longer matches its immutable content."));
+  }
+  if (prepared.materialDiffHash !== expectedMaterialDiffHash || hashValue(prepared.materialDiff) !== expectedMaterialDiffHash) {
+    issues.push(issue("HASH_INVALID", "materialDiffHash", "The prepared material diff no longer matches its immutable content."));
+  }
+  if (hashValue(prepared.logicalArtifacts) !== hashValue(expectedLogicalArtifacts)) {
+    issues.push(issue("HASH_INVALID", "logicalArtifacts", "The prepared logical artifact ledger no longer matches the validated proposal."));
+  }
+  if (hashValue(prepared.claimCitations) !== hashValue(expectedClaimCitations)) {
+    issues.push(issue("HASH_INVALID", "claimCitations", "The prepared citation ledger no longer matches the validated proposal."));
+  }
+
+  for (const duplicate of duplicateValues(artifacts.map((artifact) => artifact.kind))) {
+    issues.push(issue("DUPLICATE_ID", "renderedArtifacts", `Duplicate rendered artifact kind: ${duplicate}.`));
+  }
+  for (const kind of ["RESUME", "COVER_LETTER"] as const) {
+    if (!artifacts.some((artifact) => artifact.kind === kind)) {
+      issues.push(issue("INPUT_INVALID", "renderedArtifacts", `A rendered ${kind.toLowerCase().replace("_", " ")} artifact is required.`));
+    }
+  }
+  artifacts.forEach((artifact, index) => {
+    const path = `renderedArtifacts[${index}]`;
+    if (!isNonEmpty(artifact.filename) || !isNonEmpty(artifact.rendererRelease)) {
+      issues.push(issue("INPUT_INVALID", path, "Each rendered artifact needs a filename and renderer release."));
+    }
+    if (!Number.isSafeInteger(artifact.byteSize) || artifact.byteSize <= 0) {
+      issues.push(issue("INPUT_INVALID", `${path}.byteSize`, "Rendered artifact byte size must be a positive safe integer."));
+    }
+    if (!isSha256(artifact.contentHash)) {
+      issues.push(issue("HASH_INVALID", `${path}.contentHash`, "Rendered artifact needs a complete lowercase SHA-256 hash."));
+    }
+    const expectedExtension = artifact.mediaType === "application/pdf" ? ".pdf" : ".docx";
+    if (!artifact.filename.toLocaleLowerCase().endsWith(expectedExtension)) {
+      issues.push(issue("INPUT_INVALID", `${path}.filename`, `The filename must match the ${expectedExtension} media type.`));
+    }
+  });
+
+  if (issues.length > 0) {
+    return {
+      ok: false,
+      error: {
+        code: "PROPOSAL_INVALID",
+        message: "The rendered application packet artifacts failed deterministic validation.",
+        issues,
+      },
+    };
+  }
+
+  const frozenArtifacts = deepFreeze(artifacts) as readonly RenderedApplicationArtifactDescriptor[];
+  const manifestBase = {
+    schemaVersion: 2 as const,
+    packetId: packetIdentity,
+    proposalId: prepared.proposal.proposalId,
+    createdAt: prepared.proposal.createdAt,
+    applicationId: prepared.snapshot.applicationId,
+    candidateId: prepared.snapshot.candidateId,
+    jobId: prepared.snapshot.job.jobId,
+    jobVersionId: prepared.snapshot.job.jobVersionId,
+    sourceResumeArtifactVersionId: prepared.snapshot.candidate.sourceResume.artifactVersionId,
+    writingPolicyVersionId: prepared.snapshot.writingPolicy.policyVersionId,
+    snapshotHash: prepared.snapshot.snapshotHash,
+    proposalHash: prepared.proposalHash,
+    materialDiffHash: prepared.materialDiffHash,
+    logicalArtifacts: expectedLogicalArtifacts,
+    renderedArtifacts: frozenArtifacts,
+    claimCitations: expectedClaimCitations,
+  };
+  const manifest = deepFreeze({
+    ...manifestBase,
+    packetHash: hashValue(manifestBase),
+  }) as ApplicationPacketManifest;
+
+  return {
+    ok: true,
+    value: deepFreeze({
+      immutable: true as const,
+      finalized: true as const,
+      snapshot: prepared.snapshot,
+      proposal: prepared.proposal,
+      materialDiff: prepared.materialDiff,
+      manifest,
+    }) as FinalizedApplicationPacket,
   };
 }

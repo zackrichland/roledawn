@@ -1,11 +1,23 @@
 ---
 title: RoleDawn system architecture map
-status: visual companion to canonical architecture
+status: historical visual; superseded for current-state presentations
 owner: product and engineering
-last_updated: 2026-08-11
+last_updated: 2026-08-16
 ---
 
 # RoleDawn system architecture map
+
+> **Historical canvas:** use [Architecture at a glance](architecture-at-a-glance.md)
+> for the current system, stack, data flow, status, assumptions, and build
+> order. The linked Excalidraw canvas predates the accepted Supabase decision
+> and the current 37-migration hosted foundation; do not present it as current
+> implementation evidence.
+
+The canvas also compresses browser execution into one approval. Accepted
+[D-061](../execution/decision-log.md) supersedes that simplification:
+`FILL_APPLICATION_ONCE` releases one fill-only session that must stop at
+`PRE_SUBMIT_REVIEW`; a later `SUBMIT_APPLICATION_ONCE` approval would release
+one submit attempt. Fill authority cannot become submit authority.
 
 The editable canvas is [`roledawn-system-architecture.excalidraw`](roledawn-system-architecture.excalidraw). Import it into Excalidraw with **Open → Open from device**, then ungroup a trust zone if you want to rearrange its individual components. The [backend operating model](backend-operating-model.md) contains the deeper job-catalog, candidate-relation, preparation, model, browser, and vendor diagrams added after this trust-zone overview.
 
@@ -156,7 +168,8 @@ Dashboard counts, notification timelines, model memory, chat history, browser re
 
 The architecture owns contracts before SDKs. Current choices that remain open include:
 
-- Managed identity and the initial PostgreSQL host; Supabase is a benchmark candidate, not an authority decision.
+- Supabase is the accepted first Auth/PostgreSQL/Storage control plane. Its
+  production region, backup, recovery, and operating gate remain open.
 - Primary and escalation model routes; model providers remain behind `ModelAdapter` and task-specific release gates.
 - Managed browser provider.
 - Token-broker buy versus build.

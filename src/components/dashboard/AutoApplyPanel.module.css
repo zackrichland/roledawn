@@ -1,0 +1,58 @@
+.panel { background: #fff; border: 1px solid #dde3ed; border-radius: 18px; margin-top: 24px; overflow: hidden; }
+.control { align-items: center; display: flex; gap: 32px; justify-content: space-between; padding: 28px 28px 16px; }
+.titleLine { align-items: center; display: flex; gap: 12px; }
+.titleLine h2 { font-size: 23px; letter-spacing: -.035em; margin: 0; }
+.titleLine > span { border-radius: 99px; font-size: 11px; font-weight: 700; padding: 4px 9px; }
+.active { background: #e1f4ea; color: #13754f; }
+.off { background: #f0f2f6; color: #637087; }
+.control p { color: #627087; font-size: 14px; line-height: 1.6; margin: 9px 0 0; max-width: 650px; }
+.toggle { background: #bdc5d4; border: 0; border-radius: 99px; cursor: pointer; flex: 0 0 auto; height: 36px; padding: 4px; width: 64px; }
+.toggle span { background: #fff; border-radius: 50%; display: block; height: 28px; transition: transform .15s; width: 28px; }
+.toggle[aria-checked="true"] { background: #263d78; }
+.toggle[aria-checked="true"] span { transform: translateX(28px); }
+.toggle:disabled { cursor: wait; opacity: .55; }
+.stats { display: flex; flex-wrap: wrap; font-size: 12px; gap: 12px 26px; padding: 0 28px 17px; }
+.stats span { color: #778296; }
+.stats strong { color: #344360; font-weight: 650; }
+.explanation { color: #30405d; font-size: 13px; line-height: 1.6; margin: 0; padding: 0 28px 8px; }
+.timing { color: #52647d; font-size: 12px; line-height: 1.6; margin: 0; padding: 0 28px 8px; }
+.note { color: #798397; font-size: 12px; line-height: 1.6; margin: 0; padding: 0 28px 22px; }
+.textButton { background: none; border: 0; color: #3a5290; cursor: pointer; font: inherit; padding: 4px; text-decoration: underline; }
+.error { background: #fff0eb; color: #913e2b; font-size: 13px; margin: 0 28px 18px; padding: 12px; }
+.preferences { border-top: 1px solid #edf0f4; }
+.preferences > summary { color: #30405d; cursor: pointer; font-size: 13px; font-weight: 650; padding: 18px 28px; }
+.preferences > summary > span { color: #7b8596; font-size: 12px; font-weight: 400; margin-left: 16px; overflow-wrap: anywhere; }
+.goals { border-top: 1px solid #f0f2f6; padding: 10px 28px 26px; max-width: 760px; }
+.goals > p { color: #68788e; font-size: 13px; line-height: 1.6; }
+.matchesHeader { align-items: center; background: #fafbfe; border-top: 1px solid #e7ebf2; display: flex; gap: 15px; justify-content: space-between; padding: 20px 28px; }
+.matchesHeader h3 { color: #30405d; font-size: 15px; margin: 0 0 4px; }
+.matchesHeader p { color: #7b8596; font-size: 12px; margin: 0; }
+.matchesHeader > a { color: #3a5290; font-size: 12px; font-weight: 650; text-decoration: none; white-space: nowrap; }
+.matches { list-style: none; margin: 0; padding: 0; }
+.matches > li { align-items: flex-start; border-top: 1px solid #edf0f4; display: flex; gap: 20px; justify-content: space-between; padding: 17px 28px; }
+.job { min-width: 0; }
+.job > a { color: #263653; font-size: 14px; font-weight: 650; line-height: 1.5; text-decoration: none; overflow-wrap: anywhere; }
+.job > a:hover { text-decoration: underline; }
+.job > p { color: #798397; font-size: 12px; line-height: 1.5; margin: 3px 0 6px; }
+.reason { color: #527467; font-size: 11px; line-height: 1.6; }
+.reason > summary { cursor: pointer; }
+.reason ul { color: #66758a; padding-left: 16px; }
+.add { background: #fff; border: 1px solid #dce2ec; border-radius: 8px; color: #3a4c71; cursor: pointer; flex: 0 0 auto; font: inherit; font-size: 12px; font-weight: 650; min-height: 36px; padding: 9px 13px; text-decoration: none; }
+.add:disabled { opacity: .5; }
+.noMatches { color: #748096; font-size: 13px; line-height: 1.6; margin: 0; padding: 24px 28px; }
+.more { background: #fafbfe; border: 0; border-top: 1px solid #edf0f4; color: #4b608c; cursor: pointer; font: inherit; font-size: 12px; min-height: 42px; width: 100%; }
+.panel button:focus-visible, .panel summary:focus-visible, .panel a:focus-visible { outline: 3px solid #7a8cc8; outline-offset: 3px; }
+@media (max-width: 650px) {
+  .control { align-items: flex-start; gap: 15px; padding: 22px 18px 16px; }
+  .control p { font-size: 13px; }
+  .stats { gap: 9px 18px; padding: 0 18px 16px; }
+  .stats span:first-child { width: 100%; }
+  .explanation, .note, .timing { padding-left: 18px; padding-right: 18px; }
+  .preferences > summary { padding: 16px 18px; }
+  .preferences > summary > span { display: block; margin: 7px 0 0 15px; }
+  .goals { padding: 10px 18px 22px; }
+  .matchesHeader { align-items: flex-start; flex-direction: column; gap: 12px; padding: 18px; }
+  .matches > li { gap: 12px; padding: 16px 18px; }
+  .add { padding: 9px; }
+  .error { margin-left: 18px; margin-right: 18px; }
+}

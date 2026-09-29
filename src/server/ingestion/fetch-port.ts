@@ -74,39 +74,48 @@ export function createNativeJobApiFetchPort(
       const signal = request.signal
         ? AbortSignal.any([request.signal, timeout])
         : timeout;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          accept: "application/json",
-          "user-agent": userAgent,
-          ...(request.ifNoneMatch ? { "if-none-match": request.ifNoneMatch } : {}),
-        },
-        redirect: "error",
-        signal,
-        cache: "no-store",
-      });
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            accept: "application/json",
+            "user-agent": userAgent,
+            ...(request.ifNoneMatch ? { "if-none-match": request.ifNoneMatch } : {}),
+          },
+          redirect: "error",
+          signal,
+          cache: "no-store",
+        });
 
-      if (
-        response.status >= 200 &&
-        response.status < 300 &&
-        !isJsonMediaType(response.headers.get("content-type"))
-      ) {
-        await response.body?.cancel();
-        throw new Error("JOB_API_RESPONSE_CONTENT_TYPE_INVALID");
+        if (
+          response.status >= 200 &&
+          response.status < 300 &&
+          !isJsonMediaType(response.headers.get("content-type"))
+        ) {
+          await response.body?.cancel();
+          throw new Error("JOB_API_RESPONSE_CONTENT_TYPE_INVALID");
+        }
+
+        const headers: Record<string, string> = {};
+        for (const key of ["etag", "last-modified", "content-type"]) {
+          const value = response.headers.get(key);
+          if (value) headers[key] = value;
+        }
+
+        return {
+          status: response.status,
+          body: await readBoundedBody(response, request.maxResponseBytes),
+          headers,
+          observedAt: new Date().toISOString(),
+        };
+      } catch (error) {
+        // Headers and body share one deadline. Name it so callers can tell a
+        // slow provider (cold full-content boards) from a network failure.
+        if (timeout.aborted && !request.signal?.aborted) {
+          throw new Error("JOB_API_TIMEOUT", { cause: error });
+        }
+        throw error;
       }
-
-      const headers: Record<string, string> = {};
-      for (const key of ["etag", "last-modified", "content-type"]) {
-        const value = response.headers.get(key);
-        if (value) headers[key] = value;
-      }
-
-      return {
-        status: response.status,
-        body: await readBoundedBody(response, request.maxResponseBytes),
-        headers,
-        observedAt: new Date().toISOString(),
-      };
     },
   };
 }

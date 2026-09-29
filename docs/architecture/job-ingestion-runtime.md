@@ -2,7 +2,7 @@
 title: Job ingestion runtime
 status: canonical implemented module and production integration contract
 owner: engineering
-last_updated: 2026-08-12
+last_updated: 2026-09-28
 scope: Greenhouse, Lever, and Ashby source loading, normalization, identity, hashing, and failure semantics
 ---
 
@@ -12,13 +12,26 @@ scope: Greenhouse, Lever, and Ashby source loading, normalization, identity, has
 
 This document is the canonical contract for the provider-neutral ingestion module in [`src/server/ingestion`](../../src/server/ingestion). It narrows the broader [job-discovery architecture](job-discovery.md) to behavior that exists in code today and the next production boundary.
 
-- **Verified — implemented:** typed source contracts, fixed-origin endpoint builders, Greenhouse/Lever/Ashby adapters, deterministic normalization, canonical hashes, response classification, a bounded native HTTP port, a one-shot leased outbox worker, catalog persistence, transactional intake resolution, and deterministic tests.
+- **Verified — implemented in repository:** typed source contracts, fixed-origin endpoint builders, Greenhouse/Lever/Ashby adapters, deterministic normalization, canonical hashes, response classification, a bounded native HTTP port, leased catalog and intake commands, catalog persistence, transactional intake resolution, and deterministic tests. Direct Greenhouse resolution now also normalizes the advertised application-form questions, choices, compliance fields, and AI-use notice into an immutable provider-neutral schema plus a private provider binding.
 - **Verified live in development:** HireWire acceptance run `20260812135034`
   exercised the server-only worker boundary and completed one official-source
-  resolution. All eleven migrations through `20260812134739` are deployed.
-- **Verified — not connected:** there is no recurring scheduler, broad source
-  registry loop, raw-payload object writer, closure reconciliation, search
-  index, packet builder, browser/CUA runtime, or submit path.
+  resolution. That run proved the original eleven-migration scope. A fresh
+  current read-only ledger check on 2026-08-18 found all 41 repository
+  migrations aligned. Later migrations do not broaden that narrow resolver
+  acceptance claim.
+- **Verified locally:** the four-lane worker service now invokes the conditional
+  catalog poller continuously with lane-specific cadence, backoff, overlap
+  protection, recovery, and health. One live local service run committed a
+  complete 464-observation snapshot to the hosted catalog.
+- **Verified — still open:** the worker is not hosted continuously. Broad source
+  operation, raw-payload object storage, source-health alerts, and submission
+  remain separate gates. Search and Saved are connected outside this provider
+  adapter, and closure reconciliation exists only behind complete-snapshot
+  guards for the single allowlisted source.
+- **Verified — deployment pending:** migration
+  `20260819061712_greenhouse_application_schema_versions.sql` and its worker
+  write path are locally tested but have not been deployed or accepted against
+  HireWire. No readiness or browser driver consumes the stored schema yet.
 - **Recommendation:** keep those concerns outside provider adapters and connect them through narrow ports. The database remains authoritative for source state; the network transport remains replaceable.
 - **Open question:** raw-payload retention and redisplay rights must be decided per source before production capture.
 
@@ -59,12 +72,14 @@ separate closed gates.
 | [`load-source.ts`](../../src/server/ingestion/load-source.ts) | Transport orchestration, ETag propagation, response limits, JSON parsing, adapter dispatch, and failure classification |
 | [`normalize.ts`](../../src/server/ingestion/normalize.ts) | Shared string, HTML-to-text, URL, timestamp, location, employment, workplace, and compensation normalization |
 | [`adapters/greenhouse.ts`](../../src/server/ingestion/adapters/greenhouse.ts) | Greenhouse payload-to-canonical mapping |
+| [`greenhouse-application-schema.ts`](../../src/server/ingestion/greenhouse-application-schema.ts) | Greenhouse question, option, compliance, and AI-notice normalization; stable schema hash; private provider bindings |
 | [`adapters/lever.ts`](../../src/server/ingestion/adapters/lever.ts) | Lever payload-to-canonical mapping |
 | [`adapters/ashby.ts`](../../src/server/ingestion/adapters/ashby.ts) | Ashby payload-to-canonical mapping and URL-derived identity fallback |
 | [`canonical.ts`](../../src/server/ingestion/canonical.ts) | Stable JSON serialization, SHA-256 hashing, listing identity, and material job-version projection |
 | [`fetch-port.ts`](../../src/server/ingestion/fetch-port.ts) | Fixed-origin native fetch with redirect refusal, timeout, and streamed byte limit |
 | [`../workers/application-queued.ts`](../../src/server/workers/application-queued.ts) | One posting resolution, catalog persistence, and transactional intake transition |
 | [`../workers/outbox-worker.ts`](../../src/server/workers/outbox-worker.ts) | Leased one-shot claim, acknowledgement, and retry release |
+| [`../workers/worker-service.ts`](../../src/server/workers/worker-service.ts) | Independent long-running catalog, preparation, Application Kit, and fill lanes with health, backoff, overlap protection, recovery, and graceful shutdown |
 | [`ingestion.test.ts`](../../src/server/ingestion/ingestion.test.ts) | Deterministic fixtures for endpoints, adapters, hashing, transport outcomes, and limits |
 
 ## Source contracts
@@ -123,6 +138,49 @@ Descriptions and provider HTML are untrusted source data. The helper strips tags
 - **Recommendation:** never render `descriptionHtml` without a reviewed sanitizer and restrictive content-security policy.
 - **Recommendation:** validate provider-specific hosted/apply domains before passing a normalized URL to any browser-execution worker. The current shared URL validator guarantees public-looking HTTPS syntax, not provider ownership.
 
+## Greenhouse application-form schema
+
+The single-job Greenhouse endpoint already requests `questions=true`. Direct
+resolution now treats that form structure as a separate versioned input rather
+than discarding it or folding it into the job-description hash.
+
+```mermaid
+flowchart LR
+    GET["Official Greenhouse single-job GET\nquestions=true"] --> PARSE["Strict form-schema adapter"]
+    PARSE --> NEUTRAL["Provider-neutral schema\nsections, controls, choices, compliance"]
+    PARSE --> BINDING["Private Greenhouse binding\nfield names, raw types, option and question IDs"]
+    NEUTRAL --> HASH["Canonical SHA-256"]
+    BINDING --> HASH
+    HASH --> VERSION["Immutable schema version\nbound to one job version"]
+```
+
+- **Verified — implemented in repository:** core, location, government
+  compliance, and demographic questions retain provider order but receive
+  stable position-based internal keys. Demographic header/description context
+  is retained separately. Controls normalize to short text, long text, file,
+  hidden, single select, multi-select, or `UNKNOWN`.
+- **Verified — implemented in repository:** option labels and free-form
+  semantics stay in the neutral schema. Greenhouse field names, raw control
+  types, option values, demographic question IDs, and compliance type strings
+  stay in the separate provider binding.
+- **Verified — implemented in repository:** form questions, required flags,
+  descriptions, options, legacy and single-purpose consent requirements,
+  retention period, demographic consent applicability, and the AI-use notice
+  contribute to one deterministic schema hash. Observation time does not.
+- **Verified safety boundary:** malformed advertised form structures fail the
+  direct resolution closed; unknown control types remain explicit `UNKNOWN`
+  values instead of being guessed. The schema contains no candidate answers,
+  employer credentials, approval, or submission authority.
+- **Verified database boundary in the pending migration:**
+  `job_application_schema_versions` is append-only, RLS-enabled, unavailable
+  to `anon` and `authenticated`, and writable only through the server role. A
+  composite foreign key prevents a schema from being attached to the wrong job
+  version.
+- **Next gate:** bind one exact schema-version ID into fill readiness, compare
+  the live form against it immediately before disclosure, and require takeover
+  for unknown, sensitive, consent, CAPTCHA, account, or materially changed
+  fields. This change alone does not make auto-apply operational.
+
 ## Identity and change detection
 
 Two hashes serve different purposes:
@@ -145,7 +203,8 @@ stateDiagram-v2
     [*] --> ValidateEndpoint
     ValidateEndpoint --> FailedPermanent: invalid tenant or endpoint input
     ValidateEndpoint --> Fetch
-    Fetch --> FailedRetryable: transport exception
+    Fetch --> FailedRetryable: network failure or request deadline
+    Fetch --> FailedPermanent: streamed body over budget
     Fetch --> NotModified: HTTP 304
     Fetch --> FailedRetryable: HTTP 408, 429, or 5xx
     Fetch --> FailedPermanent: other non-2xx
@@ -158,9 +217,13 @@ stateDiagram-v2
     Normalize --> Loaded: inside budget
 ```
 
-Default limits are 20 MiB per returned body and 5,000 successfully normalized jobs per snapshot.
+Default limits (pasted-link resolution) are a 12 s request deadline, 20 MiB per returned body and 5,000 successfully normalized jobs per snapshot. Scheduled catalog polling reads complete full-content boards and uses a 45 s deadline, 40 MiB per body, the same 5,000-job ceiling and a 300 s source lease. The commit RPC bounds raw-body metadata at 64 MiB and runs under a 60 s statement budget that PostgREST applies to that RPC only.
 
-- **Verified:** `FETCH_FAILED`, HTTP 408, HTTP 429, and 5xx are retryable.
+- **Verified (2026-09-28):** the largest reviewed board (carvana, 1,813 jobs) returned 19.4 MB, 93% of the old 20 MiB cap; a cold Greenhouse `content=true` board took 11.6 s to first byte; four catalog fetches failed at the old 12 s deadline.
+- **Verified (2026-09-28):** PostgREST ran the commit under the `authenticator` role's 8 s `statement_timeout`. Boards above roughly 900 new jobs could not commit, and the worker could only report an uncertain commit. Migration `20260928224500_scalable_catalog_commit.sql` makes the commit set-based and declares `statement_timeout = 60s` on the function. It passes the local PGlite harness; hosted application is pending approval.
+- **Verified:** `FETCH_FAILED` (network), `FETCH_TIMEOUT` (deadline), HTTP 408, HTTP 429, and 5xx are retryable. A streamed body over the cap is `BODY_TOO_LARGE` and is not retryable.
+- **Verified:** a commit error carrying a Postgres SQLSTATE is a definite rollback. The worker records it as `JOB_SOURCE_COMMIT_*` through `fail_job_source_poll` (timeouts, locks and deadlocks back off from 15 minutes to 6 hours; data errors wait 24 hours) and logs one sanitized `job_source_rpc_failed` line. A missing or gateway response stays uncertain: the next claim closes the abandoned run as `JOB_SOURCE_LEASE_EXPIRED` and backs the source off on the retryable schedule instead of re-claiming it at once.
+- **Verified:** catalog snapshots carry plain-text descriptions only. Provider HTML stays in the version hash but no longer crosses the RPC or lands in `normalized_data`.
 - **Verified:** endpoint validation, other HTTP errors, oversized bodies, invalid JSON, and over-budget normalized snapshots are non-retryable without source/configuration change.
 - **Verified:** malformed individual records create issues and an incomplete `LOADED` snapshot; they are not silently treated as a healthy complete snapshot.
 - **Recommendation:** add a raw-array record ceiling before per-record normalization. The current 5,000 limit applies to successfully normalized jobs, not the source array's total length.
@@ -227,6 +290,9 @@ The ingestion tests use injected fixtures and make no live network requests. The
 - retry classification, raw-payload hash, and configured limits.
 - direct Greenhouse, Lever, and Ashby URL classification without arbitrary-host fetching;
 - official single-post resolution for Greenhouse and Lever;
+- deterministic Greenhouse application-schema normalization, drift hashing,
+  private provider bindings, malformed-payload refusal, and append-only database
+  controls;
 - exact-job selection from Ashby's board-level public feed;
 - fixed-origin native fetch enforcement and bounded response streaming.
 

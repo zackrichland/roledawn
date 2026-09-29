@@ -33,23 +33,18 @@
 
 .content {
   margin: 0 auto;
-  max-width: 1460px;
-  padding: clamp(20px, 4vw, 54px) clamp(16px, 4vw, 64px) 64px;
+  max-width: 1260px;
+  padding: 36px 24px 64px;
 }
 
 .banner {
-  align-items: flex-end;
-  background:
-    radial-gradient(circle at 78% 10%, rgb(114 136 233 / 48%), transparent 34%),
-    linear-gradient(135deg, #101934 0%, #202b63 58%, #3b4e9f 100%);
-  border-radius: 24px;
-  color: #fff;
+  align-items: center;
   display: flex;
+  gap: 20px;
   justify-content: space-between;
-  min-height: 210px;
-  overflow: hidden;
-  padding: clamp(26px, 4vw, 48px);
+  padding: 0 0 3px;
 }
+.banner p { color: #7a8496; font-size: 14px; margin: 12px 0 0; }
 
 .eyebrow {
   color: #aebdfb;
@@ -62,12 +57,7 @@
   text-transform: uppercase;
 }
 
-.banner h1 {
-  font-size: clamp(42px, 6vw, 74px);
-  letter-spacing: -.055em;
-  line-height: .95;
-  margin: 0;
-}
+.banner h1 { font-size: clamp(30px, 4vw, 42px); letter-spacing: -.045em; line-height: 1.1; margin: 0; }
 
 .primaryButton,
 .secondaryButton,
@@ -96,6 +86,10 @@
   opacity: .65;
 }
 
+.banner .primaryButton:disabled {
+  cursor: not-allowed;
+}
+
 .secondaryButton {
   background: #fff;
   border: 1px solid #d8dde6;
@@ -118,9 +112,35 @@
   padding: 15px 18px;
 }
 
+.systemNotice > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .systemNotice span {
   color: #795b3e;
   font-size: 14px;
+}
+
+.systemNotice button {
+  background: #fff;
+  border: 1px solid #dfbc96;
+  border-radius: 10px;
+  color: #533d28;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.systemNotice button:focus-visible,
+.statusFilters button:focus-visible {
+  outline: 3px solid rgb(76 96 181 / 24%);
+  outline-offset: 2px;
 }
 
 .queueCard {
@@ -164,11 +184,53 @@
   flex: 0 1 320px;
 }
 
+.statusFilters {
+  align-items: center;
+  border-bottom: 1px solid #edf0f4;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px 24px;
+}
+
+.statusFilters button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dfe3ea;
+  border-radius: 999px;
+  color: #556073;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.statusFilters button > span {
+  color: #7a8392;
+  font-size: 11px;
+}
+
+.statusFilters .statusFilterActive {
+  background: #17213d;
+  border-color: #17213d;
+  color: #fff;
+}
+
+.statusFilters .statusFilterActive > span {
+  color: #cfd6ed;
+}
+
 .applicationList {
   list-style: none;
   margin: 0;
   padding: 0;
 }
+.historyNotice { color: #748096; font-size: 12px; margin: 0; padding: 12px 24px; }
 
 .applicationList li + li { border-top: 1px solid #edf0f4; }
 
@@ -177,7 +239,7 @@
   color: inherit;
   display: grid;
   gap: 28px;
-  grid-template-columns: minmax(260px, 1.35fr) minmax(250px, 1fr) 90px 20px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) 80px 20px;
   min-height: 104px;
   padding: 18px 24px;
   text-decoration: none;
@@ -232,8 +294,8 @@
   color: #737d8d;
   display: flex;
   flex-direction: column;
-  min-height: 310px;
-  padding: 72px 24px;
+  min-height: 190px;
+  padding: 36px 24px;
   text-align: center;
 }
 
@@ -267,13 +329,14 @@
 
 @media (max-width: 760px) {
   .content { padding: 14px 12px 40px; }
-  .banner { align-items: flex-start; border-radius: 18px; flex-direction: column; gap: 30px; min-height: 235px; padding: 26px 22px 22px; }
-  .banner h1 { font-size: 52px; }
+  .banner { align-items: flex-start; flex-direction: column; gap: 18px; padding: 12px 4px 4px; }
+  .banner h1 { font-size: 34px; }
   .primaryButton { width: 100%; }
-  .systemNotice { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .systemNotice { align-items: stretch; flex-direction: column; gap: 12px; }
   .queueCard { border-radius: 15px; margin-top: 14px; }
   .queueHeader { align-items: stretch; flex-direction: column; gap: 13px; padding: 16px; }
   .queueSearch { flex: 1 1 auto; width: 100%; }
+  .statusFilters { padding: 11px 16px; }
   .applicationRow { gap: 13px; grid-template-columns: 1fr 18px; min-height: 0; padding: 18px 16px; }
   .status { grid-column: 1; margin-top: 4px; }
   .applicationRow time { grid-column: 1; }

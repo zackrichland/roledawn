@@ -34,6 +34,40 @@ function normalizePayload(
   }
 }
 
+/**
+ * Transport failures are not all alike: a streamed body over the cap is a
+ * property of the board (retrying soon cannot help), a deadline is a slow
+ * provider, and everything else is a network failure.
+ */
+function fetchFailure(
+  endpoint: string,
+  error: unknown,
+  maxResponseBytes: number,
+): Extract<SourceLoadResult, { kind: "FAILED" }> {
+  const message = error instanceof Error ? error.message : "The source request failed.";
+  if (message === "JOB_API_RESPONSE_TOO_LARGE") {
+    return {
+      kind: "FAILED",
+      endpoint,
+      code: "BODY_TOO_LARGE",
+      message: `The source response exceeded the ${maxResponseBytes}-byte limit.`,
+      retryable: false,
+      status: null,
+    };
+  }
+  if (message === "JOB_API_TIMEOUT" || (error instanceof Error && error.name === "TimeoutError")) {
+    return {
+      kind: "FAILED",
+      endpoint,
+      code: "FETCH_TIMEOUT",
+      message: "The source did not finish responding before the request deadline.",
+      retryable: true,
+      status: null,
+    };
+  }
+  return { kind: "FAILED", endpoint, code: "FETCH_FAILED", message, retryable: true, status: null };
+}
+
 function etagFrom(headers: Readonly<Record<string, string | undefined>>): string | null {
   for (const [key, value] of Object.entries(headers)) {
     if (key.toLowerCase() === "etag") return value?.trim() || null;
@@ -77,18 +111,23 @@ export async function loadRegisteredJobSource(
       signal: options.signal,
     });
   } catch (error) {
-    return {
-      kind: "FAILED",
-      endpoint,
-      code: "FETCH_FAILED",
-      message: error instanceof Error ? error.message : "The source request failed.",
-      retryable: true,
-      status: null,
-    };
+    return fetchFailure(endpoint, error, maxResponseBytes);
   }
 
   const etag = etagFrom(response.headers);
-  if (response.status === 304) return { kind: "NOT_MODIFIED", endpoint, etag, observedAt: response.observedAt };
+  if (response.status === 304) {
+    if (!options.ifNoneMatch) return {
+      kind: "FAILED", endpoint, code: "NOT_MODIFIED_UNEXPECTED",
+      message: "The source returned not-modified without a prior conditional request.", retryable: true, status: 304,
+    };
+    return {
+      kind: "NOT_MODIFIED",
+      endpoint,
+      responseStatus: 304,
+      etag,
+      observedAt: response.observedAt,
+    };
+  }
   if (response.status < 200 || response.status >= 300) {
     return {
       kind: "FAILED",
@@ -131,6 +170,11 @@ export async function loadRegisteredJobSource(
     tenantKey: source.tenantKey,
     observedAt: response.observedAt,
   });
+  if (source.provider === "LEVER" && source.page) {
+    return { kind: "LOADED", endpoint, responseStatus: response.status, observedAt: response.observedAt,
+      etag, rawSha256: sha256Text(response.body), rawBytes,
+      snapshot: { ...snapshot, complete: false, issues: [...snapshot.issues, { recordIndex: null, code: "PAYLOAD_INVALID", message: "A single Lever page cannot establish a complete board snapshot." }] } };
+  }
   const maxRecords = options.maxRecords ?? DEFAULT_MAX_SOURCE_RECORDS;
   if (snapshot.jobs.length > maxRecords) {
     return {
@@ -146,6 +190,8 @@ export async function loadRegisteredJobSource(
   return {
     kind: "LOADED",
     endpoint,
+    responseStatus: response.status,
+    observedAt: response.observedAt,
     etag,
     rawSha256: sha256Text(response.body),
     rawBytes,

@@ -1,0 +1,71 @@
+.form,
+.compact {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.drop {
+  align-items: center;
+  background: var(--canvas);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  gap: 14px;
+  padding: 22px;
+  position: relative;
+  transition: border-color 140ms ease, background 140ms ease;
+  width: 100%;
+}
+
+.compact .drop {
+  padding: 14px 16px;
+}
+
+.drop:hover,
+.drop[data-dragging="true"] {
+  background: #fffaf0;
+  border-color: var(--first-light-deep);
+}
+
+.drop:focus-within {
+  box-shadow: 0 0 0 4px rgb(255 209 102 / 35%);
+}
+
+.drop > span:nth-child(2) {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.drop strong {
+  color: var(--ink);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.drop small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.icon {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink-soft);
+  display: inline-flex;
+  flex: none;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
+.input {
+  cursor: pointer;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+}

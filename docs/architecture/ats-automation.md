@@ -1,7 +1,7 @@
 ---
 title: ATS automation and browser execution
-status: MVP engineering strategy
-last_updated: 2026-08-11
+status: fill-to-review foundation accepted; live ATS execution remains gated
+last_updated: 2026-08-16
 ---
 
 # ATS automation
@@ -15,6 +15,12 @@ There is no verified universal candidate-side API for applying to arbitrary empl
 MCP does not create permission. Greenhouse and Ashby may expose employer-governed MCP capabilities, but those do not let a job seeker submit into unrelated employer tenants.
 
 Browser execution is therefore the universal MVP path. Formal direct-apply partnerships are the long-term reliability and distribution moat.
+
+**Current boundary:** RoleDawn has hosted, action-scoped fill authority and a
+database-owned computer-session lifecycle. Local tests cover exact execution
+materialization, no-submit coordination, lease recovery, teardown, and an
+installed-Chrome synthetic ATS form with a deliberate submit interlock. It has
+not opened or filled a real ATS through a managed provider.
 
 ## Verified platform constraints
 
@@ -37,12 +43,13 @@ flowchart TD
     B --> C["Versioned deterministic adapter"]
     C -->|known fields| D["Semantic DOM/accessibility locators"]
     C -->|schema drift| E["Bounded model mapping"]
-    D --> F["Pre-submit read-back and diff"]
-    E --> F
+    D --> X["Single-use fill authorization"]
+    E --> X
+    X --> F["Fill, upload, and pre-submit read-back"]
     E -->|still ambiguous| G["Vision/computer-use fallback"]
-    G --> F
+    G --> X
     G -->|high risk or unknown| H["Human takeover"]
-    F --> I["Policy + approval"]
+    F --> I["Separate submit policy + approval"]
     I --> J["Submit once"]
     J --> K["Confirmation evidence"]
     J -->|uncertain| L["Reconcile before retry"]
@@ -72,7 +79,10 @@ capture_confirmation(page, inbox) -> ConfirmationEvidence | Uncertain
 reconcile(application) -> Confirmed | NotSubmitted | NeedsUser
 ```
 
-All outputs are typed. Unknown fields remain unknown; an adapter may not coerce a value simply to make the form advance.
+All outputs are typed. Unknown fields remain unknown; an adapter may not coerce
+a value simply to make the form advance. The fill worker receives a narrower
+interface with no `submit` method. Submit remains a separate adapter capability
+and worker milestone.
 
 Keep provider and driver contracts separate:
 
@@ -81,7 +91,33 @@ Keep provider and driver contracts separate:
 - `AtsAdapter` knows one ATS family and converts portal behavior into normalized form, fill, pre-submit, commit, and reconciliation results.
 - `SecretBroker` releases credentials only to the allowed ATS tenant; the model never receives raw credentials.
 
-Persist login state by candidate and ATS tenant rather than one global profile per candidate. Use ephemeral sessions for hosted forms that do not require an account.
+Use a clean ephemeral session for each application by default. Persist encrypted
+login context only by candidate and ATS origin/tenant when continuity requires
+it, never as one global profile or always-on desktop per candidate. The
+database session ID is the provider provisioning idempotency key.
+
+### Alpha implementation boundary
+
+The first executable slice uses Browserbase sessions with Playwright CDP and a
+deterministic Greenhouse-style driver. It is deliberately narrower than the
+future adapter contract above:
+
+- one clean, short-lived, unrecorded session per attempt;
+- Browserbase metadata binds the provider session to the database
+  `computer_session_id`, and recovery must find that exact session or fail;
+- the initial page load may fetch safe static script, stylesheet, image, and
+  font resources from ATS CDNs, while cross-origin fetch/XHR/websocket traffic,
+  every unsafe HTTP method, and every later navigation are blocked;
+- only exact materialized standard fields and authorized files may be filled;
+- optional sensitive/EEO fields remain blank, while required sensitive/legal,
+  unknown required, login, OTP/MFA, and CAPTCHA fields stop for takeover;
+- no submit method and no candidate live-view URL exist in this slice; and
+- persistent mode fails closed until an internal browser profile has a distinct
+  provider-owned context reference.
+
+This is an implementation status statement, not evidence of success on a live
+Greenhouse tenant. See the
+[fill foundation acceptance](../execution/application-fill-foundation-acceptance.md).
 
 ## Field taxonomy
 
@@ -135,8 +171,9 @@ The customer interface uses “submitted” only for `Confirmed`.
 fixture-only
 → shadow extraction
 → draft-only on live forms
+→ single-use fill authorization
 → human final click
-→ mandatory single-application approval
+→ separate mandatory submit approval
 → narrow standing authorization
 ```
 
@@ -206,7 +243,7 @@ Never market “official integration” from a public job-feed API alone.
 
 ## First vendor benchmark
 
-**Recommendation pending O-002:** benchmark Browserbase as browser infrastructure, Playwright as the primary driver, Stagehand as a constrained observe/validate/act repair layer, and Orgo as the desktop-only escape hatch. Benchmark Browser Use Cloud as the second full-stack option.
+**Alpha implementation, not a production selection:** RoleDawn now has a provider-neutral Browserbase adapter with Playwright as the primary driver and a deterministic Greenhouse no-submit driver. The adapter has passed local contract tests but has not yet been exercised against a live Browserbase session or employer ATS. O-002 remains open until the fixed-form benchmark measures Browserbase against at least one full-stack alternative. Stagehand remains a possible constrained observe/validate/act repair layer, while Orgo is reserved for workflows that prove they need a full desktop.
 
 Measure at minimum:
 

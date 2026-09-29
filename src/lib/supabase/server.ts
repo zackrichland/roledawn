@@ -5,12 +5,14 @@ import { cookies } from "next/headers";
 
 import { requireSupabasePublicConfig } from "@/lib/supabase/config";
 import type { Database } from "@/lib/supabase/database.types";
+import { resilientFetch } from "@/lib/supabase/resilient-fetch";
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
   const { url, publishableKey } = requireSupabasePublicConfig();
 
   return createServerClient<Database>(url, publishableKey, {
+    global: { fetch: resilientFetch() },
     cookies: {
       getAll() {
         return cookieStore.getAll();

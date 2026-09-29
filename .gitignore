@@ -26,3 +26,6 @@ yarn-debug.log*
 yarn-error.log*
 .DS_Store
 Thumbs.db
+
+# Local scratch output (may contain personal data)
+/tmp/

@@ -1,0 +1,188 @@
+.items {
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.items > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.row {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 0;
+}
+
+.row > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.row strong {
+  color: var(--ink);
+  font-size: 15.5px;
+}
+
+.row span {
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.row small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.row p {
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
+
+.lines {
+  margin-top: 8px;
+}
+
+.lines summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.lines ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.lines li {
+  color: var(--ink-soft);
+  font-family: var(--font-serif);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+.form {
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 14px;
+  margin: 10px 0;
+  padding: 18px;
+}
+
+.dates {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.date {
+  border: 0;
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.date > div {
+  display: flex;
+  gap: 8px;
+}
+
+.date select {
+  width: 110px;
+}
+
+.date input {
+  width: 92px;
+}
+
+.date:disabled {
+  opacity: 0.5;
+}
+
+.optional {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.certs {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.certs ul {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.certs li {
+  align-items: center;
+  color: var(--ink-soft);
+  display: flex;
+  font-size: 14px;
+  justify-content: space-between;
+}
+
+.saveBar {
+  align-items: center;
+  background: var(--midnight);
+  border-radius: var(--radius-lg);
+  bottom: 16px;
+  box-shadow: var(--shadow-lg);
+  color: #fff;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 12px 14px 12px 20px;
+  position: sticky;
+  z-index: 5;
+}
+
+.saveBar p {
+  font-size: 14px;
+  margin: 0;
+}
+
+.saveBar button:first-child {
+  color: #c9cfe0;
+}
+
+.saveBar button:first-child:hover {
+  background: rgb(255 255 255 / 8%);
+  color: #fff;
+}
+
+.saved {
+  color: var(--mint);
+}
+
+.error {
+  color: #ffb3c0;
+}
+
+@media (max-width: 640px) {
+  .saveBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

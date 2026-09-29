@@ -236,7 +236,7 @@ test("Greenhouse fixture normalizes provider identity, provenance, and text", ()
     externalJobIdBasis: "PROVIDER_ID",
     title: "Data Scientist",
     canonicalJobUrl: "https://job-boards.greenhouse.io/greenhouse/jobs/8017323?gh_jid=8017323",
-    applyUrl: "https://job-boards.greenhouse.io/greenhouse/jobs/8017323?gh_jid=8017323",
+    applyUrl: "https://job-boards.greenhouse.io/greenhouse/jobs/8017323",
     descriptionText: "Build & test models.",
     descriptionHtml: "&lt;p&gt;Build &amp;amp; test models.&lt;/p&gt;",
     locations: [{ label: "Canada", countryCode: null }, { label: "Ontario", countryCode: null }],
@@ -345,13 +345,27 @@ test("source loader treats 304 as health success without normalization", async (
   const result = await loadRegisteredJobSource(
     { sourceId: "lv-1", provider: "LEVER", tenantKey: "palantir" },
     port,
+    { ifNoneMatch: 'W/"same"' },
   );
   assert.deepEqual(result, {
     kind: "NOT_MODIFIED",
     endpoint: "https://api.lever.co/v0/postings/palantir?mode=json",
+    responseStatus: 304,
     etag: 'W/"same"',
     observedAt,
   });
+});
+
+test("unsolicited 304 and incomplete board responses cannot establish absence evidence", async () => {
+  const source = { sourceId: "lv-1", provider: "LEVER" as const, tenantKey: "palantir" };
+  const unconditioned = await loadRegisteredJobSource(source, new FixtureFetchPort({ status: 304, body: "", headers: {}, observedAt }));
+  assert.equal(unconditioned.kind, "FAILED");
+  if (unconditioned.kind === "FAILED") assert.equal(unconditioned.code, "NOT_MODIFIED_UNEXPECTED");
+  const page = await loadRegisteredJobSource({ ...source, page: { skip: 0, limit: 100 } }, new FixtureFetchPort({ status: 200, body: "[]", headers: {}, observedAt }));
+  assert.equal(page.kind, "LOADED");
+  if (page.kind === "LOADED") assert.equal(page.snapshot.complete, false);
+  const truncated = greenhouseAdapter.normalize({ jobs: [], meta: { total: 5 } }, { sourceId: "gh-1", tenantKey: "example", observedAt });
+  assert.equal(truncated.complete, false);
 });
 
 test("source loader classifies retries and enforces response and record budgets", async () => {
@@ -380,7 +394,18 @@ test("source loader classifies retries and enforces response and record budgets"
 });
 
 test("direct resolver selects one Greenhouse job and keeps official provenance", async () => {
-  const singleJob = greenhouseFixture.jobs[0];
+  const singleJob = {
+    ...greenhouseFixture.jobs[0],
+    questions: [{
+      label: "First Name",
+      required: true,
+      fields: [{ name: "first_name", type: "input_text", values: [] }],
+    }],
+    location_questions: [],
+    compliance: [],
+    demographic_questions: { questions: [] },
+    data_compliance: [],
+  };
   const body = JSON.stringify(singleJob);
   const port = new FixtureFetchPort({ status: 200, body, headers: {}, observedAt });
   const result = await resolvePublicJobUrl(
@@ -392,6 +417,8 @@ test("direct resolver selects one Greenhouse job and keeps official provenance",
   assert.equal(result.value.job.title, "Data Scientist");
   assert.equal(result.value.job.externalJobId, "8017323");
   assert.equal(result.value.rawSha256, sha256Text(body));
+  assert.equal(result.value.applicationSchema?.normalizedSchema.questions[0].label, "First Name");
+  assert.equal(result.value.applicationSchema?.providerBinding.questions[0].fields[0].providerName, "first_name");
   assert.equal(port.requests[0].url, result.value.endpoint);
 });
 
@@ -409,7 +436,10 @@ test("direct resolver filters an Ashby board to the requested job", async () => 
     new FixtureFetchPort({ status: 200, body, headers: {}, observedAt }),
   );
   assert.equal(result.kind, "RESOLVED");
-  if (result.kind === "RESOLVED") assert.equal(result.value.job.title, "Engineering Manager - EU");
+  if (result.kind === "RESOLVED") {
+    assert.equal(result.value.job.title, "Engineering Manager - EU");
+    assert.equal(result.value.applicationSchema, null);
+  }
 });
 
 test("direct resolver fails closed for unsupported and missing postings", async () => {

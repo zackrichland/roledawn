@@ -1,7 +1,7 @@
 ---
 title: Model routing, prompts, tools, and evaluation
-status: current recommendation; model names and prices require launch-time verification
-last_updated: 2026-08-11
+status: durable Terra drafting and entailment runtime plus deterministic quality gate implemented; broader research and blind evals pending
+last_updated: 2026-08-16
 ---
 
 # Model routing and evaluation
@@ -14,36 +14,62 @@ Use deterministic software for state, identity, deduplication, permissions, exac
 
 The durable system is the workflow plus typed tools. The model is a replaceable worker selected for one task.
 
-## Current OpenAI route
+## Current implementation boundary
 
-As of 2026-08-06, official OpenAI guidance identifies GPT-5.6 Sol as the flagship agentic/coding model, GPT-5.6 Terra as the balanced model, and GPT-5.6 Luna as the efficient high-volume model. Re-verify aliases, prices, latency, and availability before implementation.
+OpenAI is now the initial drafting benchmark behind the provider-neutral seam,
+not a production-wide provider selection. The server-only adapter uses the
+Responses API with `gpt-5.6-terra`, medium reasoning, strict Structured Outputs,
+`store: false`, explicit refusal/incomplete handling, and no SDK-owned retries.
+The credential is local and Git-ignored. The leased Application Kit worker now
+calls the drafting and entailment adapters, but no model output can authorize
+itself or persist without every server-owned gate:
 
-| Task | Default | Escalation | Why |
-|---|---|---|---|
-| Job parsing, normalization, labels, simple extraction | GPT-5.6 Luna | Terra on schema/quality failure | High-volume, bounded, easily evaluated |
-| Hard-rule eligibility | Deterministic code | Terra only to interpret ambiguous posting language | Exact user rules remain code-owned |
-| Fit explanation and evidence selection | GPT-5.6 Terra | Sol for ambiguous/senior/high-stakes roles | Balance quality and operating cost |
-| Resume/cover-letter/short-answer drafting | Terra | Sol for premium final QA or repeated factual/style failure | Most value comes from evidence packet and validation, not maximum model size |
-| Known-ATS field mapping | Deterministic adapter + Terra | Sol when schema is unfamiliar | Structured route first |
-| Unknown-page recovery and failure diagnosis | Sol | Human takeover | Demanding browser/tool reasoning |
-| User conversation | Terra | Sol for consequential ambiguity | Natural interaction with bounded tools |
-| Final permission and submit | Deterministic code only | Human | Models never grant authority |
+| Boundary | Status | What is true now |
+|---|---|---|
+| Exact-snapshot context loader | **Implemented and tested** | Reads only named snapshot/job/résumé/evidence versions, rechecks hashes, and has no `latest` lookup |
+| Provider-safe drafting request | **Implemented and tested** | Excludes candidate identity, exact facts, raw document IDs, and raw reviewed résumé text; generated modes receive approved narrative evidence only |
+| Drafting adapter output parser | **Implemented and tested** | Treats provider output as `unknown`, rejects unknown/malformed/unbounded structures, and preserves refusal/incomplete states |
+| Cited research proposal and bundle | **Implemented and tested** | Requires approved source classes, citations, conflicts, freshness, exact snapshot/job binding, and deterministic hashes |
+| Hosted provenance schema | **Deployed and rollback-accepted** | Research bundles and revision evidence references are append-only; revisions require matching input and research provenance |
+| Research and drafting consumer | **Implemented and founder-dogfooded** | The leased `application.drafting_requested` consumer revalidates one exact snapshot and commits the complete kit atomically |
+| Terra drafting adapter | **Implemented and founder-dogfooded** | Strict Structured Outputs remain an untrusted proposal behind provider-neutral contracts |
+| Research provider | **Narrow implementation only** | The official posting becomes a cited, fresh bundle; broader primary-source company research is not connected and is explicitly warned as limited |
+| Semantic entailment | **Implemented and required** | A separate adapter receives only each generated claim and its cited frozen source text; every claim must be entailed |
+| Quality policy and review gate | **Implemented for new snapshots** | `roledawn-writing-policy/2` and `roledawn-application-quality-evaluator/1` enforce role specificity, proof, candidate-facing hygiene, and auditable warnings before rendering |
+| Renderer | **Implemented with bounded text QA** | Four PDF/DOCX artifacts are re-extracted, coverage-checked, hashed, and persisted; page-image visual inspection remains pending |
 
-Use direct Responses API calls for one-shot typed transforms and custom loops where RoleDawn owns branching. Use the Agents SDK for bounded multi-tool research or unfamiliar-form planning when its tool loop, guardrails, interruptions, and traces reduce implementation burden. Both run inside typed Temporal activities; neither replaces the business workflow or domain database.
+### Provider-selection recommendation
 
-Start with one focused agent per bounded task. Add manager/specialist patterns only when an evaluation set proves that one focused run is insufficient. Every run has an allowed-tool list, turn cap, wall-clock limit, cost reservation, structured result, and typed failure.
+Keep routing task-based and benchmark candidates behind the existing contracts.
+Do not put provider IDs in domain state beyond immutable execution provenance.
+Terra is accepted for founder dogfood drafting only. A production route still
+requires a fixed fixture set measuring factual support, abstention, schema
+validity, latency, and accepted-output cost.
 
-PostgreSQL remains authoritative for domain facts, policy, application records, and approvals; Temporal for in-flight execution history; and the append-only ledger for consequential proof. Models own none of them.
+| Task | Initial route | Escalation rule |
+|---|---|---|
+| Job normalization and hard eligibility | Deterministic code | A model may explain ambiguous text, but code owns the rule and outcome |
+| Cited company/role research | One bounded research adapter | Reject output without valid primary-source citations, binding, and freshness |
+| Evidence selection and résumé/letter drafting | One bounded drafting adapter | Retry or escalate only for typed refusal, incompleteness, or failed quality gates |
+| Semantic entailment | Separate constrained validator | Human review on conflict or uncertain material claim |
+| Known-ATS field mapping | Deterministic adapter first | Bounded planner or human takeover for unfamiliar terrain |
+| Final permission and submit | Deterministic code only | Candidate approval; never a model decision |
+
+**Recommendation:** begin with one focused provider call per bounded research,
+drafting, or validation task. Add a manager/specialist loop only when evaluation
+evidence proves a focused call is insufficient. A future workflow coordinator
+may own retries and waits; PostgreSQL remains the source of domain authority.
 
 ## Tool design
 
-Start with narrow typed tools:
+The following are target tools, not a description of a connected model runtime:
 
 ```text
-get_job_snapshot(job_id)
-get_candidate_fact_packet(user_id, usage_context, role_family)
-draft_artifact(job_snapshot_id, fact_packet_version, style_policy_version)
-validate_claims(artifact_id)
+get_application_input_snapshot(input_snapshot_id)
+get_approved_narrative_evidence(input_snapshot_id)
+get_application_research_bundle(input_snapshot_id)
+draft_application_materials(input_snapshot_id, research_bundle_id, policy_release)
+validate_semantic_claims(drafting_proposal_id)
 get_form_schema(application_id)
 propose_field_map(application_id, schema_version)
 request_exact_fact(application_id, field_id)
@@ -64,28 +90,58 @@ Tools must be:
 
 ## Context construction
 
-Send the smallest evidence packet required for the task:
+The implemented drafting-context builder begins with the immutable Application
+Input Snapshot named by the event. Its reader exposes exact-ID methods only and
+revalidates the snapshot hash, job-version hash, reviewed-résumé hashes, and
+approved evidence versions before constructing context.
 
-- Authoritative job snapshot.
-- Relevant verified facts and source passages.
-- Exact answer policies for the current field class.
-- Approved voice examples, not entire private history.
-- Current artifact and requested edit.
-- Explicit constraints and output schema.
+The trusted server may read reviewed résumé text to validate the frozen input.
+The provider request is smaller:
 
-Do not send passwords, OTPs, cookies, unrelated private messages, voluntary demographic data, or full account history.
+- exact input-snapshot ID and hash;
+- the bound employer, title, description, and normalized job context;
+- tailoring mode and versioned writing-policy limits;
+- approved narrative-evidence text and immutable evidence-version IDs; and
+- a résumé-handling directive.
 
-Treat resumes, job pages, recruiter messages, and uploaded files as untrusted content delimited from system instructions.
+For `AS_UPLOADED`, that directive is `PRESERVE_SERVER_SIDE`; the model receives
+the reviewed-text hash but does not receive or recreate the résumé text. For
+`REORDER_AND_TIGHTEN` and `REWRITE_FROM_VERIFIED_FACTS`, generated résumé prose
+may use only approved narrative evidence permitted for the résumé.
+
+Candidate identity, candidate/workspace IDs, exact fact values, raw document
+IDs, passwords, OTPs, cookies, unrelated private messages, voluntary
+demographic data, and full account history stay out of narrative provider
+context. Exact facts remain available only to deterministic field handling under
+their allowed-use policy.
+
+Treat résumés, job pages, recruiter messages, citations, and uploaded files as
+untrusted content delimited from system instructions.
 
 ## Writing pipeline
 
-1. Select facts by role relevance and permitted usage.
-2. Draft with fact IDs attached to material claims.
-3. Apply voice policy and no-slop edit.
-4. Extract claims deterministically or with a separate constrained pass.
-5. Verify claims against the evidence ledger.
-6. Reject, remove, or ask for any unsupported claim.
-7. Render artifact and bind its hash/version to the application.
+All eight stages below are connected for the official-posting-only Application
+Kit path. The broader primary-source researcher, iterative revision loop,
+candidate voice profile, long-form application-answer evaluator, visual page
+inspection, and blind evaluation corpus remain open. See the
+[application quality system](application-quality-system.md) for that boundary.
+
+1. Load and revalidate the named immutable Application Input Snapshot.
+2. Build a provider-safe request from the exact job version and approved
+   narrative-evidence versions. Preserve `AS_UPLOADED` server-side.
+3. Parse all provider output from `unknown` through the strict bounded schema.
+4. Run bounded cited research and persist a fresh snapshot-bound research
+   bundle.
+5. Draft with immutable evidence IDs or job/research citations attached to each
+   material claim; apply the versioned writing policy.
+6. Run deterministic checks, then a distinct semantic-entailment validator.
+   Deterministic success while entailment is `REQUIRED_NOT_RUN` is not a pass.
+7. Run the versioned quality evaluator. Block missing proof, role specificity,
+   unresolved placeholders, internal metadata, or policy drift; preserve
+   non-blocking writing and research-depth warnings in the packet manifest.
+8. Render artifact bytes, hash them in the trusted finalizer, bind the revision
+   to its input snapshot, research bundle, evidence references, and policy, then
+   persist once.
 
 Expose three editing strengths: `AS_UPLOADED`, `REORDER_AND_TIGHTEN`, and `REWRITE_FROM_VERIFIED_FACTS`. The strongest mode may rewrite structure and bullets from supported evidence, but no mode can relax factual validation.
 
@@ -195,7 +251,7 @@ Early cost estimates are uncertain; browser retries and support will dominate ne
 - Daily application and dollar cap per user.
 - Browser-session maximum of roughly 15 minutes during alpha.
 - Maximum three retries before any side-effect boundary; fewer for expensive unknown flows.
-- Sol escalation budget per application.
+- Quality-escalation budget per application.
 - Batch discovery and parsing.
 - Cache stable profile/job context with version keys.
 - Stop unknown terrain instead of spending through it.

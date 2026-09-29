@@ -19,8 +19,11 @@ const policy: AllowedDomainPolicy = {
 };
 
 const binding: ComputerSessionBinding = {
+  workspaceId: "workspace-1",
   candidateId: "candidate-1",
   applicationId: "application-1",
+  revisionId: "revision-1",
+  fillAttemptId: "fill-attempt-1",
 };
 
 const artifact: ArtifactMountReference = {
@@ -91,6 +94,13 @@ test("session creation binds one application, mounts references, and hides provi
   assert.equal(wrongCandidate.ok, false);
   if (!wrongCandidate.ok) assert.equal(wrongCandidate.error.code, "SESSION_NOT_FOUND");
 
+  const wrongRevision = await broker.getSession(created.value.sessionId, {
+    ...binding,
+    revisionId: "revision-2",
+  });
+  assert.equal(wrongRevision.ok, false);
+  if (!wrongRevision.ok) assert.equal(wrongRevision.error.code, "SESSION_NOT_FOUND");
+
   now += 1;
   const correctCandidate = await broker.getSession(created.value.sessionId, binding);
   assert.equal(correctCandidate.ok, true);
@@ -144,7 +154,12 @@ test("live view is optional and a required unsupported view fails closed", async
   if (preferred.ok) assert.equal(preferred.value.liveView, null);
 
   const required = await broker.createSession({
-    binding: { ...binding, applicationId: "application-2" },
+    binding: {
+      ...binding,
+      applicationId: "application-2",
+      revisionId: "revision-2",
+      fillAttemptId: "fill-attempt-2",
+    },
     startUrl: "https://boards.greenhouse.io/example/jobs/2",
     allowedDomainPolicy: policy,
     ttlMs: 30_000,

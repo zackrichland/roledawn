@@ -1,6 +1,22 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getSingleAccountEntryPath, readSingleAccountConfig } from "@/server/auth/single-account-policy";
 
-export default function AuthErrorPage() {
+import { getSafeAuthNextPath } from "@/server/auth/auth-redirect-policy";
+
+export default async function AuthErrorPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string | string[]; reason?: string }>;
+}) {
+  const { next, reason } = await searchParams;
+  const nextPath = getSafeAuthNextPath(
+    Array.isArray(next) ? next[0] : next,
+  );
+  if (readSingleAccountConfig()) redirect(getSingleAccountEntryPath(nextPath));
+  const setupFailed = reason === "setup_failed";
+  const oauthFailed = reason === "oauth_failed";
+
   return (
     <main
       style={{
@@ -43,7 +59,11 @@ export default function AuthErrorPage() {
             margin: "0 0 12px",
           }}
         >
-          That sign-in link did not work
+          {setupFailed
+            ? "We could not finish setting up your account"
+            : oauthFailed
+              ? "Google sign-in did not finish"
+              : "That sign-in link did not work"}
         </h1>
         <p
           style={{
@@ -53,10 +73,14 @@ export default function AuthErrorPage() {
             margin: "0 0 28px",
           }}
         >
-          It may be expired or already used. Request a fresh link to continue.
+          {setupFailed
+            ? "Your sign-in succeeded, but your candidate profile was not created. Try signing in again."
+            : oauthFailed
+              ? "Try Google again or use the secure email sign-in link instead."
+              : "It may be expired or already used. Request a fresh link to continue."}
         </p>
         <Link
-          href="/login"
+          href={`/login?next=${encodeURIComponent(nextPath)}`}
           style={{
             background: "#0d1724",
             borderRadius: "12px",

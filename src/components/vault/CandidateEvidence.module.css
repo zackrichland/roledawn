@@ -1,0 +1,153 @@
+.workspace {
+  display: grid;
+  gap: 14px;
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 22px 24px;
+}
+
+.card h2 {
+  color: var(--ink);
+  font-size: 17px;
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.muted a {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.summary {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.summary strong {
+  color: var(--ink);
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+}
+
+.evidenceCard {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 18px;
+}
+
+.evidenceCard form {
+  display: grid;
+  gap: 10px;
+}
+
+.cardHeader {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.category {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.evidenceCard textarea {
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 1.55;
+  padding: 10px 12px;
+  resize: vertical;
+  width: 100%;
+}
+
+.evidenceCard textarea:focus {
+  background: var(--paper);
+  border-color: var(--ink-soft);
+  box-shadow: 0 0 0 4px rgb(255 209 102 / 35%);
+  outline: none;
+}
+
+.sourceDetails summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.sourceDetails blockquote {
+  border-left: 3px solid var(--line-strong);
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+  padding-left: 12px;
+  white-space: pre-line;
+}
+
+.reviewControls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.reviewControls select {
+  max-width: 260px;
+}
+
+.attestation {
+  align-items: center;
+  color: var(--ink-soft);
+  display: inline-flex;
+  font-size: 13.5px;
+  gap: 8px;
+}
+
+.attestation input {
+  accent-color: var(--midnight);
+}
+
+.actionError {
+  color: var(--rose-ink);
+  font-size: 13.5px;
+  margin: 0;
+}
+
+.actionSuccess {
+  color: var(--mint-ink);
+  font-size: 13.5px;
+  margin: 0;
+}
+
+.cardFooter {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

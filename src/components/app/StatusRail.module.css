@@ -1,0 +1,117 @@
+.rail {
+  --bead: 12px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+.rail li {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  position: relative;
+}
+
+/* The track between beads. */
+.rail li + li::before {
+  background: var(--line-strong);
+  content: "";
+  height: 2px;
+  left: calc(-50% + var(--bead) / 2 + 4px);
+  position: absolute;
+  right: calc(50% + var(--bead) / 2 + 4px);
+  top: calc(var(--bead) / 2 - 1px);
+}
+
+.rail li[data-state="past"] + li::before,
+.rail li[data-state="current"] + li[data-state="current"]::before {
+  background: var(--midnight);
+}
+
+.bead {
+  background: var(--paper);
+  border: 2px solid var(--line-strong);
+  border-radius: 50%;
+  display: block;
+  height: var(--bead);
+  transition: background 240ms ease, border-color 240ms ease, transform 240ms ease;
+  width: var(--bead);
+}
+
+li[data-state="past"] .bead {
+  background: var(--midnight);
+  border-color: var(--midnight);
+}
+
+li[data-state="current"] .bead {
+  background: var(--first-light);
+  border-color: var(--midnight);
+  box-shadow: 0 0 0 4px rgb(255 209 102 / 35%);
+  transform: scale(1.18);
+}
+
+.rail[data-tone="attention"] li[data-state="current"] .bead,
+.rail[data-tone="error"] li[data-state="current"] .bead {
+  background: var(--coral);
+  border-color: var(--coral);
+  box-shadow: 0 0 0 4px rgb(255 107 95 / 22%);
+}
+
+.rail[data-tone="done"] li .bead {
+  background: var(--mint);
+  border-color: var(--mint-ink);
+}
+
+.rail[data-tone="working"] li[data-state="current"] .bead {
+  animation: breathe 2.2s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 3px rgb(255 209 102 / 30%); }
+  50% { box-shadow: 0 0 0 7px rgb(255 209 102 / 0%); }
+}
+
+.label {
+  color: var(--faint);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+li[data-state="past"] .label,
+li[data-state="current"] .label {
+  color: var(--ink-soft);
+}
+
+.compact {
+  --bead: 8px;
+  gap: 0;
+  width: 92px;
+}
+
+.compact li {
+  gap: 0;
+}
+
+.compact li + li::before {
+  left: calc(-50% + var(--bead) / 2 + 2px);
+  right: calc(50% + var(--bead) / 2 + 2px);
+}
+
+.compact li[data-state="current"] .bead {
+  box-shadow: 0 0 0 3px rgb(255 209 102 / 35%);
+}
+
+.srOnly {
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}

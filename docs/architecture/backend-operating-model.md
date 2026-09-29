@@ -2,7 +2,7 @@
 title: Backend operating model and agent runtime
 status: canonical recommended architecture; production vendors remain benchmark-gated
 owner: founder, product, and engineering
-last_updated: 2026-08-11
+last_updated: 2026-08-18
 scope: job ingestion, matching, preparation, execution, models, storage, and recovery
 ---
 
@@ -19,12 +19,27 @@ The operating rule is:
 > **Deterministic spine. Agentic edges.**
 
 - PostgreSQL owns durable domain truth.
-- Temporal owns long-running workflow execution.
+- **Target state:** Temporal or an equivalent durable coordinator owns
+  long-running workflow execution. The current runtime has leased workers for
+  job resolution, exact-input preparation, Application Kit production, and the
+  fill-to-review session lifecycle; Temporal is not deployed.
 - Bounded model runs interpret, research, select, draft, and propose.
 - Typed services validate claims, policy, approvals, state transitions, and side effects.
 - Browser workers are temporary hands. They never become the brain or source of truth.
 
-This document is the canonical end-to-end backend model. The [pasted-link application engine](pasted-link-application-engine.md) is the first backend vertical slice. The other focused companion specifications remain authoritative for [job discovery](job-discovery.md), [ATS execution](ats-automation.md), [model routing and evaluation](model-routing-and-evals.md), [security](data-security-and-trust.md), [scale and cost](scale-cost-and-capacity.md), [OAuth and credentials](integrations-and-oauth.md), and the [frontend contract](frontend-backend-contract.md).
+This document is the canonical end-to-end backend model. The
+[three-system product architecture](three-system-product-architecture.md) is
+the canonical ownership and sequencing view: Candidate Intelligence owns the
+Candidate profile primitive; Opportunity Intelligence owns Catalog and Match;
+Application Delivery owns Application packet, Execution, and Proof. The shared
+control plane supports all three and is not a separate product bucket.
+
+The [pasted-link application engine](pasted-link-application-engine.md) is the
+first backend vertical slice. The other focused companion specifications remain
+authoritative for [job discovery](job-discovery.md), [ATS execution](ats-automation.md),
+[model routing and evaluation](model-routing-and-evals.md), [security](data-security-and-trust.md),
+[scale and cost](scale-cost-and-capacity.md), [OAuth and credentials](integrations-and-oauth.md),
+and the [frontend contract](frontend-backend-contract.md).
 
 ## What is known about Tsenta
 
@@ -79,11 +94,13 @@ flowchart LR
     subgraph EXEC["Application execution"]
       FORM["ATS inspection and form schema"]
       FILL["Deterministic fill with bounded fallback"]
-      DIFF["Immutable pre-submit diff"]
-      APPROVE["Single-use approval"]
+      DIFF["Immutable material diff"]
+      APPROVE["Single-use fill authorization"]
+      REVIEW["Pre-submit review + live read-back"]
+      SUBAUTH["Separate submit authorization"]
       SUBMIT["One submit attempt"]
       RECON["Confirmation reconciliation"]
-      FORM --> FILL --> DIFF --> APPROVE --> SUBMIT --> RECON
+      FORM --> DIFF --> APPROVE --> FILL --> REVIEW --> SUBAUTH --> SUBMIT --> RECON
     end
 
     CAT --> ELIG
@@ -105,7 +122,7 @@ Everything in the first product should compose from six primitives.
 | Candidate profile | Know exact facts, rules, voice, and permissions | Career Vault records and policy | Narrative retrieval and evidence suggestions |
 | Match | Decide whether a job deserves candidate attention | Hard eligibility rules and immutable inputs | Evidence-based fit reasoning on bounded candidates |
 | Application packet | Prepare exactly what would be sent | Versioned facts, answers, artifacts, and hashes | Research, evidence selection, drafting, editing |
-| Execution | Fill one live employer form | Adapter, policy, approval, attempt identity | Bounded form mapping and visual fallback |
+| Execution | Fill one live employer form and stop for review | Adapter, policy, fill authority, session identity | Bounded form mapping and visual fallback |
 | Proof | Say what actually happened | Stored confirmation evidence and reconciliation | Evidence classification, never final authority |
 
 If a proposed feature does not fit one of these primitives, it probably belongs outside the first backend.
@@ -245,7 +262,24 @@ Explicit candidate decisions may improve ranking. Protected attributes and volun
 
 ## 3. One durable workflow per queued application
 
-Queueing a job creates an `application` tied to the exact candidate, job episode, and job version, then starts one Temporal workflow with a stable application workflow ID.
+**Target state:** queueing a job creates an `application` tied to the exact
+candidate, job episode, and job version, then starts one Temporal workflow with
+a stable application workflow ID. **Current state:** one transaction creates the
+application, preparation run, event, and outbox message. A manually invoked
+leased worker resolves the job or freezes and checks the exact preparation
+inputs. Temporal is not deployed.
+
+The first deployed System 3 seam is an immutable **Application Input Snapshot**.
+It binds one exact job version, candidate input epoch, reviewed résumé hashes,
+approved narrative-evidence version references, approved exact-fact version
+references, tailoring/submission modes, and policy releases. Deterministic
+preflight commits either `READY_FOR_DRAFTING` or a typed candidate blocker.
+Input changes advance the epoch; snapshot commit rechecks that epoch and the
+eligible version sets before a drafting handoff. Exact fact values remain in
+their existing authority records and out of narrative model context.
+
+This per-application record is separate from the planned reusable Candidate
+Evidence Snapshot owned by Candidate Intelligence.
 
 ```mermaid
 stateDiagram-v2
@@ -255,12 +289,15 @@ stateDiagram-v2
     Drafting --> Ready
     Ready --> Drafting: material input changed
     Ready --> Skipped
-    Ready --> Authorized: single-use approval consumed
-    Authorized --> Executing
-    Executing --> Takeover
-    Takeover --> Executing
-    Executing --> Reconciling: result uncertain
-    Executing --> Confirmed: evidence captured
+    Ready --> FillAuthorized: fill-only authority consumed
+    FillAuthorized --> Filling
+    Filling --> Takeover
+    Takeover --> Filling
+    Filling --> PreSubmitReview: read-back committed
+    PreSubmitReview --> SubmitAuthorized: separate submit authority consumed
+    SubmitAuthorized --> Executing
+    Executing --> Reconciling: submit result uncertain
+    Executing --> Confirmed: confirmation evidence captured
     Reconciling --> Confirmed: evidence found
     Reconciling --> FailedSafe: bounded checks exhausted
     Confirmed --> [*]
@@ -276,6 +313,8 @@ The workflow can branch, call tools, wait for a candidate, retry safe activities
 
 ```text
 freeze_job_version
+→ freeze_application_inputs
+→ deterministic_preflight
 → research_company_and_role
 → build_evidence_packet
 → plan_resume
@@ -286,12 +325,16 @@ freeze_job_version
 → validate_exact_facts_and_claim_support
 → apply_voice_and_no-slop_policy
 → render_and_QA_documents
+→ create_fill_only_authorization
+→ materialize_exact_authorized_values_and_artifacts
+→ provision_ephemeral_application_session
 → inspect_live_form
 → resolve_exact_fields
 → request_missing_answers
-→ fill_draft
-→ create_immutable_pre_submit_packet
-→ wait_for_single_use_approval
+→ fill_and_upload_without_submit
+→ commit_live_read_back_and_pre_submit_diff
+→ destroy_application_session
+→ wait_for_separate_submit_approval
 → submit_once
 → reconcile_confirmation
 ```
@@ -334,6 +377,8 @@ The Career Vault is not a vector database full of resume text. It is a versioned
 ### Durable evidence records
 
 - `source_documents` and immutable document versions;
+- `source_document_text_reviews` and source-linked evidence passages;
+- `candidate_evidence_items`, immutable evidence versions, and citations;
 - `candidate_facts` and immutable fact versions;
 - `fact_sources` and `fact_source_spans`;
 - `fact_usage_policies`;
@@ -343,7 +388,12 @@ The Career Vault is not a vector database full of resume text. It is a versioned
 
 Exact fields—name, address, titles, dates, metrics, education, authorization, sponsorship, and legal answers—must resolve to structured approved records. Retrieval may suggest narrative passages; it cannot become the authority for exact or sensitive answers.
 
-Every application gets an immutable evidence packet containing only facts and source passages permitted for that application context. This makes a draft replayable and prevents an unrelated private fact from leaking into a form.
+The deployed Application Input Snapshot stores only immutable version references
+and hashes permitted for one application context. The planned Candidate
+Evidence Snapshot can later provide a reusable System 1 handoff, while the
+later application revision contains generated materials. Keeping those three
+records distinct makes a draft replayable and prevents unrelated private facts
+from leaking into a form.
 
 ## 6. Writing and document generation
 
@@ -456,25 +506,55 @@ interface BrowserSessionBroker {
 }
 ```
 
-Persist profiles by candidate and ATS tenant, not one global profile per candidate. A Workday account for one employer must not share cookies or credentials with another tenant. Use ephemeral sessions for hosted forms that require no account.
+Use a clean ephemeral session for each application by default. When an account
+or portal continuity requires retained state, persist only an encrypted context
+scoped to the candidate and ATS origin/tenant. A Workday account for one
+employer must not share cookies or credentials with another tenant. PostgreSQL,
+not the VM disk, remains durable workflow memory. Do not assign one always-on
+computer to every candidate.
 
-### Recommended first benchmark
+### First benchmark implementation
 
-- Browser infrastructure: Browserbase.
-- Primary driver: Playwright.
+- Browser infrastructure: Browserbase adapter implemented behind an explicit
+  credential gate; one short-lived credentialed synthetic session connected,
+  preserved origin/no-submit guards, and released explicitly. No real ATS or
+  candidate data was used.
+- Candidate takeover foundation: an owner-scoped, no-store Live View lookup is
+  implemented for active sessions. A worker-owned retained-session supervisor
+  remains required before the candidate can safely take control.
+- Primary driver: Playwright over CDP, with one deterministic Greenhouse-style
+  no-submit driver implemented and accepted against a synthetic form.
 - Adaptive DOM fallback: Stagehand behind a constrained driver interface.
 - Desktop fallback: Orgo behind the same broker, only when the page needs full desktop interaction.
 - Second full-stack benchmark: Browser Use Cloud.
 - Disposable full-computer benchmark: Cua Sandbox behind the same broker.
 - CAPTCHA and 2FA: secure human takeover; no solver or bypass.
 
-These are benchmark candidates pending the 100-form evaluation in [ATS automation](ats-automation.md), not signed vendor decisions. The [pasted-link engine](pasted-link-application-engine.md) defines the narrower first execution thread and its safe teardown contract.
+These remain benchmark candidates pending the 100-form evaluation in [ATS automation](ats-automation.md), not signed production vendor decisions. Provider
+selection must include isolation, recovery, takeover, latency, support, and
+accepted-output cost. The [pasted-link engine](pasted-link-application-engine.md) defines the narrower first execution thread and its safe teardown contract.
 
-## 8. Approval, at-most-once submit, and reconciliation
+## 8. Separate fill and submit authority
 
 The model never receives a `submit_application` tool.
 
-Before approval, freeze:
+The implemented first gate is `FILL_APPLICATION_ONCE`. It binds one candidate,
+application, immutable revision, material diff, exact fact/artifact versions,
+permitted action, expiry, and nonce. Consumption reserves one database-owned
+computer session and can end only at pre-submit review, failure, cancellation,
+or takeover. It cannot authorize an `application_attempt` or create a receipt.
+
+The hosted control-plane and recovery crash drills passed in rolled-back
+transactions. The local coordinator and installed-Chrome synthetic ATS harness
+proved fill, upload, read-back, submit blocking, teardown, idempotent
+provisioning recovery, and fail-safe handling of stale active sessions. No live
+provider or real ATS was used.
+
+Final submit is a later boundary. It requires a new
+`SUBMIT_APPLICATION_ONCE` approval bound to the immutable live read-back and
+pre-submit diff.
+
+Before submit approval, freeze:
 
 - candidate and job version;
 - form snapshot and adapter version;
@@ -483,7 +563,8 @@ Before approval, freeze:
 - fact set, research bundle, prompt, model route, and policy versions;
 - full material diff and unresolved warnings.
 
-Approval binds one candidate, application, immutable packet, permitted action, expiry, and one-time nonce. Any material change invalidates it.
+Submit approval binds one candidate, application, immutable packet, permitted
+action, expiry, and one-time nonce. Any material change invalidates it.
 
 ### Submit boundary
 
@@ -540,9 +621,12 @@ Hermes may remain an internal dogfood executor. It must not own production ident
 
 ### PostgreSQL host decision
 
-**Recommendation:** use PostgreSQL from the first server slice. Supabase is the fastest alpha candidate because it combines managed PostgreSQL and authentication, but it must be used as infrastructure—not as a permission model that bypasses RoleDawn's server command boundary.
+**Accepted current foundation:** use the Supabase-backed HireWire project for
+Auth-linked tenancy, PostgreSQL domain state, private Storage, RLS-scoped reads,
+transactional commands, events, and the outbox. Supabase is infrastructure—not
+a permission model that bypasses RoleDawn's server command boundary.
 
-If Supabase wins the benchmark:
+The accepted Supabase implementation must continue to:
 
 - put authoritative domain tables in private schemas;
 - expose only narrow server-owned APIs/read models;
@@ -554,7 +638,11 @@ If Supabase wins the benchmark:
 
 Use AWS RDS/Aurora when network topology, compliance, performance, or operational control justifies the added setup. Do not migrate simply to look more enterprise. The PostgreSQL contract matters more than the logo on the host.
 
-### Deployment shape for alpha
+### Target deployment shape after the current local slice
+
+The current web application runs locally, the HireWire Supabase development
+project is hosted, and the resolver worker is invoked manually. The list below
+is a target architecture, not deployed infrastructure.
 
 - Vercel or equivalent for the Next.js web surface.
 - One containerized TypeScript control plane.
@@ -628,6 +716,12 @@ notification_policies
 ```text
 source_documents
 source_document_versions
+source_document_extractions
+source_document_text_reviews
+source_evidence_passages
+candidate_evidence_items
+candidate_evidence_versions
+candidate_evidence_citations
 candidate_facts
 candidate_fact_versions
 fact_sources
@@ -659,6 +753,10 @@ candidate_job_decisions
 ### Research and preparation
 
 ```text
+application_runs
+application_input_snapshots
+application_snapshot_evidence_refs
+application_snapshot_fact_refs
 company_research_bundles
 company_research_claims
 company_research_sources
@@ -682,6 +780,10 @@ browser_profiles
 browser_sessions
 form_snapshots
 fill_results
+application_fill_authorizations
+application_fill_authorization_consumptions
+application_fill_attempts
+application_fill_checkpoints
 submission_intents
 application_attempts
 confirmation_evidence
@@ -715,9 +817,12 @@ Tenant-aware keys, immutable version tables, append-only evidence, optimistic ag
 | Source timeout | Retry with bounded backoff; do not close jobs |
 | Abnormal source count drop | Abort reconciliation and alert |
 | Parser/model schema failure | Repair/escalate once; never publish partial required fields |
+| Candidate input changes during preflight | Reject the stale snapshot commit and enqueue no drafting work |
 | Unsupported generated claim | Reject artifact promotion |
 | Missing exact or sensitive answer | `NeedsUser`; never guess |
-| Browser failure before submit | Retry within cap or request takeover |
+| Failure before provider disclosure in `PROVISIONING` | Reclaim the lease and replay provisioning with the same database session ID |
+| Stale `ACTIVE` or disclosure-possible fill | Fail safe; do not provision a fresh runtime or re-drive fields |
+| Browser failure before submit | Retry only under the fill recovery policy or request takeover |
 | CAPTCHA, OTP, passkey, login | Pause for secure human takeover |
 | Material live-form drift | Invalidate approval and rebuild packet |
 | Network loss near submit | Mark uncertain and reconcile same attempt |
@@ -737,7 +842,10 @@ Cost efficiency comes from architecture, not a cheaper model alone.
 - Cache employer-stable research and fetch only a requisition-specific delta.
 - Build the smallest permitted evidence packet; do not resend the full Career Vault.
 - Route extraction and classification to the least expensive model that passes the task gate; escalate only on typed failure or uncertainty.
-- Deduplicate preparation by immutable input hashes and reuse unchanged renders.
+- Deduplicate preparation by immutable input hashes. A retry over unchanged
+  inputs may commit a separate audit snapshot with the same deterministic hash;
+  later drafting/rendering may reuse only through an explicit version-bound
+  cache policy.
 - Provision browser sessions only for queued applications; stop immediately on a blocker instead of spending through it.
 - Reserve a per-application cost budget before model or browser work and record accepted-output cost, not just provider calls.
 - Use separate worker queues and concurrency caps for discovery, preparation, browser, and reconciliation so browser spikes cannot delay pause, approval invalidation, or cancellation.
@@ -746,7 +854,13 @@ Do not add OpenSearch, Kafka, Kubernetes, a self-hosted browser fleet, or a perm
 
 ## 15. Build sequence
 
-The first product thread cuts through these phases rather than completing broad supply first: accept one pasted official URL, create its canonical job version, prepare one immutable packet, fill one brokered session in shadow mode, obtain one precise approval, and prove same-attempt reconciliation before enabling controlled submit. Broad source ingestion, matching, Browse, Swipe, and messaging can then feed the same application primitive. See [D-040](../execution/decision-log.md).
+The first product thread cuts through these phases rather than completing broad
+supply first: accept one pasted official URL, create its canonical job version,
+prepare one immutable packet, authorize fill only, fill one brokered session in
+shadow mode, stop at pre-submit review, and prove safe recovery. Only then add a
+separate controlled-submit approval and same-attempt reconciliation. Broad
+source ingestion, matching, Browse, Swipe, and messaging feed the same
+application primitive. See [D-040](../execution/decision-log.md) and [D-061](../execution/decision-log.md).
 
 ### Phase 0 — contracts and evaluation fixtures
 
@@ -771,6 +885,9 @@ The first product thread cuts through these phases rather than completing broad 
 
 ### Phase 3 — matching and preparation
 
+- **Working now:** immutable per-application input snapshot, candidate input
+  epoch, deterministic preflight blockers, retry replay, and stale-version
+  denial. Ready and blocked paths are verified live.
 - Deterministic eligibility.
 - Bounded top-K fit assessment.
 - Company research bundles and cache.
@@ -779,13 +896,20 @@ The first product thread cuts through these phases rather than completing broad 
 
 ### Phase 4 — browser shadow mode
 
-- Browser broker, Playwright adapters, live view, takeover, credential/token boundary.
-- Inspect and fill draft only; candidate performs final click.
+- **Working foundation:** revision-bound fill authority, exact execution
+  materialization, database-owned session lifecycle, checkpointing, lease
+  recovery, no-submit coordinator, and installed-Chrome synthetic ATS harness.
+- **Working but not live:** credential-gated Browserbase adapter,
+  deterministic Greenhouse-style no-submit driver, and fill-worker composition.
+- **Open:** validated provider credentials, one real Greenhouse fill, secure
+  live view, takeover, and credential/token boundary.
+- Inspect and fill draft only; candidate performs any final click.
 - 100-form benchmark across ATS, tenant, provider, failure, cost, and latency.
 
 ### Phase 5 — controlled submit
 
-- Immutable pre-submit packet and single-use approval.
+- Separate single-use submit approval bound to the live read-back and immutable
+  pre-submit diff.
 - At-most-once submission intent.
 - Confirmation evidence, uncertain-state reconciliation, and receipt.
 - Graduate one adapter/version at a time.
@@ -805,13 +929,15 @@ The first product thread cuts through these phases rather than completing broad 
 - Deterministic eligibility before bounded fit reasoning.
 - Exact and sensitive facts from approved structured evidence only.
 - Model-generated materials must pass claim and policy gates.
-- Single-use approval for one immutable application packet.
+- Separate single-use fill and submit authority for one immutable application
+  packet; fill authority cannot authorize submit.
 - One submit attempt followed by reconciliation, never blind retry.
 - CAPTCHA, OTP, passkey, and ambiguous legal terrain require human takeover.
 
-### Recommended pending benchmark
+### Adopted foundation and pending benchmarks
 
-- Supabase Postgres/Auth for the alpha data foundation.
+- Supabase Postgres/Auth is adopted for the bounded alpha control plane under
+  D-041; hosted migration, RLS, and lifecycle checks remain release gates.
 - Browserbase + Playwright as the first browser stack.
 - Cua Sandbox as a disposable full-computer benchmark behind `BrowserSessionBroker`.
 - Stagehand as constrained adaptive DOM fallback.
@@ -823,7 +949,8 @@ The first product thread cuts through these phases rather than completing broad 
 
 - Which first role family produces enough fresh jobs and repeatable forms?
 - Which managed browser wins the 100-form benchmark?
-- Does Supabase meet the tenant-isolation, operations, cost, and portability gates?
+- Do continued Supabase operations, cost, recovery, and portability checks keep
+  meeting D-041's reversal threshold?
 - Which model routes win blind task-level quality, safety, latency, and cost evals?
 - Which licensed job-data provider improves coverage enough to justify contract cost?
 - When, if ever, can a narrow adapter graduate from per-application approval to standing authorization?

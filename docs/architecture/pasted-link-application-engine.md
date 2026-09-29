@@ -1,8 +1,8 @@
 ---
 title: Pasted-link application engine
-status: canonical first backend vertical slice; production execution remains gated
+status: fill-to-review foundation accepted; live provider and production execution remain gated
 owner: founder, product, and engineering
-last_updated: 2026-08-11
+last_updated: 2026-08-16
 scope: consumer command, preparation modules, immutable packet, computer session, approval, submission, reconciliation, and teardown
 ---
 
@@ -12,7 +12,10 @@ scope: consumer command, preparation modules, immutable packet, computer session
 
 The first backend vertical slice should productize the founder's proven workflow:
 
-> Paste a job link. RoleDawn prepares a truthful application, fills the employer form in an isolated computer, asks for one precise approval, submits once, and returns proof.
+> Paste a job link. RoleDawn prepares a truthful application, fills the employer
+> form in an isolated computer after you authorize that disclosure, and stops
+> with the exact live form ready for your review. Final submission remains a
+> separate action.
 
 The interface should feel like one command. The reliability work stays behind it.
 
@@ -28,7 +31,11 @@ type ApplyToJobCommand = {
 };
 ```
 
-**Invariant:** accepting this command authorizes preparation. It does not authorize submission. Submission requires a later single-use approval tied to the exact immutable packet that now exists.
+**Invariant:** accepting this command authorizes preparation only. Filling
+requires `FILL_APPLICATION_ONCE`, bound to the exact immutable revision and
+destination. It must stop at `PRE_SUBMIT_REVIEW`. Submission requires a later,
+separate `SUBMIT_APPLICATION_ONCE` approval tied to an immutable live-form
+read-back and pre-submit diff.
 
 This slice comes before broad automated job ingestion. The pasted URL still creates or resolves a canonical job, job episode, and immutable job version, so the shared catalog does not need a second model later.
 
@@ -48,19 +55,16 @@ sequenceDiagram
     UI->>DB: Create idempotent application command
     DB->>P: Freeze inputs and prepare
     P-->>DB: Validated artifacts and answers
+    DB-->>U: Show exact Application Kit and material diff
+    U->>DB: Authorize this revision for fill once
     DB->>B: Provision one scoped execution session
     B->>C: Start isolated browser or desktop
     C->>ATS: Inspect, fill, and upload
-    C-->>DB: Live form snapshot and material diff
-    DB-->>U: Show exact application packet
-    U->>DB: Approve this revision once
-    DB->>C: Release one permitted submit action
-    C->>ATS: Submit once
-    C-->>DB: Confirmation evidence or uncertainty
-    DB->>DB: Reconcile the same attempt
-    DB-->>U: Receipt, blocker, or honest uncertainty
+    C-->>DB: Live form read-back, blocker, or safe failure
     DB->>B: Close session after safe evidence capture
     B->>C: Destroy disposable compute
+    DB-->>U: Pre-submit review, blocker, or honest failure
+    Note over U,ATS: Final submit is a separate later milestone and authority
 ```
 
 The Queue exposes only the useful states: **Preparing**, **Needs you**, **Ready**, **Applying**, **Reconciling**, **Submitted**, **Could not confirm**, or **Stopped**. Provider IDs, workflow IDs, and attempt IDs remain available for support and audit but stay out of ordinary candidate copy.
@@ -78,7 +82,7 @@ The product is not a mutable folder of prompt files and not a free-running agent
 | Cover-letter preparation | Job version, research, evidence, voice policy | Structured letter content | Claim ledger and no-slop review pass |
 | Application answers | Form schema and approved answer policies | Provenance-linked answer set | Unknown legal, sensitive, or certification answers pause |
 | Rendering | Validated structured content and templates | PDF/DOCX plus hashes | Text, overflow, page, and visual QA pass |
-| Form execution | Immutable packet and scoped session | Filled draft and live read-back | No consequential action before approval |
+| Form execution | Immutable packet and scoped session | Filled draft and live read-back | Fill-only authority required; Submit is impossible on this path |
 
 Every module receives immutable references and returns a typed result. Models may research, interpret, select, draft, and propose. They may not grant permission, invent a missing fact, expose credentials, or declare that submission succeeded.
 
@@ -96,7 +100,9 @@ Before the candidate can approve, RoleDawn freezes one packet containing:
 - unresolved warnings, blockers, and required human actions; and
 - packet hash, expiry policy, and intended action.
 
-Any material change creates a new packet version and invalidates the old approval. Model conversation history, browser memory, and screenshots are evidence inputs at most; none is the packet authority.
+Any material change creates a new packet version and invalidates old authority.
+Model conversation history, browser memory, and screenshots are evidence inputs
+at most; none is packet or approval authority.
 
 ## Disposable computer boundary
 
@@ -114,6 +120,18 @@ An execution session receives only:
 - the minimum interaction tools permitted for the current state.
 
 Use deterministic ATS adapters and Playwright first. Escalate to semantic DOM reasoning, then visual computer use, only when the known path fails. CAPTCHA, OTP, passkey, unexpected login, ambiguous certification, or unknown sensitive questions pause for secure candidate takeover; RoleDawn does not solve or bypass them.
+
+Clean ephemeral sessions are the default. A retained browser context is allowed
+only when scoped to one candidate and one ATS origin and a benchmark proves it
+is needed for account continuity. PostgreSQL keeps durable memory; RoleDawn does
+not pay for one always-on desktop per candidate.
+
+**Current acceptance:** hosted rollback checks passed for action-scoped fill
+authority, session lifecycle, recovery fencing, RLS, and zero submit records.
+The local coordinator and installed-Chrome synthetic ATS harness passed fill,
+PDF upload, sensitive-field stop, read-back, and submit blocking. A credential-
+gated Browserbase adapter and deterministic Greenhouse-style driver exist, but
+no credentialed provider session or real ATS has run.
 
 ### Safe teardown
 
@@ -134,8 +152,8 @@ The architecture is the production destination. The first implementation intenti
 | Intake | One pasted, allowlisted official URL | Pasted links plus approved shared job-source registry |
 | ATS terrain | Greenhouse, Lever, and Ashby fixtures; one adapter at a time in shadow mode | Versioned adapters with measured tenant coverage |
 | Preparation | One versioned path for research, evidence, resume, letter, and answers | Task-level model routing and promoted module releases |
-| Execution | Brokered session that inspects, uploads, and fills; no autonomous final action | Controlled submit only after adapter/version graduation |
-| Approval | Web review of one immutable packet | Same contract through web or replaceable messaging channels |
+| Execution | Brokered session that inspects, uploads, fills, and stops at review; no submit method | Controlled submit only after a separate adapter/version graduation |
+| Approval | Web review plus one immutable fill-only authorization | Separate action-scoped fill and submit authorizations through web or replaceable channels |
 | Recovery | Deterministic failure fixtures and same-attempt reconciliation tests | Durable workflow, provider events, support tooling, and SLOs |
 | Tenancy | Authenticated server-side candidate state with synthetic evaluation fixtures first | PostgreSQL tenant isolation, encrypted object storage, brokered credentials, deletion/export |
 | Supply | No automatic broad catalog required to prove value | Shared catalog, Browse, Swipe, matching, and freshness controls |
@@ -166,8 +184,10 @@ The pasted-link engine is ready for controlled external testing only when:
 - the same command cannot create duplicate applications or attempts;
 - every generated material claim has approved support;
 - unknown sensitive, legal, and certification answers block progress;
-- a packet change invalidates its approval;
-- only the named, unexpired, unused approval can release one submit action;
+- a packet change invalidates its fill authorization;
+- only the named, unexpired, unused fill authorization can release one fill
+  session, and it cannot create a submit attempt;
+- only a separate future submit approval can release one submit action;
 - a worker crash near Submit enters reconciliation instead of retrying;
 - **Submitted** requires stored confirmation evidence;
 - the candidate can pause, stop, take over, export, and delete within the documented policies;
