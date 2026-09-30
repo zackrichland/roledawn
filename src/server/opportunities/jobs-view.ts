@@ -44,7 +44,8 @@ export function jobListItemFromCatalog(item: OpportunityCatalogItem, strong = fa
     workMode: item.workMode,
     employmentType: item.employmentType,
     postedAt: item.publishedAt ?? item.observedAt,
-    url: item.canonicalUrl,
+    // The apply URL stays on the ATS host that identifies the employer's board (and its logo); the canonical URL can be an employer domain.
+    url: item.applyUrl,
     applicationId: item.queuedApplicationId,
     saved: item.saved,
     // Catalog fit notes include caveats ("needs review", "outside your target

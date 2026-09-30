@@ -18,9 +18,16 @@
   cursor: pointer;
   font: inherit;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
   margin-bottom: -1px;
   padding: 12px 14px;
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.tabBar button:hover {
+  color: var(--ink);
 }
 
 .tabBar button[aria-selected="true"] {
@@ -31,10 +38,11 @@
 .combined {
   color: var(--muted);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 500;
   margin-left: auto;
   padding: 12px 4px;
   text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .combined:hover {
@@ -53,9 +61,9 @@
 .paper {
   background: #fff;
   border-radius: 4px;
-  box-shadow: 0 1px 2px rgb(11 16 32 / 6%), 0 18px 40px rgb(11 16 32 / 9%);
+  box-shadow: 0 1px 2px rgb(11 16 32 / 6%), 0 8px 20px -6px rgb(11 16 32 / 8%), 0 24px 48px -16px rgb(11 16 32 / 12%);
   color: #111827;
-  font-family: var(--font-serif);
+  font-family: var(--font-document);
   font-size: 14.5px;
   line-height: 1.5;
   margin: 0 auto;
@@ -70,7 +78,7 @@
 }
 
 .paperHeader h3 {
-  font-family: var(--font-serif);
+  font-family: var(--font-document);
   font-size: 30px;
   font-weight: 600;
   letter-spacing: -0.015em;
@@ -161,8 +169,8 @@
   white-space: pre-line;
 }
 
-.closing {
-  margin-top: 18px !important;
+.paper .closing {
+  margin-top: 18px;
 }
 
 .answers {
@@ -173,9 +181,10 @@
 }
 
 .answer {
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
   padding: 16px 18px;
 }
 
@@ -187,7 +196,6 @@
 
 .answer p {
   color: var(--ink-soft);
-  font-family: var(--font-serif);
   font-size: 15px;
   line-height: 1.55;
   margin: 8px 0 0;
@@ -201,9 +209,10 @@
 }
 
 .whyBlock {
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
   display: grid;
   gap: 8px;
   padding: 18px 20px;
@@ -216,11 +225,13 @@
   margin: 0;
 }
 
-.whyLead {
-  color: var(--ink) !important;
-  font-family: var(--font-serif);
-  font-size: 18px !important;
-  line-height: 1.4 !important;
+.whyBlock .whyLead {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-heading);
+  line-height: 1.4;
 }
 
 .requirements {
@@ -242,7 +253,7 @@
 .coverage {
   border-radius: 999px;
   font-size: 11.5px;
-  font-weight: 800;
+  font-weight: 600;
   padding: 3px 0;
   text-align: center;
 }

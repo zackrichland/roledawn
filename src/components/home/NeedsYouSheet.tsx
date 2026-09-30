@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { loadApplicationNeedAction } from "@/app/(candidate)/dashboard/need-actions";
 import { ApplicationAutopilot } from "@/components/applications/ApplicationAutopilot";
+import cardStyles from "@/components/applications/ApplicationAutopilot.module.css";
+import { StopActions, type RetryTarget } from "@/components/applications/StopActions";
 import type { ApplicationAutopilotView } from "@/domain/application-autopilot";
 import type { ApplicationPresentation } from "@/domain/application-presentation";
 import type { HomeApplication } from "@/server/home/home-data";
@@ -15,8 +17,9 @@ type Loaded = Readonly<{ state: "loading" }> | Readonly<{ state: "ready"; view: 
 
 /**
  * Resolves whatever a stalled application needs (an emailed code, missing
- * answers, a retry) without leaving Home. It shows the same controls as the
- * application page, so both places behave identically.
+ * answers, a retry, or the way to finish on the employer's site) without
+ * leaving Home. It shows the same controls as the application page, so both
+ * places behave identically.
  */
 export function NeedsYouSheet({ application, presentation, refreshKey, onClose }: Readonly<{
   application: HomeApplication; presentation: ApplicationPresentation; refreshKey: string; onClose: () => void;
@@ -40,6 +43,12 @@ export function NeedsYouSheet({ application, presentation, refreshKey, onClose }
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // A send request speaks here only while it belongs to the current documents (or holds a live question or code).
+  const belongsToCurrentFiles = Boolean(application.autopilot) || application.need !== null;
+  const showSend = loaded.state === "ready" && loaded.view !== null && belongsToCurrentFiles;
+  const guidance = presentation.guidance;
+  const retryTarget: RetryTarget | null = application.intakeStatus === "FAILED" ? "IMPORT" : application.hasDocuments === false ? "WRITING" : null;
+
   return (
     <>
       <div aria-hidden="true" className={styles.sheetBackdrop} onClick={onClose} />
@@ -57,8 +66,21 @@ export function NeedsYouSheet({ application, presentation, refreshKey, onClose }
         <div className={styles.sheetBody}>
           {loaded.state === "loading" ? <div aria-label="Loading" className={styles.sheetSkeleton} role="status" />
             : loaded.state === "error" ? <p className={styles.error} role="alert">{loaded.message}</p>
-              : loaded.view ? (
-                <ApplicationAutopilot applicationId={id} aggregateVersion={1} canStart={false} packetHash="" revisionId={loaded.view.revisionId} view={loaded.view} />
+              : showSend && loaded.view ? (
+                <ApplicationAutopilot
+                  applicationId={id} aggregateVersion={1} canStart={false} employerUrl={application.sourceUrl} linkToApplication packetHash=""
+                  revisionId={loaded.view.revisionId} summary={application.autopilot ?? null} view={loaded.view}
+                />
+              ) : guidance ? (
+                <section aria-labelledby="needs-you-guidance" className={cardStyles.card}>
+                  <h2 id="needs-you-guidance">{guidance.heading}</h2>
+                  <p role="status">{guidance.happened}</p>
+                  <p>{guidance.next}</p>
+                  <StopActions
+                    aggregateVersion={application.aggregateVersion} applicationId={id} employerUrl={application.sourceUrl}
+                    guidance={guidance} linkToApplication retryTarget={retryTarget}
+                  />
+                </section>
               ) : <p className={styles.sheetDetail}>{presentation.detail}</p>}
         </div>
         <Link className={styles.sheetLink} href={`/applications/${id}`}>Open the full application

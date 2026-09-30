@@ -19,12 +19,14 @@
 /* The track between beads. */
 .rail li + li::before {
   background: var(--line-strong);
+  border-radius: 2px;
   content: "";
   height: 2px;
   left: calc(-50% + var(--bead) / 2 + 4px);
   position: absolute;
   right: calc(50% + var(--bead) / 2 + 4px);
   top: calc(var(--bead) / 2 - 1px);
+  transition: background-color var(--dur-slow) var(--ease-out);
 }
 
 .rail li[data-state="past"] + li::before,
@@ -38,7 +40,12 @@
   border-radius: 50%;
   display: block;
   height: var(--bead);
-  transition: background 240ms ease, border-color 240ms ease, transform 240ms ease;
+  position: relative;
+  transition:
+    background-color var(--dur-slow) var(--ease-out),
+    border-color var(--dur-slow) var(--ease-out),
+    box-shadow var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-spring);
   width: var(--bead);
 }
 
@@ -66,20 +73,27 @@ li[data-state="current"] .bead {
   border-color: var(--mint-ink);
 }
 
-.rail[data-tone="working"] li[data-state="current"] .bead {
-  animation: breathe 2.2s ease-in-out infinite;
+/* Working: a soft ring swells off the current bead (transform and opacity). */
+.rail[data-tone="working"] li[data-state="current"] .bead::after {
+  animation: breathe 2.2s var(--ease-out) infinite;
+  background: var(--first-light);
+  border-radius: 50%;
+  content: "";
+  inset: -2px;
+  position: absolute;
 }
 
 @keyframes breathe {
-  0%, 100% { box-shadow: 0 0 0 3px rgb(255 209 102 / 30%); }
-  50% { box-shadow: 0 0 0 7px rgb(255 209 102 / 0%); }
+  0% { opacity: 0.55; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(2.1); }
 }
 
 .label {
   color: var(--faint);
   font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  transition: color var(--dur-base) var(--ease-out);
 }
 
 li[data-state="past"] .label,

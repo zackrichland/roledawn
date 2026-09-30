@@ -7,7 +7,7 @@
   color: var(--muted);
   font-size: 12px;
   font-style: normal;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .fieldset {
@@ -22,7 +22,7 @@
 .fieldset legend {
   color: var(--ink-soft);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   margin-bottom: 8px;
 }
 
@@ -48,22 +48,36 @@
   background: var(--paper);
   border: 1px solid var(--line-strong);
   border-radius: 999px;
+  box-shadow: var(--shadow-xs);
   color: var(--ink-soft);
   display: inline-flex;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 500;
   padding: 9px 16px;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition:
+    background var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+.pills label:hover span {
+  border-color: rgb(11 16 32 / 28%);
+}
+
+.pills label:active span {
+  transform: scale(0.97);
 }
 
 .pills input:checked + span {
-  background: var(--midnight);
+  background: var(--gradient-ink);
   border-color: var(--midnight);
+  box-shadow: var(--btn-ink-shadow);
   color: #fff;
 }
 
 .pills input:focus-visible + span {
-  outline: 3px solid var(--first-light);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 

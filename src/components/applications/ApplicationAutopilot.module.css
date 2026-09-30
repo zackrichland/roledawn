@@ -1,5 +1,5 @@
 .card {
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -11,7 +11,8 @@
 
 .card h2 {
   font-size: 17px;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-heading);
   margin: 0;
 }
 
@@ -41,7 +42,7 @@
 .choices legend {
   color: var(--ink-soft);
   font-size: 13.5px;
-  font-weight: 700;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 
@@ -50,7 +51,7 @@
 .field select {
   background: var(--paper);
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   box-sizing: border-box;
   color: var(--ink);
   font: inherit;
@@ -58,41 +59,55 @@
   max-width: 100%;
   min-height: 46px;
   padding: 11px 14px;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
   width: 100%;
+}
+
+.field input:not([type="checkbox"]):hover:not(:focus),
+.field textarea:hover:not(:focus),
+.field select:hover:not(:focus) {
+  border-color: rgb(11 16 32 / 28%);
 }
 
 .field input:focus,
 .field textarea:focus,
 .field select:focus {
   border-color: var(--ink-soft);
-  box-shadow: 0 0 0 4px rgb(255 209 102 / 35%);
+  box-shadow: 0 0 0 4px var(--focus-halo);
   outline: none;
 }
 
 /* The primary action is the brand CTA: First Light with Midnight text. */
 .card > button,
 .card form > button {
-  background: var(--first-light);
+  background: var(--gradient-light);
   border: 0;
   border-radius: 999px;
+  box-shadow: var(--btn-light-shadow);
   color: var(--midnight);
   cursor: pointer;
   font: inherit;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 600;
   justify-self: start;
   min-height: 46px;
   padding: 0 24px;
-  transition: background 140ms ease, transform 140ms ease;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
 }
 
 .card > button:hover:not(:disabled),
 .card form > button:hover:not(:disabled) {
-  background: #ffc94a;
+  background: var(--gradient-light-hover);
+  box-shadow: var(--btn-light-shadow-hover);
 }
 
 .card button:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.98);
 }
 
 .card button:disabled {
@@ -101,7 +116,7 @@
 }
 
 .card :is(input, select, textarea, button):focus-visible {
-  outline: 3px solid var(--midnight);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -139,26 +154,34 @@
   background: var(--paper);
   border: 1px solid var(--line-strong);
   border-radius: 999px;
+  box-shadow: var(--shadow-xs);
   color: var(--ink);
   cursor: pointer;
   font: inherit;
   font-size: 13.5px;
-  font-weight: 700;
+  font-weight: 600;
   min-height: 38px;
   padding: 0 16px;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
 }
 
 .controls button:hover:not(:disabled) {
-  border-color: var(--ink-soft);
+  background: var(--canvas);
+  border-color: rgb(11 16 32 / 28%);
+  box-shadow: var(--shadow-sm);
 }
 
-.hint {
-  color: var(--muted) !important;
-  font-size: 13px !important;
+.card .hint {
+  color: var(--muted);
+  font-size: 13px;
 }
 
-.error {
-  color: var(--rose-ink) !important;
+.card .error {
+  color: var(--rose-ink);
   font-size: 13.5px;
 }
 

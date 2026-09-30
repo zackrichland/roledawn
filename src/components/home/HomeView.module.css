@@ -499,19 +499,24 @@
   cursor: pointer;
 }
 
+/* The hairline is a background, not a border, so it ends cleanly at the
+   rounded corners instead of curling up with them. */
 .row td {
-  border-bottom: 1px solid var(--line);
+  background-image: linear-gradient(var(--line), var(--line));
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
   padding: 14px 16px;
-  transition: background var(--dur-fast) var(--ease-out);
+  transition: background-color var(--dur-fast) var(--ease-out);
   vertical-align: middle;
 }
 
 .row:last-child td {
-  border-bottom: 0;
+  background-image: none;
 }
 
 .row:hover td {
-  background: rgb(11 16 32 / 3%);
+  background-color: rgb(11 16 32 / 3%);
 }
 
 .row td:first-child {
@@ -983,6 +988,7 @@ button.action {
   }
 
   .row td {
+    background-image: none;
     border: 0;
     padding: 0;
   }

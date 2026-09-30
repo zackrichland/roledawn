@@ -6,13 +6,15 @@
   color: var(--muted);
   display: inline-block;
   font-size: 13.5px;
-  font-weight: 650;
+  font-weight: 500;
   margin-bottom: 22px;
   text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out), transform var(--dur-base) var(--ease-spring);
 }
 
 .back:hover {
   color: var(--ink);
+  transform: translateX(-2px);
 }
 
 .header {
@@ -35,6 +37,8 @@
 .employer strong {
   color: var(--ink);
   font-size: 15px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-body);
 }
 
 .employer small {
@@ -44,11 +48,11 @@
 
 .role {
   color: var(--ink);
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: clamp(30px, 4.4vw, 44px);
   font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.08;
+  letter-spacing: var(--tracking-display);
+  line-height: 1.06;
   margin: 4px 0 0;
   text-wrap: balance;
 }
@@ -66,6 +70,11 @@
   margin: 0;
 }
 
+.statusBlock strong {
+  font-weight: 600;
+  transition: color var(--dur-base) var(--ease-out);
+}
+
 .statusBlock[data-tone="attention"] strong { color: var(--coral-ink); }
 .statusBlock[data-tone="error"] strong { color: var(--rose-ink); }
 .statusBlock[data-tone="done"] strong { color: var(--mint-ink); }
@@ -73,14 +82,16 @@
 .posting {
   color: var(--muted);
   font-size: 13.5px;
-  font-weight: 650;
+  font-weight: 500;
   justify-self: start;
   text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .posting:hover {
   color: var(--ink);
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .next {
@@ -94,7 +105,7 @@
 }
 
 .panel {
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -102,12 +113,16 @@
   gap: 8px;
   justify-items: start;
   padding: 22px 24px;
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
 }
 
 .panel h2 {
   color: var(--ink);
   font-size: 17px;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-heading);
   margin: 0;
 }
 
@@ -140,6 +155,8 @@
 .subhead {
   color: var(--ink);
   font-size: 17px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-heading);
   margin: 36px 0 12px;
 }
 
@@ -179,28 +196,37 @@
   color: var(--ink);
   cursor: pointer;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   list-style: none;
   padding: 18px 0;
   position: relative;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.disclosure summary:hover {
+  color: var(--ink-soft);
 }
 
 .disclosure summary::-webkit-details-marker {
   display: none;
 }
 
+/* One glyph that turns from + to x, instead of swapping characters. */
 .disclosure summary::after {
   color: var(--muted);
   content: "+";
   font-size: 20px;
-  font-weight: 500;
+  font-weight: 400;
+  line-height: 1;
   position: absolute;
   right: 4px;
-  top: 13px;
+  top: 17px;
+  transition: transform var(--dur-base) var(--ease-spring);
 }
 
 .disclosure[open] summary::after {
-  content: "–";
+  content: "+";
+  transform: rotate(45deg);
 }
 
 .description {
@@ -250,11 +276,38 @@
 .timeline strong {
   color: var(--ink);
   font-size: 14px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-body);
 }
 
 .timeline small {
   color: var(--muted);
   font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Entrance: the page settles in section by section. --------------------------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  .back,
+  .header,
+  .next > *,
+  .files,
+  .more {
+    animation: rise var(--dur-slow) var(--ease-out) backwards;
+  }
+
+  .header { animation-delay: 40ms; }
+  .next > :nth-child(1) { animation-delay: 100ms; }
+  .next > :nth-child(2) { animation-delay: 150ms; }
+  .next > :nth-child(3) { animation-delay: 200ms; }
+  .next > :nth-child(n + 4) { animation-delay: 240ms; }
+  .files { animation-delay: 200ms; }
+  .more { animation-delay: 240ms; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(var(--rise, 8px)); }
 }
 
 @media (max-width: 640px) {

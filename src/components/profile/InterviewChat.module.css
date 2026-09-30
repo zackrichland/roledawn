@@ -1,9 +1,9 @@
 .intro h2 {
   color: var(--ink);
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 24px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-heading);
   margin: 0;
 }
 
@@ -25,12 +25,13 @@
 
 .points strong {
   color: var(--ink);
+  font-weight: 600;
 }
 
 .shell {
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -57,6 +58,8 @@
 .bar strong {
   color: var(--ink);
   font-size: 15px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-body);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -74,6 +77,7 @@
   background: var(--line-strong);
   border-radius: 999px;
   height: 8px;
+  transition: background-color var(--dur-slow) var(--ease-out);
   width: 22px;
 }
 
@@ -99,6 +103,17 @@
   max-width: 82%;
 }
 
+/* New messages ease in; the transcript itself never shifts. */
+@media (prefers-reduced-motion: no-preference) {
+  .turn {
+    animation: rise var(--dur-base) var(--ease-out) backwards;
+  }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
 .turn p {
   border-radius: 18px;
   font-size: 15px;
@@ -116,8 +131,7 @@
   background: var(--wash);
   border-bottom-left-radius: 6px;
   color: var(--ink);
-  font-family: var(--font-serif);
-  font-size: 16px;
+  font-size: 15.5px;
 }
 
 .turn[data-speaker="CANDIDATE"] {
@@ -125,13 +139,14 @@
 }
 
 .turn[data-speaker="CANDIDATE"] > p {
-  background: var(--midnight);
+  background: var(--gradient-ink);
   border-bottom-right-radius: 6px;
+  box-shadow: var(--btn-ink-shadow);
   color: #fff;
 }
 
 .typing {
-  display: inline-flex !important;
+  display: inline-flex;
   gap: 5px;
 }
 
@@ -148,8 +163,8 @@
 .typing span:nth-child(3) { animation-delay: 0.3s; }
 
 @keyframes blink {
-  0%, 80%, 100% { opacity: 0.25; }
-  40% { opacity: 1; }
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
 }
 
 .readback {
@@ -159,6 +174,7 @@
   display: grid;
   gap: 8px;
   padding: 14px 16px;
+  transition: background-color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
 }
 
 .readback[data-state="APPROVED"] {
@@ -174,10 +190,9 @@
 
 .readbackLabel {
   color: var(--amber-ink);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
 }
 
 .readback[data-state="APPROVED"] .readbackLabel {
@@ -186,17 +201,17 @@
 
 .readback strong {
   color: var(--ink);
-  font-family: var(--font-serif);
-  font-size: 16.5px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-body);
 }
 
-.readback p,
-.readback li {
-  background: none !important;
-  color: var(--ink-soft) !important;
-  font-family: var(--font-sans) !important;
-  font-size: 14px !important;
-  padding: 0 !important;
+.turn .readback p,
+.turn .readback li {
+  background: none;
+  color: var(--ink-soft);
+  font-size: 14px;
+  padding: 0;
 }
 
 .readback ul {
@@ -223,12 +238,16 @@
   min-height: 76px;
   padding: 12px 14px;
   resize: vertical;
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
 }
 
 .composer textarea:focus {
   background: var(--paper);
   border-color: var(--ink-soft);
-  box-shadow: 0 0 0 4px rgb(255 209 102 / 35%);
+  box-shadow: 0 0 0 4px var(--focus-halo);
   outline: none;
 }
 

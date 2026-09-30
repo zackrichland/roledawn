@@ -71,8 +71,9 @@ function greeting(now: Date | null): string {
   return "Good evening";
 }
 
+/** A row that needs you says what its button lets you do: the state's primary action. Other rows open the application. */
 function actionFor(row: Row): string {
-  if (row.presentation.needsYou) return "Resolve";
+  if (row.presentation.needsYou) return row.presentation.actionLabel ?? "Resolve";
   if (row.presentation.tone === "ready") return "Review";
   if (row.presentation.tone === "done") return "Receipt";
   return "View";
@@ -338,7 +339,7 @@ export function HomeView({ data }: Readonly<{ data: HomeData }>) {
                       <td className={styles.actionCell}>
                         {presentation.needsYou ? (
                           <button className={styles.action} data-urgent="true" onClick={(event) => { event.stopPropagation(); setOpenId(application.applicationRouteKey); }} type="button">
-                            {application.need?.kind === "CODE" ? "Enter code" : application.need?.kind === "ANSWERS" ? "Answer" : actionFor(row)}
+                            {actionFor(row)}
                             <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 24 24" width="14"><path d="m9 6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
                           </button>
                         ) : (

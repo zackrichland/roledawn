@@ -1,0 +1,75 @@
+/* What happened, what's next, and the one thing to do: shared by the send card and the Home side panel. */
+
+.next {
+  color: var(--ink-soft);
+}
+
+.ctaLink {
+  align-items: center;
+  background: var(--first-light);
+  border: 0;
+  border-radius: 999px;
+  color: var(--midnight);
+  display: inline-flex;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  justify-self: start;
+  min-height: 46px;
+  padding: 0 24px;
+  text-decoration: none;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.ctaLink:hover {
+  background: #ffc94a;
+}
+
+.quietLink {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink);
+  display: inline-flex;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 0 16px;
+  text-decoration: none;
+}
+
+.quietLink:hover {
+  border-color: var(--ink-soft);
+}
+
+.ctaLink:focus-visible,
+.quietLink:focus-visible {
+  outline: 3px solid var(--midnight);
+  outline-offset: 2px;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.details {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.details summary {
+  cursor: pointer;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.details p {
+  font-size: 13px;
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}

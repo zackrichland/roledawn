@@ -8,6 +8,8 @@
 .row strong {
   color: var(--ink);
   font-size: 15px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-body);
 }
 
 .row p {

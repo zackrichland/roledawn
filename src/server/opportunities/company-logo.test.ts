@@ -5,7 +5,9 @@ import { createDeflate, crc32 } from "node:zlib";
 import sharp from "sharp";
 
 import { companyLogoSource } from "../../domain/company-logo.ts";
-import { ashbySquareLogoUrl, greenhouseLogoUrl, leverLogoUrl, companyLogoResponse, loadCompanyLogo } from "./company-logo.ts";
+import {
+  ashbySquareLogoUrl, greenhouseLogoUrl, leverLogoUrl, companyLogoResolutionResponse, companyLogoResponse, fetchCompanyLogo, loadCompanyLogo,
+} from "./company-logo.ts";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const imageUrl = `https://app.ashbyhq.com/api/images/org-theme-logo/${organizationId}/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333.png`;
@@ -77,7 +79,7 @@ test("all providers fetch only their exact board and approved public asset, with
     const requested: string[] = [];
     const asset = await loadCompanyLogo(provider, "example", (async (url, options) => {
       requested.push(String(url));
-      assert.equal(options?.redirect, "error");
+      assert.equal(options?.redirect, "manual");
       assert.equal(options?.credentials, "omit");
       assert.equal(options?.referrerPolicy, "no-referrer");
       assert.equal(options?.cache, "no-store");
@@ -139,7 +141,7 @@ test("the logo proxy forwards no private context and caches only the bounded fin
   assert.ok(asset);
   assert.deepEqual(requests.map((request) => request.url), ["https://jobs.ashbyhq.com/example", imageUrl]);
   for (const { options } of requests) {
-    assert.equal(options?.redirect, "error");
+    assert.equal(options?.redirect, "manual");
     assert.equal(options?.credentials, "omit");
     assert.equal(options?.referrerPolicy, "no-referrer");
     assert.equal(options?.cache, "no-store");
@@ -219,4 +221,100 @@ test("compressed rasters above 80 megapixels are rejected before pixel decoding"
     ? new Response(boardHtml(), { headers: { "content-type": "text/html" } })
     : new Response(png, { headers: { "content-type": "image/png" } })) as typeof fetch;
   assert.equal(await loadCompanyLogo("ashby", "example", fetcher), null);
+});
+
+const boardHtmlResponse = () => new Response(boardHtml(), { headers: { "content-type": "text/html" } });
+const pngBytes = new Uint8Array(await sharp({ create: { width: 200, height: 100, channels: 3, background: "#224466" } }).png().toBuffer());
+
+test("a stable answer is 'none' and a transient failure is 'error', so only answers can be remembered", async () => {
+  const board = (respond: (url: string) => Response | Promise<Response>) => fetchCompanyLogo("ashby", "example", (async (url) => respond(String(url))) as typeof fetch);
+  const asImage = (init: ConstructorParameters<typeof Response>) => (url: string) => url.includes("jobs.ashbyhq.com") ? boardHtmlResponse() : new Response(...init);
+  const cases: readonly (readonly [string, Parameters<typeof board>[0], "none" | "error", string])[] = [
+    // The board itself.
+    ["board 404", () => new Response("", { status: 404 }), "none", "BOARD_HTTP_404"],
+    ["board 410", () => new Response("", { status: 410 }), "none", "BOARD_HTTP_410"],
+    ["board moved", () => new Response("", { status: 301, headers: { location: "https://elsewhere.test/" } }), "none", "BOARD_HTTP_301"],
+    ["board throttled", () => new Response("", { status: 429 }), "error", "BOARD_HTTP_429"],
+    ["board upstream error", () => new Response("", { status: 503 }), "error", "BOARD_HTTP_503"],
+    ["board forbidden", () => new Response("", { status: 403 }), "error", "BOARD_HTTP_403"],
+    ["board is not html", () => new Response("{}", { headers: { "content-type": "application/json" } }), "none", "BOARD_NOT_HTML"],
+    ["board too large", () => new Response("x".repeat(1_000_001), { headers: { "content-type": "text/html" } }), "none", "BOARD_TOO_LARGE"],
+    ["board lists no logo", () => new Response("<html></html>", { headers: { "content-type": "text/html" } }), "none", "LOGO_NOT_LISTED"],
+    ["board unreachable", () => { throw new TypeError("fetch failed"); }, "error", "BOARD_NETWORK"],
+    ["board timeout", () => { throw new DOMException("timed out", "TimeoutError"); }, "error", "BOARD_TIMEOUT"],
+    // The logo it names.
+    ["logo 404", asImage(["", { status: 404 }]), "none", "LOGO_HTTP_404"],
+    ["logo throttled", asImage(["", { status: 429 }]), "error", "LOGO_HTTP_429"],
+    ["logo upstream error", asImage(["", { status: 502 }]), "error", "LOGO_HTTP_502"],
+    ["logo is html", asImage(["<html/>", { headers: { "content-type": "text/html" } }]), "none", "LOGO_TYPE_UNSUPPORTED"],
+    ["logo is not the type it claims", asImage(["<svg/>", { headers: { "content-type": "image/png" } }]), "none", "LOGO_SIGNATURE_MISMATCH"],
+    ["logo is corrupt", asImage([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]), { headers: { "content-type": "image/png" } }]), "none", "IMAGE_INVALID"],
+    ["oversized svg", asImage([`<svg xmlns="http://www.w3.org/2000/svg">${"x".repeat(262_200)}</svg>`, { headers: { "content-type": "image/svg+xml" } }]), "none", "LOGO_TOO_LARGE_TO_STORE"],
+    ["logo network failure", (url) => { if (url.includes("jobs.ashbyhq.com")) return boardHtmlResponse(); throw new TypeError("fetch failed"); }, "error", "LOGO_NETWORK"],
+  ];
+  for (const [label, respond, kind, reason] of cases) {
+    const result = await board(respond);
+    assert.deepEqual([result.kind, "reason" in result ? result.reason : null], [kind, reason], label);
+  }
+  // The old contract (asset or null) could not tell "no logo" from "try again": both were null, both a no-store 404.
+  assert.equal(await loadCompanyLogo("ashby", "example", (async () => new Response("", { status: 404 })) as typeof fetch), null);
+  assert.equal(await loadCompanyLogo("ashby", "example", (async () => new Response("", { status: 503 })) as typeof fetch), null);
+  const found = await board((url) => url.includes("jobs.ashbyhq.com") ? boardHtmlResponse() : new Response(pngBytes, { headers: { "content-type": "image/png" } }));
+  assert.equal(found.kind, "found");
+  assert.equal(await loadCompanyLogo("ashby", "../private"), null);
+  assert.equal((await fetchCompanyLogo("ashby", "../private")).kind, "none");
+});
+
+test("a redirect is never followed and is a stable answer, not a network error", async () => {
+  const requested: string[] = [];
+  const result = await fetchCompanyLogo("lever", "example", (async (url, options) => {
+    requested.push(String(url));
+    assert.equal(options?.redirect, "manual");
+    return new Response("", { status: 302, headers: { location: "https://evil.test/logo.png" } });
+  }) as typeof fetch);
+  assert.deepEqual(result, { kind: "none", reason: "BOARD_HTTP_302" });
+  assert.deepEqual(requested, ["https://jobs.lever.co/example"]);
+});
+
+test("EU boards are read from their own EU host with the same exact-origin rules, and their slugs stay separate", async () => {
+  for (const [provider, origin, html, image] of [
+    ["greenhouse-eu", "https://job-boards.eu.greenhouse.io", greenhouseBoardHtml(), greenhouseImageUrl],
+    ["lever-eu", "https://jobs.eu.lever.co", leverBoardHtml().replace("https://jobs.lever.co/", "https://jobs.eu.lever.co/"), leverImageUrl],
+  ] as const) {
+    const requested: string[] = [];
+    const result = await fetchCompanyLogo(provider, "example", (async (url) => {
+      requested.push(String(url));
+      return requested.length === 1 ? new Response(html, { headers: { "content-type": "text/html" } })
+        : new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', { headers: { "content-type": "image/svg+xml" } });
+    }) as typeof fetch);
+    assert.equal(result.kind, "found", provider);
+    assert.deepEqual(requested, [`${origin}/example`, image], provider);
+  }
+  // A US Lever page is not accepted as an EU board's identity (og:url must name the EU host).
+  assert.equal(leverLogoUrl(leverBoardHtml(), "example", "https://jobs.eu.lever.co"), null);
+});
+
+test("a board with a dotted slug is fetched by that exact slug", async () => {
+  const requested: string[] = [];
+  await fetchCompanyLogo("greenhouse", "acme.co", (async (url) => { requested.push(String(url)); return new Response("", { status: 404 }); }) as typeof fetch);
+  assert.deepEqual(requested, ["https://job-boards.greenhouse.io/acme.co"]);
+  assert.equal((await fetchCompanyLogo("greenhouse", "a..b")).kind, "none");
+});
+
+test("responses: found logos are cached hard, 'none' briefly in browsers only, 'unavailable' never", () => {
+  const none = companyLogoResolutionResponse({ kind: "none" });
+  assert.equal(none.status, 404);
+  assert.equal(none.headers.get("cache-control"), "public, max-age=300");
+  assert.equal(none.headers.get("netlify-cdn-cache-control"), "no-store");
+  const unavailable = companyLogoResolutionResponse({ kind: "unavailable" });
+  assert.equal(unavailable.status, 503);
+  assert.equal(unavailable.headers.get("cache-control"), "no-store");
+  assert.equal(unavailable.headers.get("netlify-cdn-cache-control"), "no-store");
+  assert.equal(unavailable.headers.get("retry-after"), "5");
+  const invalid = companyLogoResolutionResponse({ kind: "invalid" });
+  assert.equal(invalid.status, 404);
+  assert.equal(invalid.headers.get("cache-control"), "no-store");
+  const asset = companyLogoResolutionResponse({ kind: "asset", asset: { bytes: pngBytes, contentType: "image/webp" } });
+  assert.equal(asset.status, 200);
+  assert.match(asset.headers.get("cache-control") ?? "", /public, max-age=86400/u);
 });

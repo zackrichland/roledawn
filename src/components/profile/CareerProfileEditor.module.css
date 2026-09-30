@@ -26,6 +26,8 @@
 .row strong {
   color: var(--ink);
   font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-body);
 }
 
 .row span {
@@ -36,6 +38,7 @@
 .row small {
   color: var(--muted);
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .row p {
@@ -53,7 +56,12 @@
   color: var(--muted);
   cursor: pointer;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.lines summary:hover {
+  color: var(--ink);
 }
 
 .lines ul {
@@ -65,7 +73,6 @@
 
 .lines li {
   color: var(--ink-soft);
-  font-family: var(--font-serif);
   font-size: 14.5px;
   line-height: 1.5;
 }
@@ -117,7 +124,7 @@
   color: var(--muted);
   font-size: 12.5px;
   font-style: normal;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .certs {
@@ -143,12 +150,13 @@
   justify-content: space-between;
 }
 
+/* The sticky save bar: a dark floating pill with a soft top light. */
 .saveBar {
   align-items: center;
-  background: var(--midnight);
-  border-radius: var(--radius-lg);
+  background: var(--gradient-ink);
+  border-radius: var(--radius-xl);
   bottom: 16px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 10%) inset, var(--shadow-lg);
   color: #fff;
   display: flex;
   gap: 16px;
@@ -158,9 +166,23 @@
   z-index: 5;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .saveBar {
+    animation: lift var(--dur-slow) var(--ease-spring) backwards;
+  }
+}
+
+@keyframes lift {
+  from { opacity: 0; transform: translateY(12px); }
+}
+
 .saveBar p {
   font-size: 14px;
   margin: 0;
+}
+
+.saveBar :focus-visible {
+  outline-color: #fff;
 }
 
 .saveBar button:first-child {

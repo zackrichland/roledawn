@@ -22,7 +22,7 @@
   --ink: #0b1020;
   --ink-soft: #343a4b;
   --muted: #5f6675;
-  --faint: #6b7280;
+  --faint: #686f7d;
   --line: rgb(11 16 32 / 8%);
   --line-strong: rgb(11 16 32 / 17%);
   --paper: #ffffff;
@@ -83,14 +83,14 @@
   /* Type. System-first: SF on Apple devices, Inter (variable, optical size)
      everywhere else. The serif survives only in the document preview, where
      the page has to match the PDF it previews. */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-inter), system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-inter, Inter), system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-display: var(--font-sans);
   --font-serif: var(--font-display); /* Legacy name. The serif was retired from the interface; use --font-display. */
-  --font-document: var(--font-source-serif), "Iowan Old Style", Georgia, serif;
+  --font-document: var(--font-source-serif, "Source Serif 4"), "Iowan Old Style", Georgia, serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --tracking-body: -0.006em;
-  --tracking-heading: -0.022em;
-  --tracking-display: -0.03em;
+  --tracking-body: -0.004em;
+  --tracking-heading: -0.014em;
+  --tracking-display: -0.024em;
   --tracking-label: 0.01em;
 
   /* Motion: 150-350 ms, opacity and transform only. */

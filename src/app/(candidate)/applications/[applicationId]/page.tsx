@@ -12,13 +12,14 @@ import { ApplicationFilesRefresh } from "@/components/applications/ApplicationFi
 import { ApplicationFillAuthorization } from "@/components/applications/ApplicationFillAuthorization";
 import { ApplicationPreparationPanel } from "@/components/applications/ApplicationPreparationPanel";
 import { ApplicationPreparationRetry } from "@/components/applications/ApplicationPreparationRetry";
-import { RetryImport } from "@/components/applications/RetryImport";
 import { SendWhenReady } from "@/components/applications/SendWhenReady";
+import { StopActions } from "@/components/applications/StopActions";
 import { RouteAutoRefresh } from "@/components/ui/RouteAutoRefresh";
 import { ApplicationAgentQuestionError, type ApplicationAgentQuestion } from "@/domain/application-agent-questions";
 import { ApplicationAutopilotError, type ApplicationAutopilotView } from "@/domain/application-autopilot";
 import { AUTOPILOT_UNSUPPORTED_DESTINATION_COPY, parseAutopilotDestination } from "@/domain/application-autopilot-eligibility";
-import { explainFailure, presentApplication, type ApplicationPresentation } from "@/domain/application-presentation";
+import { presentApplication, presentGuidance } from "@/domain/application-presentation";
+import { guideIntakeFailure, guideSend, guideWritingFailure } from "@/domain/application-stop-guidance";
 import { applicationSendIntentState, canOfferApplicationSend, type ApplicationSendIntentState } from "@/domain/application-send-intent";
 import { isApplicationWorkInProgress } from "@/domain/dashboard-queue";
 import { formatUtcDateTime } from "@/domain/date-format";
@@ -39,17 +40,6 @@ import styles from "./ApplicationWorkspace.module.css";
 export const metadata: Metadata = {
   title: "Application",
   description: "One application: its status, documents, and next step.",
-};
-
-const INTAKE_FAILURE_COPY: Readonly<Record<string, string>> = {
-  ATS_UNSUPPORTED: "This job board isn't supported yet.",
-  JOB_URL_SHAPE_UNSUPPORTED: "That link doesn't point to a single public job posting.",
-  JOB_NOT_FOUND: "The employer took this posting down.",
-  BODY_TOO_LARGE: "The posting was too large to import safely.",
-  JSON_INVALID: "The job board returned something RoleDawn couldn't read.",
-  PAYLOAD_INVALID: "The job board's record for this posting was incomplete.",
-  HTTP_ERROR: "The job board returned an error.",
-  FETCH_FAILED: "RoleDawn couldn't reach the job board.",
 };
 
 const EVENT_COPY: Readonly<Record<string, string>> = {
@@ -99,26 +89,6 @@ function fileSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 1) return "";
   if (bytes < 1_000_000) return `${Math.max(1, Math.round(bytes / 1_000))} KB`;
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
-}
-
-function freeze(label: string, detail: string, tone: ApplicationPresentation["tone"], needsYou = false): ApplicationPresentation {
-  return Object.freeze({ label, detail, tone, step: 3, needsYou, closed: false });
-}
-
-/** While a send is live, its state outranks the application record's. */
-function autopilotPresentation(view: ApplicationAutopilotView | null): ApplicationPresentation | null {
-  if (view?.verification) return freeze("Needs you", "The employer emailed you a verification code. Enter it below to finish sending.", "attention", true);
-  switch (view?.status) {
-    case "WAITING_ANSWERS": return freeze("Needs you", "The employer's form asked something only you can answer. Answer below and RoleDawn continues.", "attention", true);
-    case "PAUSED": return freeze("Paused", "Nothing is being sent. Resume when you're ready.", "attention", true);
-    case "UNCERTAIN":
-    case "RECONCILING": return freeze("Confirming", "Checking whether the employer received it before anything else happens.", "working");
-    case "SUBMITTING": return freeze("Sending", "Submitting and waiting for the employer's confirmation.", "working");
-    case "QUEUED":
-    case "RUNNING": return freeze("Applying", "Filling out the employer's form with your documents and saved answers.", "working");
-    case "FAILED_SAFE": return freeze("Stopped", "The application stopped. See the reason and next step below.", "error", true);
-    default: return null;
-  }
 }
 
 function hostOf(url: string | null): string | null {
@@ -173,7 +143,21 @@ function ApplicationWorkspace({
   const preparationRun = application.runs.find((run) => run.kind === "PREPARATION") ?? null;
   const browserClosed = !application.computerSession || !["ACTIVE", "PAUSED_FOR_REVIEW", "PROVISIONING"].includes(application.computerSession.state);
   const strandedTakeover = application.status === "TAKEOVER" && !autopilot && Boolean(application.fillAttempt) && browserClosed;
-  const presentation = autopilotPresentation(autopilot) ?? (strandedTakeover
+  const postingHref = application.applyUrl ?? application.sourceUrl;
+  const provider = parseAutopilotDestination(application.applyUrl)?.provider ?? null;
+  const intakeFailed = application.intakeStatus === "FAILED";
+  // A send request speaks for the page only while it belongs to the current documents.
+  const currentAutopilot = autopilot && autopilot.revisionId === application.currentRevision?.id ? autopilot : null;
+  const sendGuidance = currentAutopilot && !["CONFIRMED", "CANCELED"].includes(currentAutopilot.status) ? guideSend({
+    status: currentAutopilot.status, failureCode: currentAutopilot.failureCode,
+    transientRetries: application.autopilot?.transientRetries, reconcileCount: application.autopilot?.reconcileCount, expired: application.autopilot?.expired,
+    profileChanged: application.profileChanged, provider, questionCount: currentAutopilot.questions.length,
+    verificationRecipient: currentAutopilot.verification?.recipient ?? null, verificationRetry: currentAutopilot.verification?.retry,
+  }) : null;
+  const intakeGuidance = intakeFailed ? guideIntakeFailure(application.failureCode) : null;
+  const writingGuidance = application.status === "FAILED_SAFE" && !intakeFailed && !sendGuidance && preparationRun?.status === "FAILED"
+    ? guideWritingFailure({ code: preparationRun.errorCode, profileChanged: application.profileChanged }) : null;
+  const presentation = sendGuidance ? presentGuidance(sendGuidance) : (strandedTakeover
     ? Object.freeze({ label: "Finish on the employer's site", detail: "RoleDawn stopped at a step it can't do for you. Nothing was sent.", tone: "attention" as const, step: 3, needsYou: true, closed: false })
     : null) ?? presentApplication({
     status: application.status,
@@ -181,15 +165,17 @@ function ApplicationWorkspace({
     preparationStage: preparationRun?.preparationStage ?? null,
     hasReceipt: Boolean(application.receipt),
     sendIntent,
+    failureCode: application.failureCode,
+    preparationFailureCode: preparationRun?.status === "FAILED" ? preparationRun.errorCode : null,
+    hasDocuments: Boolean(application.currentRevision),
+    profileChanged: application.profileChanged,
+    provider,
   });
-  const postingHref = application.applyUrl ?? application.sourceUrl;
   const destinationSupported = application.applyUrl ? Boolean(parseAutopilotDestination(application.applyUrl)) : true;
   const sendIntentOpen = sendIntent === "OPEN";
   const preparing = application.status === "DRAFTING" || application.status === "NEEDS_USER";
-  const intakeFailed = application.intakeStatus === "FAILED";
   const canRefreshStaleFiles = application.profileChanged && ["READY", "NEEDS_USER", "FAILED_SAFE"].includes(application.status);
   const showPreparation = preparing && !intakeFailed && application.intakeStatus !== "PENDING" && application.intakeStatus !== "RESOLVING";
-  const writingProblem = ["NEEDS_USER", "FAILED_SAFE"].includes(application.status) ? explainFailure(preparationRun?.errorCode) : null;
   const showSendSwitch = autopilotEnabled && destinationSupported && !intakeFailed && !autopilot && sendIntent !== "UNAVAILABLE" && sendIntent !== "DELEGATED" && sendIntent !== "NOT_DELIVERABLE" &&
     (preparing || (application.status === "READY" && sendIntentOpen));
   const showSendRetry = autopilotEnabled && !autopilot && application.status === "READY" && sendIntent === "NOT_DELIVERABLE";
@@ -243,20 +229,21 @@ function ApplicationWorkspace({
       </header>
 
       <div className={styles.next}>
-        {intakeFailed ? (
-          <section className={`${styles.panel} ${styles.panelError}`} role="alert">
-            <h2>RoleDawn couldn&apos;t read this job.</h2>
-            <p>{explainFailure(application.failureCode) ?? INTAKE_FAILURE_COPY[application.failureCode ?? ""] ?? "The import stopped safely."} Nothing was sent.</p>
-            {application.failureCode !== "ATS_UNSUPPORTED" && application.failureCode !== "JOB_URL_SHAPE_UNSUPPORTED" ? <RetryImport applicationId={id} /> : null}
+        {intakeGuidance ? (
+          <section className={`${styles.panel} ${intakeGuidance.tone === "error" ? styles.panelError : styles.panelAttention}`} role={intakeGuidance.tone === "error" ? "alert" : "status"}>
+            <h2>{intakeGuidance.heading}.</h2>
+            <p>{intakeGuidance.happened} {intakeGuidance.next}</p>
+            <StopActions applicationId={id} employerUrl={postingHref} guidance={intakeGuidance} retryTarget="IMPORT" />
           </section>
         ) : null}
 
         {questionsError ? <p className={ui.noticeError} role="alert">{questionsError}</p> : null}
 
-        {writingProblem ? (
+        {writingGuidance ? (
           <section className={`${styles.panel} ${styles.panelAttention}`}>
-            <h2>Writing stopped before your documents were ready.</h2>
-            <p>{writingProblem} Nothing was sent.</p>
+            <h2>{writingGuidance.heading}.</h2>
+            <p>{writingGuidance.happened} {writingGuidance.next}</p>
+            <StopActions aggregateVersion={application.aggregateVersion} applicationId={id} employerUrl={postingHref} guidance={writingGuidance} retryTarget="WRITING" />
           </section>
         ) : null}
 
@@ -291,9 +278,13 @@ function ApplicationWorkspace({
             aggregateVersion={application.aggregateVersion}
             applicationId={id}
             canStart={application.status === "READY" && !application.profileChanged && application.currentRevision.validationStatus === "PASSED" && !questionsError}
+            employerUrl={postingHref}
             packetHash={application.currentRevision.packetHash}
+            profileChanged={application.profileChanged}
             revisionId={application.currentRevision.id}
+            showHappened={!sendGuidance}
             startBlockedReason={destinationSupported ? undefined : AUTOPILOT_UNSUPPORTED_DESTINATION_COPY}
+            summary={application.autopilot}
             view={autopilot}
           />
         ) : null}

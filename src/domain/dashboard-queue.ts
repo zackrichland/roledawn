@@ -1,4 +1,5 @@
 import type { ApplicationPreparationStage } from "@/domain/application-input-snapshot";
+import type { ApplicationAutopilotStatus } from "./application-autopilot.ts";
 
 export type ApplicationStatus =
   | "DRAFTING"
@@ -120,6 +121,24 @@ export function isJobIntakeStatus(value: string): value is JobIntakeStatus {
   return JOB_INTAKE_STATUSES.has(value as JobIntakeStatus);
 }
 
+/**
+ * The send request for an application's current documents, as the candidate
+ * may read it. Only the request for the current revision is carried, so an
+ * older stopped request never describes rewritten files.
+ */
+export type AutopilotSummary = Readonly<{
+  id: string;
+  status: ApplicationAutopilotStatus;
+  version: number;
+  failureCode: string | null;
+  /** Automatic retries already used (at most two, D-114). */
+  transientRetries: number;
+  /** Times an unknown outcome has been reconciled (three, then RoleDawn waits). */
+  reconcileCount: number;
+  /** The request is past its 7-day life, so the database refuses Try again. */
+  expired: boolean;
+}>;
+
 export type PersistentQueueApplication = Readonly<{
   applicationRouteKey: string;
   status: ApplicationStatus;
@@ -134,4 +153,10 @@ export type PersistentQueueApplication = Readonly<{
   location: string | null;
   preparationStage: ApplicationPreparationStage | null;
   autoApplySelected?: boolean;
+  aggregateVersion?: number;
+  /** Documents exist, so a stop happened after writing. */
+  hasDocuments?: boolean;
+  /** The latest preparation run's error code, when it failed. */
+  preparationFailureCode?: string | null;
+  autopilot?: AutopilotSummary | null;
 }>;

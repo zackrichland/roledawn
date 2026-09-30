@@ -1,7 +1,5 @@
 .page {
-  background:
-    radial-gradient(60% 40% at 50% -10%, rgb(255 209 102 / 20%), transparent 70%),
-    var(--canvas);
+  background: var(--hero-tint), var(--canvas);
   min-height: 100dvh;
   padding: 0 16px 96px;
 }
@@ -37,6 +35,7 @@
   background: var(--line-strong);
   border-radius: 999px;
   height: 4px;
+  transition: background-color var(--dur-slow) var(--ease-out);
 }
 
 .steps a[data-done="true"] .stepBar {
@@ -50,7 +49,8 @@
 .stepLabel {
   color: var(--muted);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
+  transition: color var(--dur-base) var(--ease-out);
 }
 
 .steps a[aria-current="step"] .stepLabel {
@@ -65,11 +65,11 @@
 
 .title {
   color: var(--ink);
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: clamp(30px, 5vw, 42px);
   font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.08;
+  letter-spacing: var(--tracking-display);
+  line-height: 1.06;
   margin: 0;
 }
 
@@ -82,13 +82,29 @@
 }
 
 .card {
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow);
   display: grid;
   gap: 18px;
   padding: 24px;
+}
+
+/* The step content settles in; navigating steps remounts it. */
+@media (prefers-reduced-motion: no-preference) {
+  .intro,
+  .card {
+    animation: rise var(--dur-slow) var(--ease-out) backwards;
+  }
+
+  .card {
+    animation-delay: 60ms;
+  }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(var(--rise, 8px)); }
 }
 
 .next {
@@ -122,7 +138,7 @@
 
 .summary li > span {
   color: var(--muted);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .summary li[data-done="true"] > span {
@@ -132,7 +148,7 @@
 .summary a {
   color: var(--ink);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
 }
 

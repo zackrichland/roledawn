@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { APPLICATION_AUTOPILOT_STATUSES, type ApplicationAutopilotStatus } from "@/domain/application-autopilot";
 import { applicationInputsChanged } from "@/domain/application-input-freshness";
 import {
   isApplicationPreparationReadiness,
@@ -16,6 +17,7 @@ import {
   isJobIntakeStatus,
   latestPreparationSnapshotId,
   type ApplicationStatus,
+  type AutopilotSummary,
   type JobIntakeStatus,
   type PersistentQueueApplication,
 } from "@/domain/dashboard-queue";
@@ -146,6 +148,8 @@ export type ApplicationWorkspaceDTO = Readonly<{
   fillAttempt: ApplicationFillAttemptDTO | null;
   computerSession: ComputerSessionDTO | null;
   fillResumeAttempt: ApplicationFillResumeAttemptDTO | null;
+  /** The send request for the current documents, when one exists. */
+  autopilot: AutopilotSummary | null;
 }>;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -294,6 +298,30 @@ function firstRow<T>(value: T | T[] | null): T | null {
   return value;
 }
 
+/**
+ * The candidate-readable facts about a send request. A request for older files
+ * (a different revision) says nothing about the current documents, so it is left out.
+ */
+function summarizeAutopilot(value: unknown, currentRevisionId: string | null): AutopilotSummary | null {
+  const row = asRecord(value);
+  if (!row || currentRevisionId === null || row.revision_id !== currentRevisionId) return null;
+  if (typeof row.id !== "string" || !UUID_PATTERN.test(row.id) || typeof row.status !== "string" ||
+    !(APPLICATION_AUTOPILOT_STATUSES as readonly string[]).includes(row.status) ||
+    typeof row.version !== "number" || typeof row.transient_retries !== "number" || typeof row.reconcile_count !== "number" ||
+    typeof row.expires_at !== "string" || (row.failure_code !== null && typeof row.failure_code !== "string")) return null;
+  return Object.freeze({
+    id: row.id,
+    status: row.status as ApplicationAutopilotStatus,
+    version: row.version,
+    failureCode: row.failure_code as string | null,
+    transientRetries: row.transient_retries,
+    reconcileCount: row.reconcile_count,
+    expired: Date.parse(row.expires_at) <= Date.now(),
+  });
+}
+
+const AUTOPILOT_SUMMARY_COLUMNS = "id, application_id, revision_id, status, version, failure_code, transient_retries, reconcile_count, expires_at, created_at";
+
 function boundedDisplayName(actor: AuthenticatedActor, proposed: string): string {
   const normalized = proposed.trim().replace(/\s+/g, " ").slice(0, 80);
   if (normalized) {
@@ -381,7 +409,7 @@ export async function getQueueWorkspace(
   const { data, error } = await supabase
     .from("applications")
     .select(
-      "id, status, queued_at, updated_at, job_intake_id, job_version_id",
+      "id, status, aggregate_version, queued_at, updated_at, job_intake_id, job_version_id, current_revision_id",
     )
     .is("archived_at", null)
     .order("queued_at", { ascending: false })
@@ -399,7 +427,7 @@ export async function getQueueWorkspace(
     new Set(data.map((row) => row.job_version_id).filter(Boolean)),
   ) as string[];
   const applicationIds = data.map((row) => row.id);
-  const [intakeResult, versionResult, receiptResult, preparationRunResult, autoApplyResult] = await Promise.all([
+  const [intakeResult, versionResult, receiptResult, preparationRunResult, autoApplyResult, autopilotResult] = await Promise.all([
     intakeIds.length > 0
       ? supabase
           .from("job_intakes")
@@ -421,7 +449,7 @@ export async function getQueueWorkspace(
     applicationIds.length > 0
       ? supabase
           .from("application_runs")
-          .select("application_id, preparation_stage, created_at, id")
+          .select("application_id, preparation_stage, status, error_code, created_at, id")
           .eq("run_kind", "PREPARATION")
           .in("application_id", applicationIds)
           .order("created_at", { ascending: false })
@@ -429,6 +457,13 @@ export async function getQueueWorkspace(
       : Promise.resolve({ data: [], error: null }),
     applicationIds.length > 0
       ? supabase.from("auto_apply_enrollments").select("application_id").in("application_id", applicationIds)
+      : Promise.resolve({ data: [], error: null }),
+    applicationIds.length > 0
+      ? supabase
+          .from("application_autopilots")
+          .select(AUTOPILOT_SUMMARY_COLUMNS)
+          .in("application_id", applicationIds)
+          .order("created_at", { ascending: false })
       : Promise.resolve({ data: [], error: null }),
   ]);
 
@@ -450,12 +485,19 @@ export async function getQueueWorkspace(
   );
   const automaticallySelected = new Set(autoApplyResult.data.map(row => row.application_id));
   const preparationStagesByApplication = new Map<string, ApplicationPreparationStage | null>();
+  const preparationFailuresByApplication = new Map<string, string | null>();
   for (const run of preparationRunResult.data) {
     if (preparationStagesByApplication.has(run.application_id)) continue;
     if (run.preparation_stage !== null && !isApplicationPreparationStage(run.preparation_stage)) {
       throw new Error("QUEUE_PREPARATION_STAGE_INVALID");
     }
     preparationStagesByApplication.set(run.application_id, run.preparation_stage);
+    preparationFailuresByApplication.set(run.application_id, run.status === "FAILED" ? run.error_code : null);
+  }
+  // Newest request first. A failed lookup only makes rows less specific; it never blanks Home.
+  const newestAutopilot = new Map<string, unknown>();
+  for (const request of autopilotResult.error ? [] : autopilotResult.data) {
+    if (!newestAutopilot.has(request.application_id)) newestAutopilot.set(request.application_id, request);
   }
   const applications = data.map((row) => {
     if (!isApplicationStatus(row.status)) {
@@ -498,6 +540,10 @@ export async function getQueueWorkspace(
       location: version?.location_text ?? null,
       preparationStage: preparationStagesByApplication.get(row.id) ?? null,
       autoApplySelected: automaticallySelected.has(row.id),
+      aggregateVersion: row.aggregate_version,
+      hasDocuments: row.current_revision_id !== null,
+      preparationFailureCode: preparationFailuresByApplication.get(row.id) ?? null,
+      autopilot: summarizeAutopilot(newestAutopilot.get(row.id), row.current_revision_id),
     });
   });
 
@@ -558,6 +604,7 @@ export async function getApplicationWorkspace(
     eventsResult,
     receiptResult,
     fillAttemptResult,
+    autopilotResult,
   ] = await Promise.all([
     application.job_intake_id
       ? supabase
@@ -614,6 +661,13 @@ export async function getApplicationWorkspace(
     supabase
       .from("application_fill_attempts")
       .select("id, status, created_at, started_at, completed_at")
+      .eq("application_id", application.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("application_autopilots")
+      .select(AUTOPILOT_SUMMARY_COLUMNS)
       .eq("application_id", application.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -817,5 +871,7 @@ export async function getApplicationWorkspace(
     fillAttempt,
     computerSession,
     fillResumeAttempt,
+    // A failed lookup leaves this out; the page still loads the live send state itself.
+    autopilot: autopilotResult.error ? null : summarizeAutopilot(autopilotResult.data, application.current_revision_id),
   });
 }

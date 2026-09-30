@@ -1,3 +1,5 @@
 .frame { position: relative; overflow: hidden; }
-.image { position: absolute; inset: 0; width: 100%; height: 100%; padding: 5px; object-fit: contain; background: white; }
-.image:not([data-loaded]) { opacity: 0; }
+/* The initials stay until the image has loaded; the logo then fades in over them. */
+.image { position: absolute; inset: 0; width: 100%; height: 100%; padding: 5px; object-fit: contain; background: white; opacity: 0; transition: opacity 180ms ease-out; }
+.image[data-loaded] { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .image { transition: none; } }

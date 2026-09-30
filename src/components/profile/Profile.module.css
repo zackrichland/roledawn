@@ -9,19 +9,18 @@
 
 .kicker {
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
 }
 
 .title {
   color: var(--ink);
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: clamp(30px, 4.4vw, 40px);
   font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.08;
+  letter-spacing: var(--tracking-display);
+  line-height: 1.06;
   margin: 0;
 }
 
@@ -46,10 +45,13 @@
   border-bottom: 2px solid transparent;
   color: var(--muted);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
   margin-bottom: -1px;
   padding: 11px 12px;
   text-decoration: none;
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
   white-space: nowrap;
 }
 
@@ -67,8 +69,25 @@
   gap: 16px;
 }
 
+/* Cards settle in one after another; only the first few are staggered. */
+@media (prefers-reduced-motion: no-preference) {
+  .stack > * {
+    animation: rise var(--dur-slow) var(--ease-out) backwards;
+  }
+
+  .stack > :nth-child(2) { animation-delay: 45ms; }
+  .stack > :nth-child(3) { animation-delay: 90ms; }
+  .stack > :nth-child(4) { animation-delay: 135ms; }
+  .stack > :nth-child(5) { animation-delay: 180ms; }
+  .stack > :nth-child(n + 6) { animation-delay: 220ms; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(var(--rise, 8px)); }
+}
+
 .card {
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -87,7 +106,8 @@
 .cardHead h2 {
   color: var(--ink);
   font-size: 17px;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-heading);
   margin: 0;
 }
 
@@ -143,22 +163,33 @@
   margin: 4px 0;
 }
 
+/* A dot that pulses to say "working": a ring swells and fades. */
 .pulse {
-  animation: pulse 1.6s ease-in-out infinite;
   background: var(--first-light-deep);
   border-radius: 50%;
   display: inline-block;
   flex: none;
   height: 10px;
+  position: relative;
   width: 10px;
 }
 
+.pulse::after {
+  animation: pulse 1.8s var(--ease-out) infinite;
+  background: var(--first-light-deep);
+  border-radius: 50%;
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
 @keyframes pulse {
-  50% { box-shadow: 0 0 0 6px var(--amber-wash); }
+  0% { opacity: 0.5; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(2.4); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse { animation: none; }
+  .pulse::after { animation: none; }
 }
 
 @media (max-width: 640px) {

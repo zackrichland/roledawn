@@ -9,13 +9,16 @@
   align-items: center;
   background: var(--canvas);
   border: 1.5px dashed var(--line-strong);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   display: flex;
   gap: 14px;
   padding: 22px;
   position: relative;
-  transition: border-color 140ms ease, background 140ms ease;
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
   width: 100%;
 }
 
@@ -30,7 +33,7 @@
 }
 
 .drop:focus-within {
-  box-shadow: 0 0 0 4px rgb(255 209 102 / 35%);
+  box-shadow: 0 0 0 4px var(--focus-halo);
 }
 
 .drop > span:nth-child(2) {
@@ -42,6 +45,8 @@
 .drop strong {
   color: var(--ink);
   font-size: 15px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-body);
   overflow-wrap: anywhere;
 }
 
@@ -54,13 +59,20 @@
   align-items: center;
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-xs);
   color: var(--ink-soft);
   display: inline-flex;
   flex: none;
   height: 44px;
   justify-content: center;
+  transition: transform var(--dur-base) var(--ease-spring);
   width: 44px;
+}
+
+.drop:hover .icon,
+.drop[data-dragging="true"] .icon {
+  transform: translateY(-2px);
 }
 
 .input {
