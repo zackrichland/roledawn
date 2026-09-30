@@ -281,5 +281,43 @@ begin
   insert into standing_answer_checks values('same_application_candidate_no_ai_answer_remains_usable',true);
 end $check$;
 
+
+do $check$
+declare who jsonb:=pg_temp.candidate(); stranger jsonb:=pg_temp.candidate(); run jsonb; q jsonb; bad jsonb; result jsonb;
+  saved uuid; other_saved uuid; input_version bigint; topic text := 'Active TS/SCI with FSP or CI';
+begin
+  run:=pg_temp.running(who);
+  select application_input_version into input_version from public.candidates where id=(who->>'candidate')::uuid;
+  perform pg_temp.as_candidate(who);
+  saved:=public.save_candidate_standing_answer(topic,'No');
+  execute 'reset role';
+  if input_version <> (select application_input_version from public.candidates where id=(who->>'candidate')::uuid) then raise exception 'CHECK_EXACT_ANSWER_BUMPED_EPOCH'; end if;
+  perform pg_temp.as_candidate(stranger);
+  other_saved:=public.save_candidate_standing_answer(topic,'No');
+  execute 'reset role';
+  q:=pg_temp.question('Do you currently possess an active TS/SCI with FSP or CI?','SINGLE_SELECT','[{"label":"Yes","value":"y"},{"label":"No","value":"n"}]')||'{"reasonCode":"SENSITIVE_REQUIRES_CANDIDATE"}';
+  execute 'set local role service_role';
+  result:=public.record_application_autopilot_standing_answers((run->>'autopilot')::uuid,(run->>'lease')::uuid,
+    jsonb_build_array(jsonb_build_object('descriptor',q,'value','"n"'::jsonb,'basis',jsonb_build_array(saved))));
+  if jsonb_array_length(result)<>1 or result->0->>'value'<>'n' then raise exception 'CHECK_EXACT_ANSWER_NOT_RECORDED'; end if;
+  for bad in select value from jsonb_array_elements(jsonb_build_array(
+    jsonb_build_object('descriptor',q,'value','"y"'::jsonb,'basis',jsonb_build_array(saved)),
+    jsonb_build_object('descriptor',q,'value','"n"'::jsonb,'basis',jsonb_build_array(other_saved)),
+    jsonb_build_object('descriptor',q,'value','"n"'::jsonb,'basis',jsonb_build_array(saved,'fact:location.city')),
+    jsonb_build_object('descriptor',q||'{"label":"Do you have security clearance?"}','value','"n"'::jsonb,'basis',jsonb_build_array(saved)),
+    jsonb_build_object('descriptor',q||'{"label":"Do you currently possess an active TS/SCI with FSP and CI?"}','value','"n"'::jsonb,'basis',jsonb_build_array(saved)),
+    jsonb_build_object('descriptor',q||'{"label":"Do you need sponsorship?"}','value','"n"'::jsonb,'basis',jsonb_build_array(saved)),
+    jsonb_build_object('descriptor',q||'{"label":"Are you able to work on-site?"}','value','"n"'::jsonb,'basis',jsonb_build_array(saved)),
+    jsonb_build_object('descriptor',q||'{"label":"Gender"}','value','"n"'::jsonb,'basis',jsonb_build_array(saved))
+  )) loop
+    begin
+      perform public.record_application_autopilot_standing_answers((run->>'autopilot')::uuid,(run->>'lease')::uuid,jsonb_build_array(bad));
+      raise exception 'CHECK_EXACT_ANSWER_SCOPE_BYPASS';
+    exception when invalid_parameter_value then null; end;
+  end loop;
+  execute 'reset role';
+  insert into standing_answer_checks values('exact_clearance_subscription_owned_scoped_and_epoch_neutral',true);
+end $check$;
+
 select check_name, passed from standing_answer_checks order by check_name;
 rollback;

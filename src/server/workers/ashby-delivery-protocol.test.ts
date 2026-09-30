@@ -177,9 +177,8 @@ test("protocol drift reports a static stage without exposing an answer", () => {
   }
 });
 
-test("autosave schema diagnostics distinguish action and each field property without accepting drift", () => {
+test("autosave schema diagnostics distinguish each field property without accepting drift", () => {
   const cases: readonly [string, (value: ReturnType<typeof form>) => unknown][] = [
-    ["FORM_SCHEMA_ACTION_DRIFT", value => ({ ...value, formControls: [{ identifier: id(99), title: "Submit" }] })],
     ["FORM_SCHEMA_SET_DRIFT", value => { value.sections[0].fieldEntries.pop(); return value; }],
     ["FORM_SCHEMA_ORDER_DRIFT", value => { value.sections[0].fieldEntries.reverse(); return value; }],
     ["FORM_SCHEMA_TYPE_DRIFT", value => { value.sections[0].fieldEntries[0].field.type = "Email"; return value; }],
@@ -197,6 +196,47 @@ test("autosave schema diagnostics distinguish action and each field property wit
       { message: "DELIVERY_ASHBY_" + reason });
     assert.equal(protocol.ready(), false);
     assert.equal(protocol.authorize(submission(), undefined, true), null);
+  }
+});
+
+test("a fully validated autosave rotates the reviewed action and rejects a stale final action", () => {
+  for (const survey of [false, true]) {
+    const protocol = initialized(survey);
+    protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+    const request = save("_systemfield_name", "Alex Candidate");
+    assert.equal(protocol.authorize(request), "FIELD");
+    const response = form(2, { _systemfield_name: "Alex Candidate" });
+    response.formControls[0].identifier = id(99);
+    protocol.observe(request, { data: { setFormValue: response } });
+    assert.equal(protocol.fieldAcknowledged(), true);
+    protocol.endField();
+    assert.equal(protocol.review()[0].actionId, id(99));
+    const updated = submission(survey, survey ? { applicationFormActionIdentifier: id(99) } : { actionIdentifier: id(99) });
+    assert.equal(protocol.authorize(updated), null, "rotation does not grant submission authority");
+    assert.equal(protocol.authorize(submission(survey), undefined, true), null, "the old action stays blocked");
+    assert.equal(protocol.authorize(updated, undefined, true), "SUBMIT");
+  }
+});
+
+test("action rotation cannot hide changed metadata, an unapproved echo or a changed other answer", () => {
+  const cases: readonly [string, (value: ReturnType<typeof form>) => void][] = [
+    ["FORM_SCHEMA_ACTION_REQUIRED_DRIFT", value => { value.sections[0].fieldEntries[0].isRequired = false; }],
+    ["FIELD_VALUE_ECHO_DRIFT", value => { value.sections[0].fieldEntries[0].fieldValue = { __typename: "JSONBox", value: "Unapproved Person" }; }],
+    ["OTHER_FIELD_VALUE_DRIFT", value => { value.sections[0].fieldEntries[1].fieldValue = { __typename: "JSONBox", value: true }; }],
+  ];
+  for (const [reason, mutate] of cases) {
+    const protocol = initialized();
+    protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+    const request = save("_systemfield_name", "Alex Candidate"); protocol.authorize(request);
+    const response = form(2, { _systemfield_name: "Alex Candidate" });
+    response.formControls[0].identifier = id(99);
+    mutate(response);
+    assert.throws(() => protocol.observe(request, { data: { setFormValue: response } }), { message: "DELIVERY_ASHBY_" + reason });
+    assert.equal(protocol.fieldAcknowledged(), false);
+    protocol.endField();
+    assert.equal(protocol.ready(), false);
+    assert.equal(protocol.authorize(submission(false, { actionIdentifier: id(99) }), undefined, true), null);
+    assert.throws(() => protocol.review(), /FORM_NOT_READY/u);
   }
 });
 

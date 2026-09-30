@@ -15,6 +15,7 @@ import {
   type AgentQuestionValue,
   type StandingAnswerContext,
   type StandingAnswerProposal,
+  type StandingAnswer,
 } from "../../domain/application-agent-questions.ts";
 
 export type StandingAnswerFact = Readonly<{ factKey: string; value: string }>;
@@ -32,6 +33,26 @@ const CANDIDATE_ONLY = /\b(?:gender|sex|sexual|race|racial|ethnic\w*|hispanic|la
 /** Profile facts the resolver may read; never identity, contact details or self-identification. */
 const FACT_KEYS = /^(?:work_authorization\.(?:us|ca)\.(?:authorized|sponsorship_required)|education\.highest_degree|application\.heard_about|preferences\.willing_to_relocate|availability\.start_date|compensation\.expected_salary|location\.(?:city|region|country_code))$/u;
 const MAX_TEXT = 1_000;
+
+/** Explicit candidate subscription, restricted to this exact clearance scope. */
+export const EXACT_CLEARANCE_TOPIC = "Active TS/SCI with FSP or CI";
+const EXACT_CLEARANCE_QUESTION = /^do you (?:have an active ts\/sci clearance|currently possess an active ts\/sci) with fsp or ci\??\s*\*?$/u;
+const exactText = (value: string) => value.trim().replace(/\s+/gu, " ").toLowerCase();
+
+/** No model interpretation or inference about other clearance levels. SQL repeats this check. */
+export function exactStandingAnswerValue(question: AgentQuestionDescriptor, answer: Pick<StandingAnswer, "topic" | "answer">): AgentQuestionValue | null {
+  if (!question.required || exactText(answer.topic) !== exactText(EXACT_CLEARANCE_TOPIC) ||
+    !EXACT_CLEARANCE_QUESTION.test(exactText(question.label)) || !["Yes", "No"].includes(answer.answer)) return null;
+  let value: AgentQuestionValue;
+  if (question.kind === "BOOLEAN" && question.options.length === 0) value = answer.answer === "Yes";
+  else if (question.kind === "SINGLE_SELECT" && question.options.length === 2 &&
+    question.options.filter(option => exactText(option.label) === "yes").length === 1 &&
+    question.options.filter(option => exactText(option.label) === "no").length === 1) {
+    value = question.options.find(option => exactText(option.label) === answer.answer.toLowerCase())!.value;
+  } else return null;
+  try { validateAgentQuestionAnswer(question, value); } catch { return null; }
+  return value;
+}
 
 export function standingAnswerEligible(question: AgentQuestionDescriptor): boolean {
   return question.required && !CANDIDATE_ONLY.test(question.label) &&
@@ -146,39 +167,51 @@ export function createStandingAnswerResolver(options: Readonly<{ apiKey?: string
   const model = options.model?.trim() || "gpt-6.1-sol";
   return {
     async resolve({ questions, context, facts, signal }) {
-      const eligible = questions.filter(standingAnswerEligible).slice(0, 24);
+      const exactAnswers = context.answers.filter(answer => exactText(answer.topic) === exactText(EXACT_CLEARANCE_TOPIC));
+      const accepted: StandingAnswerProposal[] = [];
+      if (exactAnswers.length === 1) for (const question of questions.slice(0, 24)) {
+        const value = exactStandingAnswerValue(question, exactAnswers[0]);
+        if (value !== null) accepted.push({ descriptor: question, value, basis: [exactAnswers[0].id] });
+      }
+      // Exact sensitive subscriptions never enter the model's context or basis.
+      const modelAnswers = context.answers.filter(answer => exactText(answer.topic) !== exactText(EXACT_CLEARANCE_TOPIC)).slice(0, 100);
+      const eligible = questions.filter(standingAnswerEligible).slice(0, 24 - accepted.length);
       const usableFacts = facts.filter((fact) => FACT_KEYS.test(fact.factKey) && fact.value.trim()).slice(0, 20);
-      if (!eligible.length || (!context.answers.length && !usableFacts.length)) return [];
+      if (!eligible.length || (!modelAnswers.length && !usableFacts.length)) return Object.freeze(accepted);
       // Short ids keep fingerprints and database ids out of the prompt.
       const basisIds = new Map<string, string>([
-        ...context.answers.slice(0, 100).map((answer, index) => [`s${index + 1}`, answer.id] as const),
+        ...modelAnswers.map((answer, index) => [`s${index + 1}`, answer.id] as const),
         ...usableFacts.map((fact) => [`f:${fact.factKey}`, `fact:${fact.factKey}`] as const),
       ]);
       const questionIds = eligible.map((_, index) => `q${index + 1}`);
       const input = {
         job: context.job,
-        savedAnswers: context.answers.slice(0, 100).map((answer, index) => ({ id: `s${index + 1}`, topic: answer.topic, answer: answer.answer })),
+        savedAnswers: modelAnswers.map((answer, index) => ({ id: `s${index + 1}`, topic: answer.topic, answer: answer.answer })),
         profileFacts: usableFacts.map((fact) => ({ id: `f:${fact.factKey}`, fact: fact.factKey, value: fact.value })),
         questions: eligible.map((question, index) => ({
           id: questionIds[index], question: question.label, kind: question.kind,
           ...(question.options.length ? { options: question.options.map((option) => option.label) } : {}),
         })),
       };
-      const response = await client.responses.create({
-        model, store: false, max_output_tokens: 4_000,
-        instructions: instructions(),
-        input: [{ role: "user", content: [{ type: "input_text", text: JSON.stringify(input) }] }],
-        text: { format: { type: "json_schema", name: "roledawn_standing_answers", strict: true, schema: schema(questionIds, [...basisIds.keys()]) } },
-      }, { signal });
-      if (response.status !== "completed" || !response.output_text.trim()) throw new Error("STANDING_ANSWERS_RESPONSE_INCOMPLETE");
-      let output: unknown;
-      try { output = JSON.parse(response.output_text); } catch { throw new Error("STANDING_ANSWERS_OUTPUT_INVALID"); }
-      const accepted: StandingAnswerProposal[] = [];
-      for (const draft of drafts(output)) {
-        const question = eligible[questionIds.indexOf(draft.questionId)];
-        if (!question || accepted.some((item) => item.descriptor.fingerprint === question.fingerprint)) continue;
-        const proposal = acceptStandingAnswer(question, draft, basisIds);
-        if (proposal) accepted.push(proposal);
+      try {
+        const response = await client.responses.create({
+          model, store: false, max_output_tokens: 4_000,
+          instructions: instructions(),
+          input: [{ role: "user", content: [{ type: "input_text", text: JSON.stringify(input) }] }],
+          text: { format: { type: "json_schema", name: "roledawn_standing_answers", strict: true, schema: schema(questionIds, [...basisIds.keys()]) } },
+        }, { signal });
+        if (response.status !== "completed" || !response.output_text.trim()) throw new Error("STANDING_ANSWERS_RESPONSE_INCOMPLETE");
+        let output: unknown;
+        try { output = JSON.parse(response.output_text); } catch { throw new Error("STANDING_ANSWERS_OUTPUT_INVALID"); }
+        for (const draft of drafts(output)) {
+          const question = eligible[questionIds.indexOf(draft.questionId)];
+          if (!question || accepted.some((item) => item.descriptor.fingerprint === question.fingerprint)) continue;
+          const proposal = acceptStandingAnswer(question, draft, basisIds);
+          if (proposal) accepted.push(proposal);
+        }
+      } catch (error) {
+        // A model outage cannot erase an independently verified exact answer.
+        if (!accepted.length || signal?.aborted) throw error;
       }
       return Object.freeze(accepted);
     },

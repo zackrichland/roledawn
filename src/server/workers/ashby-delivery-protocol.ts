@@ -103,7 +103,7 @@ export function createAshbyProtocol(board: string, jobId: string) {
     }
     // Bounded static dimensions reveal simultaneous schema changes without
     // logging field paths, labels, answers, identifiers or response content.
-    if (dimensions.size) return fail("FORM_SCHEMA_" + ["ACTION", "SET", "ORDER", "TYPE", "MULTI", "OPTIONS", "REQUIRED", "HIDDEN"].filter(key => dimensions.has(key)).join("_") + "_DRIFT");
+    if ([...dimensions].some(key => key !== "ACTION")) return fail("FORM_SCHEMA_" + ["ACTION", "SET", "ORDER", "TYPE", "MULTI", "OPTIONS", "REQUIRED", "HIDDEN"].filter(key => dimensions.has(key)).join("_") + "_DRIFT");
     for (const [path, prior] of expected.form.fields) {
       const actual = next.fields.get(path)!.value;
       if (path === expected.field.path) {
@@ -113,6 +113,10 @@ export function createAshbyProtocol(board: string, jobId: string) {
         } else if (!equal(actual, (expected as FieldAction).expected)) return fail("FIELD_VALUE_ECHO_DRIFT");
       } else if (!equal(actual, prior.value)) return fail("OTHER_FIELD_VALUE_DRIFT");
     }
+    // Verified 2026-09-30: an acknowledged autosave rotates this server-issued
+    // action ID. Accept it only after every metadata and value check succeeds;
+    // review() seals the latest ID and authorize() rejects every older one.
+    expected.form.action = next.action;
     for (const [path, actual] of next.fields) expected.form.fields.get(path)!.value = actual.value;
     expected.acknowledged = true;
   }

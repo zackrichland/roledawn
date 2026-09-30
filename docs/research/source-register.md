@@ -7,12 +7,14 @@ accessed_at: 2026-08-06 unless otherwise stated; backend architecture, Supabase,
 
 # Source register
 
-## Ashby hosted form and branding — checked 2026-09-30
+## Hosted ATS forms and branding — checked 2026-09-30
 
 | ID | Primary source | Evidence class and observed use | Limit |
 |---|---|---|---|
 | AB-20260930-01 | [Official hosted application](https://jobs.ashbyhq.com/coder/a923d2a8-a994-4cc2-9c71-bc8e7d99f583/application), [public posting API](https://developers.ashbyhq.com/docs/public-job-posting-api) | **Verified public client and DOM observation:** the form uses named GraphQL reads and draft-field saves, upload-handle creation, file attachment, and single/multiple-form final submission. Yes/No uses pressed buttons; the city widget exposes a controlled listbox. A non-candidate public city query was inspected without selecting a location or submitting an application. | The hosted frontend protocol is not a documented applicant API. Exact operation and payload checks must fail closed on drift. Source inspection alone is not employer acceptance. |
 | AB-20260930-02 | [Official hosted board](https://jobs.ashbyhq.com/coder) | **Verified public page metadata:** board bootstrap supplies square and wordmark logo URLs. The square logo is a first-party source that needs no paid logo service or guessed company domain. | Some employers supply no square logo. Preserve initials as fallback. Logos identify the source company; they do not imply endorsement. |
+| AB-20260930-03 | [Lever hosted board](https://jobs.lever.co/lever), [Aledade hosted board](https://jobs.lever.co/aledade), [Lever API documentation](https://github.com/lever/postings-api) | **Verified read-only board observation:** the employer header image uses a specific Lever client-logo S3 asset; the platform footer mark is separate. The exact board is bound through its published canonical metadata. | HTML is a vendor implementation detail. Missing or changed markup falls back to initials. No employer domain is guessed. |
+| AB-20260930-04 | [Anthropic hosted board](https://job-boards.greenhouse.io/anthropic), [Hudl hosted board](https://job-boards.greenhouse.io/hudl), [Instawork hosted board](https://job-boards.greenhouse.io/instawork) | **Verified read-only bootstrap observation:** the board token and employer logo URL are available in board configuration. Anthropic supplies a logo on Greenhouse's employer-logo CDN; the other two inspected configurations have no logo URL. | Banners and platform branding are not company logos. Null metadata retains initials; these observations do not promise all employers provide branding. |
 
 ## Greenhouse city lookup constants — checked 2026-09-29
 

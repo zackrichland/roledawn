@@ -3,7 +3,7 @@ import { after, before, test } from "node:test";
 import type { PGlite } from "@electric-sql/pglite";
 
 import type { AgentQuestionDescriptor } from "../src/domain/application-agent-questions.ts";
-import { createStandingAnswerResolver, standingAnswerEligible } from "../src/server/workers/standing-answers.ts";
+import { createStandingAnswerResolver, exactStandingAnswerValue, EXACT_CLEARANCE_TOPIC, standingAnswerEligible } from "../src/server/workers/standing-answers.ts";
 
 let db: PGlite;
 before(async () => {
@@ -15,6 +15,15 @@ before(async () => {
   ({ db } = await harness.createMigratedDatabase());
 });
 after(async () => { await db?.close(); });
+
+test("exact clearance subscriptions have identical SQL and worker scope and choice mapping", async () => {
+  const labels = ["Do you currently possess an active TS/SCI with FSP or CI?", "Do you have an active TS/SCI clearance with FSP or CI?", " DO YOU CURRENTLY possess an active TS/SCI with FSP or CI? * ", "Do you have security clearance?", "Do you currently possess an active TS/SCI?", "Do you currently possess an active TS/SCI with FSP and CI?", "Do you not currently possess an active TS/SCI with FSP or CI?", "Do you currently possess an active TS/SCI with FSP or CI? Certify this is true", "Gender", "Can you work on-site?"];
+  for (const label of labels) for (const answer of ["Yes", "No", "Maybe"]) for (const kind of ["BOOLEAN", "SINGLE_SELECT", "TEXT"] as const) {
+    const descriptor = { ...question(label, true, kind === "SINGLE_SELECT" ? ["Yes", "No"] : []), kind };
+    const result = await db.query<{ value: unknown }>("select private.autopilot_exact_standing_value($1::jsonb,$2,$3) as value", [JSON.stringify(descriptor), EXACT_CLEARANCE_TOPIC, answer]);
+    assert.deepEqual(result.rows[0].value, exactStandingAnswerValue(descriptor, { topic: EXACT_CLEARANCE_TOPIC, answer }), `${label} / ${kind} / ${answer}`);
+  }
+});
 
 function question(label: string, required = true, options: readonly string[] = []): AgentQuestionDescriptor {
   return {

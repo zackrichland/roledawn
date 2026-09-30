@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import test from "node:test";
 import { chromium } from "playwright-core";
-import { startSyntheticAshby, type AshbyFixtureMode } from "../../test-support/synthetic-ashby-delivery.ts";
+import { ASHBY_FIXTURE_FINAL_ACTION, startSyntheticAshby, type AshbyFixtureMode } from "../../test-support/synthetic-ashby-delivery.ts";
 import { createAgentBrowserTools } from "./agents-browser-tools.ts";
 import { createApplicationDeliveryDriver } from "./application-delivery-driver.ts";
 import { createApplicationDeliveryBrowser } from "./application-delivery-browser.ts";
@@ -98,8 +98,8 @@ for (const mode of ["fake-receipt", "survey-missing"] as const) test("Ashby " + 
  });
 });
 
-test("Ashby delivery driver seals autosave readbacks with the exact approved package", options, async () => {
- const server = await startSyntheticAshby("multiple");
+for (const mode of ["multiple", "rotating-action"] as const) test("Ashby delivery driver seals " + mode + " autosave readbacks with the exact approved package", options, async () => {
+ const server = await startSyntheticAshby(mode);
  const browser = await chromium.launch({ executablePath: chrome, headless: true });
  try {
   const page = await browser.newPage({ serviceWorkers: "block" });
@@ -108,8 +108,9 @@ test("Ashby delivery driver seals autosave readbacks with the exact approved pac
   const driver = createApplicationDeliveryDriver({ sitePolicy: server.policy, resolvePage: () => page, browserTimeoutMs: 1500,
    harness: { async run() {} },
    submissionHooks: { async begin(input) {
-    const readback = (input.review.readbacks as { savedFields: unknown[] }[])[0];
+    const readback = (input.review.readbacks as { savedFields: { actionId: string }[] }[])[0];
     assert.equal(readback.savedFields.length, 2);
+    if (mode === "rotating-action") assert.equal(readback.savedFields[0].actionId, ASHBY_FIXTURE_FINAL_ACTION);
     assert.equal(server.requests.submits, 0);
     sealed = true;
     return { attemptId: "attempt", idempotencyKey: "once" };
@@ -126,7 +127,19 @@ test("Ashby delivery driver seals autosave readbacks with the exact approved pac
   assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
   assert.equal(sealed, true);
   assert.equal(server.requests.submits, 1);
+  if (mode === "rotating-action") assert.deepEqual(server.requests.submittedActions, [ASHBY_FIXTURE_FINAL_ACTION]);
  } finally { await browser.close(); await server.close(); }
+});
+
+test("Ashby stale action after valid autosave rotation cannot consume the sealed permission", options, async () => {
+ await fixture("stale-action", async data => {
+  await fill(data);
+  const review = { savedFields: data.runtime.savedFieldProofs(), uploads: data.runtime.uploadProofs() };
+  assert.equal(review.savedFields[0].actionId, ASHBY_FIXTURE_FINAL_ACTION);
+  assert.equal((await data.runtime.submit("c".repeat(64), review)).kind, "TAKEOVER");
+  assert.equal(data.begins(), 0);
+  assert.equal(data.requests.submits, 0);
+ });
 });
 
 test("Ashby cancellation revokes pending autosave authority before dispatch", options, async () => {

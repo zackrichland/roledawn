@@ -80,6 +80,7 @@ Single page.
 
 - Field saves disclose approved data before final submission; a stopped run may have an employer-side draft. Copy must not claim that no data was sent.
 - One shared GraphQL URL handles both reads and writes. Never allow it by origin or operation name alone; query documents, variables and the current action must agree.
+- **Verified, 2026-09-30:** a draft-save response rotates the server-issued action identifier while the form, definition and field metadata stay fixed. RoleDawn accepts that rotation only after the approved value echoes exactly and every other value remains unchanged. The final review seals the latest identifier; an older identifier cannot consume submit permission. The observed run stopped before final submission, so this is protocol evidence, not a receipt.
 - `aria-selected` on a location option marks keyboard focus, not a saved choice. The selected label and acknowledged draft value establish readback.
 - The form has no native `<form>` element. Ashby labels, field paths and form identifiers supply the control identity.
 - A changed public operation document fails closed until reviewed. Defaults, hidden values, legal-processing notices and unrecognized widgets can still require candidate help; support does not promise every employer-specific form.

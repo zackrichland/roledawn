@@ -6,10 +6,14 @@
 <script>
 const fixture = __FIXTURE__;
 const {queries, formId, definition, actionId, surveyId, jobId, mode, multiple} = fixture;
+let currentActionId = actionId;
 for (const entry of document.querySelectorAll('[data-field-path]')) entry.dataset.fieldEntryId = formId + "_" + entry.dataset.fieldPath;
 window.send = async (op, variables, query) => {
  const r = await fetch('/api/non-user-graphql?op=' + op, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({operationName:op,variables,query:query || queries[op]})});
- return r.json();
+ const response = await r.json();
+ const saved = response.data?.setFormValue || response.data?.setFormValueToFile;
+ if (saved && mode !== 'stale-action') currentActionId = saved.formControls[0].identifier;
+ return response;
 };
 const base = () => ({organizationHostedJobsPageName:'fixture',formRenderIdentifier:formId,formDefinitionIdentifier:definition});
 window.ready = send('ApiJobPosting',{organizationHostedJobsPageName:'fixture',jobPostingId:jobId}).then(() => document.querySelector('button').disabled = false);
@@ -29,8 +33,8 @@ document.querySelector('#_systemfield_resume').onchange = async (e) => { try {
 document.querySelector('button').onclick = async () => { try {
  const op = multiple ? 'ApiSubmitMultipleFormsAction' : 'ApiSubmitSingleApplicationFormAction';
  const variables = multiple ?
- {organizationHostedJobsPageName:'fixture',jobPostingId:jobId,applicationFormRenderIdentifier:formId,applicationFormDefinitionIdentifier:definition,applicationFormActionIdentifier:actionId,surveyIdentifiers:[{formRenderId:surveyId,actionIdentifier:actionId,sourceFormDefinitionId:definition}]} :
- {...base(),jobPostingId:jobId,actionIdentifier:actionId};
+ {organizationHostedJobsPageName:'fixture',jobPostingId:jobId,applicationFormRenderIdentifier:formId,applicationFormDefinitionIdentifier:definition,applicationFormActionIdentifier:currentActionId,surveyIdentifiers:[{formRenderId:surveyId,actionIdentifier:actionId,sourceFormDefinitionId:definition}]} :
+ {...base(),jobPostingId:jobId,actionIdentifier:currentActionId};
  Object.assign(variables,{recaptchaToken:'synthetic-passive-token',deviceFingerprint:null,sourceAttributionCode:null,viewedAutomatedProcessingLegalNoticeRuleId:null,applicationRequestId:null});
  await send(op,variables,mode === 'bad-submit' ? 'mutation Wrong { deleteCandidate }' : undefined);
  document.body.innerHTML = '<div class="ashby-application-form-success-container" role="status">Success! Thank you.</div>';

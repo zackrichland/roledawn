@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { AgentQuestionDescriptor } from "../../domain/application-agent-questions.ts";
-import { acceptStandingAnswer, createStandingAnswerResolver, standingAnswerEligible } from "./standing-answers.ts";
+import { acceptStandingAnswer, createStandingAnswerResolver, exactStandingAnswerValue, EXACT_CLEARANCE_TOPIC, standingAnswerEligible } from "./standing-answers.ts";
 
 const GPA_ID = "7f0c2f64-5a52-4b51-9d1e-7c1c0f3f7a10";
 const ONSITE_ID = "0b6f0d9e-2f7a-4c3e-8a55-3a0d4d9f1b22";
@@ -103,4 +103,46 @@ test("no model call without an eligible question or anything saved to use", asyn
   assert.deepEqual(await resolver.resolve({ questions: [question("Gender", "SINGLE_SELECT", ["Man"])], context: { answers: [{ id: GPA_ID, topic: "GPA", answer: "3.5" }], job: null }, facts: [] }), []);
   assert.deepEqual(await resolver.resolve({ questions: [gpa], context: { answers: [], job: null }, facts: [{ factKey: "identity.legal_name", value: "x" }] }), []);
   assert.equal(called, false);
+});
+
+test("an explicit exact clearance subscription answers only its positive scope, without a model", async () => {
+  const descriptor = question("Do you currently possess an active TS/SCI with FSP or CI?", "SINGLE_SELECT", ["Yes", "No"], { reasonCode: "SENSITIVE_REQUIRES_CANDIDATE" });
+  const saved = { id: GPA_ID, topic: EXACT_CLEARANCE_TOPIC, answer: "No" };
+  const resolver = createStandingAnswerResolver({ client: { responses: { async create() { throw new Error("MODEL_MUST_NOT_RUN"); } } } as never });
+  assert.deepEqual(await resolver.resolve({ questions: [descriptor], context: { answers: [saved], job: null }, facts: [] }), [
+    { descriptor, value: "option-1", basis: [GPA_ID] },
+  ]);
+  for (const answer of ["Yes", "No"]) {
+    assert.equal(exactStandingAnswerValue(descriptor, { ...saved, answer }), answer === "Yes" ? "option-0" : "option-1");
+    assert.equal(exactStandingAnswerValue(question("Do you have an active TS/SCI clearance with FSP or CI?", "BOOLEAN"), { ...saved, answer }), answer === "Yes");
+  }
+  for (const label of ["Do you have security clearance?", "Do you currently possess an active TS/SCI?", "Do you currently possess an active TS/SCI with FSP and CI?", "Do you not currently possess an active TS/SCI with FSP or CI?", "Could you obtain an active TS/SCI with FSP or CI?", "Do you currently possess an active TS/SCI with FSP or CI? Please certify this is true", "Gender"]) {
+    assert.equal(exactStandingAnswerValue({ ...descriptor, label }, saved), null, label);
+  }
+  assert.equal(exactStandingAnswerValue({ ...descriptor, required: false }, saved), null);
+  assert.equal(exactStandingAnswerValue(descriptor, { ...saved, answer: "No other clearance" }), null);
+  assert.equal(exactStandingAnswerValue(descriptor, { ...saved, topic: "Security clearance" }), null);
+  assert.equal(exactStandingAnswerValue({ ...descriptor, options: [{ label: "Yes", value: "a" }, { label: "Yes", value: "b" }] }, saved), null);
+});
+
+test("exact clearance subscriptions cannot become model context or basis for unrelated questions", async () => {
+  let input = "";
+  const resolver = createStandingAnswerResolver({ client: { responses: { async create(request: { input: { content: { text: string }[] }[] }) {
+    input = request.input[0].content[0].text;
+    return { status: "completed", output_text: '{"answers":[]}' };
+  } } } as never });
+  await resolver.resolve({ questions: [gpa], context: { answers: [
+    { id: GPA_ID, topic: "Undergraduate GPA", answer: "3.5" }, { id: ONSITE_ID, topic: EXACT_CLEARANCE_TOPIC, answer: "No" },
+  ], job: null }, facts: [] });
+  assert.match(input, /Undergraduate GPA/u);
+  assert.doesNotMatch(input, /TS\/SCI|FSP|clearance/u);
+});
+
+test("model failure for another question preserves independently resolved exact answers", async () => {
+  const descriptor = question("Do you currently possess an active TS/SCI with FSP or CI?", "BOOLEAN");
+  const resolver = createStandingAnswerResolver({ client: { responses: { async create() { throw new Error("SYNTHETIC_OUTAGE"); } } } as never });
+  const result = await resolver.resolve({ questions: [descriptor, gpa], context: { answers: [
+    { id: GPA_ID, topic: "Undergraduate GPA", answer: "3.5" }, { id: ONSITE_ID, topic: EXACT_CLEARANCE_TOPIC, answer: "No" },
+  ], job: null }, facts: [] });
+  assert.deepEqual(result, [{ descriptor, value: false, basis: [ONSITE_ID] }]);
 });

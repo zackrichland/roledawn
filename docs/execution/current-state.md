@@ -19,8 +19,9 @@ includes the authorized rollout's verified hosted metadata, three applied
 migrations, and approved private profile update. Backend commit `30e7a19` is
 published in verified Netlify deployment `6abc7f1ecfcaeba896cb4c16`. The first review kept the interface unchanged. The founder then requested Ashby
 delivery, faster intake, company logos, and removal of redundant send approval.
-The follow-up changes below are locally implemented; their deployment and live
-acceptance remain to be recorded.
+The follow-up adapter and intent changes are published, and migration
+`20260930100000` is applied and verified. Live Ashby diagnosis is recorded below;
+no Ashby employer confirmation has been established.
 The earlier dated observations are preserved in
 [state history](state-history-through-2026-09-30.md); they are not current
 operating instructions.
@@ -87,8 +88,9 @@ evidence bindings were preserved; exact private content stays outside this
 public repository. At that profile-update boundary, no open send intents or enabled account
 auto-apply settings existed. A later founder-pasted Ashby application prepared
 successfully but its old send intent closed as `NOT_DELIVERABLE`, with no
-submission attempt. The follow-up adapter must be published before enabling
-its SQL gate; recovery requires a fresh authenticated candidate command.
+submission attempt. The follow-up adapter was published before its SQL gate was applied. A fresh
+authenticated retry recovered that named request without reopening historical
+uncertain attempts.
 
 ## Ashby and intake follow-up
 
@@ -96,7 +98,9 @@ its SQL gate; recovery requires a fresh authenticated candidate command.
   durable attempts and receipt rules. Exact public GraphQL operations bind every
   autosave to the approved field/value; uploads require acknowledged exact bytes.
   A visible CAPTCHA still stops the run. Security clearance and explicit
-  no-AI response instructions require candidate answers.
+  no-AI response instructions require candidate answers. An explicitly approved
+  exact-scope clearance answer is now saved privately and read back without
+  changing the packet input version; D-125 adds deterministic reuse.
 - An existing open send request means **Queued to apply**, then **Applying**.
   It no longer asks the candidate to approve the same send again. A closed
   unsupported request remains **Send stopped** until a fresh retry; an uncertain
@@ -105,14 +109,27 @@ its SQL gate; recovery requires a fresh authenticated candidate command.
 - Production intake and successful lane completion wake the next due lanes.
   Database leases and the scheduled dispatcher remain authoritative. Local web
   development still relies on the hosted scheduler for the initial tick.
-- Ashby company icons come from that exact employer's published ATS theme,
-  without an API subscription or guessed domain. Bounded image fetching and
-  caching retain initials when branding is unavailable. Other ATS logo sources
-  remain follow-up work.
+- Company icons come from the exact employer's published Ashby theme,
+  Greenhouse board configuration, or Lever header. No API subscription or
+  guessed domain is needed. Bounded fetching, thumbnails and caching retain
+  initials when employer branding is unavailable. Platform logos and banners
+  are excluded; these sources do not guarantee every employer has a logo.
 
-Local verification: all 761 tests, typecheck, lint and documentation links pass;
-all 15 SQL check files pass across 93 migrations. Hosted rollout and live
-acceptance remain pending.
+Local verification: all 780 tests, typecheck, lint and documentation links pass;
+all 15 SQL check files pass across 94 migrations. Migration `20260930100000`
+is applied, recorded, and read back with matching function bodies and grants.
+Migration `20260930110000` adds the exact-scope saved-answer check; its bodies,
+security modes and grants also match readback. Regenerated public types are
+unchanged. The security advisor reports no errors or finding on either changed
+function; existing authenticated-RPC and password-policy warnings remain.
+The built follow-up deployments pass authenticated worker health and all 14
+checked page assets.
+
+The first live Ashby draft saves stopped before a submission attempt. Narrowed
+diagnostics verified that the server changed only the submit-action identifier
+after saving a field; form identity and field metadata were unchanged. This
+exposed a contract detail absent from the original fixtures. A stopped draft
+can already contain approved candidate data; it is not an employer receipt.
 
 ## Remaining limits
 
@@ -135,11 +152,10 @@ acceptance remain pending.
 2. Inspect newly prepared documents from the updated private profile before the
    next authorized application. Existing confirmed applications remain history;
    no current unsent packet requires regeneration.
-3. Publish and verify the Ashby adapter before applying migration
-   `20260930100000`, then recover the authorized stopped application with a
-   fresh candidate command. Observe a terminal or needs-you state; only an
-   employer receipt establishes live Ashby acceptance. Keep historical uncertain
-   attempts blocked until their own outcomes are reconciled.
+3. Complete live Ashby verification after correcting the observed action-ID
+   rotation. Observe a terminal or needs-you state; only an employer receipt
+   establishes live acceptance. Keep historical uncertain attempts blocked
+   until their own outcomes are reconciled.
 
 The [application playbook](application-playbook.md) owns operating instructions;
 the [decision log](decision-log.md) owns decisions and reversal triggers;
