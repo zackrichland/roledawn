@@ -263,11 +263,20 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     let takeoverReason: string | null = null;
     let navigationRequired = false;
     for (const [frameIndex, frame] of page.frames().entries()) {
-      if (frame.url() !== "about:blank" && new URL(frame.url()).origin !== expectedOrigin) {
-        if (options?.permittedPassiveFrameUrls?.includes(frame.url())) continue;
+      const frameUrl = frame.url();
+      // A newly attached frame can have no URL yet. It contributes no controls;
+      // each inspection (including final readback) checks its eventual origin.
+      if (!frameUrl) continue;
+      let frameOrigin: string;
+      try { frameOrigin = new URL(frameUrl).origin; } catch {
+        takeoverReason ??= "AGENTS_FILL_CROSS_ORIGIN_FRAME_TAKEOVER";
+        continue;
+      }
+      if (frameUrl !== "about:blank" && frameOrigin !== expectedOrigin) {
+        if (options?.permittedPassiveFrameUrls?.includes(frameUrl)) continue;
         // hCaptcha's own documents are judged by their iframe's visibility below.
-        if (options?.invisibleHcaptcha && isHcaptchaFrameUrl(frame.url())) continue;
-        if (/captcha|turnstile/iu.test(frame.url())) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
+        if (options?.invisibleHcaptcha && isHcaptchaFrameUrl(frameUrl)) continue;
+        if (/captcha|turnstile/iu.test(frameUrl)) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
         else takeoverReason ??= "AGENTS_FILL_CROSS_ORIGIN_FRAME_TAKEOVER";
         continue;
       }

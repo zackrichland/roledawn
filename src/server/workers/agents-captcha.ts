@@ -61,7 +61,11 @@ export async function frameShowsCaptchaChallenge(frame: Frame, permittedPassiveF
 export async function pageShowsCaptchaChallenge(page: Page, permittedPassiveFrameUrls: readonly string[] = []): Promise<boolean> {
   const origin = new URL(page.url()).origin;
   for (const frame of page.frames()) {
-    if (frame.url() !== "about:blank" && new URL(frame.url()).origin !== origin) continue;
+    const frameUrl = frame.url();
+    if (!frameUrl) continue;
+    let frameOrigin: string;
+    try { frameOrigin = new URL(frameUrl).origin; } catch { continue; }
+    if (frameUrl !== "about:blank" && frameOrigin !== origin) continue;
     if (await frameShowsCaptchaChallenge(frame, permittedPassiveFrameUrls).catch(() => false)) return true;
   }
   return false;

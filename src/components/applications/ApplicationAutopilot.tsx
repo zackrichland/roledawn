@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { controlApplicationAutopilotAction, delegateApplicationAutopilotAction, provideApplicationAutopilotVerificationCodeAction, saveApplicationAutopilotAnswersAction } from "@/app/(candidate)/applications/[applicationId]/autopilot-actions";
 import { AGENT_QUESTION_LIMITS, displayQuestionLabel, validateAgentQuestionAnswer, type AgentQuestionValue } from "@/domain/application-agent-questions";
 import type { ApplicationAutopilotView } from "@/domain/application-autopilot";
-import { presentAutopilotStatus } from "@/domain/application-presentation";
+import { explainAutopilotFormFailure, presentAutopilotStatus } from "@/domain/application-presentation";
 import styles from "./ApplicationAutopilot.module.css";
 
 type Props = Readonly<{ applicationId: string; aggregateVersion: number; revisionId: string; packetHash: string; view: ApplicationAutopilotView | null; canStart: boolean; startBlockedReason?: string }>;
@@ -94,9 +94,7 @@ function AutopilotForm({ applicationId, aggregateVersion, revisionId, packetHash
   const presentation = presentAutopilotStatus(view?.status, Boolean(view?.verification));
   const failureCopy = view?.status === "FAILED_SAFE" && view.failureCode
     ? NOT_ACCEPTED_COPY[view.failureCode] ?? FAILURE_COPY[view.failureCode]
-      ?? (view.failureCode.startsWith("DELIVERY_ASHBY_")
-        ? "RoleDawn couldn’t verify the employer’s form before final submission. You can try again or finish on the employer’s site using your documents."
-        : null)
+      ?? explainAutopilotFormFailure(view.status, view.failureCode)
     : null;
   return <section className={styles.card} aria-labelledby="application-autopilot-heading">
     <h2 id="application-autopilot-heading">{presentation.heading}</h2>

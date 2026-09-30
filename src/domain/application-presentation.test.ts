@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { presentApplication, presentAutopilotStatus } from "./application-presentation.ts";
+import { explainAutopilotFormFailure, presentApplication, presentAutopilotStatus } from "./application-presentation.ts";
 import { applicationSendIntentState, canOfferApplicationSend } from "./application-send-intent.ts";
 import { APPLICATION_AUTOPILOT_STATUSES } from "./application-autopilot.ts";
 
@@ -46,4 +46,19 @@ test("unknown outcomes do not claim refusal or invite a duplicate application", 
     assert.doesNotMatch(copy, /didn.t accept|finish it on|before submission/iu);
   }
   assert.doesNotMatch(presentAutopilotStatus("FAILED_SAFE").detail, /before submission|nothing was sent/iu);
+});
+
+test("safe form execution failures explain the stop without claiming that no draft data reached the employer", () => {
+  for (const code of ["DELIVERY_EXECUTION_FAILED", "DELIVERY_ASHBY_REQUEST_ENVELOPE_INVALID"]) {
+    const explanation = explainAutopilotFormFailure("FAILED_SAFE", code);
+    assert.ok(explanation);
+    assert.match(explanation, /couldn’t verify.*before final submission/u);
+    assert.match(explanation, /try again or finish/u);
+    assert.doesNotMatch(explanation, /nothing was sent|no data|no draft/iu);
+    for (const status of APPLICATION_AUTOPILOT_STATUSES.filter((value) => value !== "FAILED_SAFE")) {
+      assert.equal(explainAutopilotFormFailure(status, code), null, status);
+    }
+  }
+  assert.equal(explainAutopilotFormFailure("FAILED_SAFE", null), null);
+  assert.equal(explainAutopilotFormFailure("FAILED_SAFE", "DELIVERY_EMAIL_VERIFICATION_TIMEOUT"), null);
 });

@@ -305,6 +305,18 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   const uploadChecks = new Map<string, Readonly<{ stepId: string; selector: string; filename: string }>>();
   const uploadedArtifacts = new Map<string, MaterializedApplicationArtifact>();
 
+  function passiveFrameUrls(): string[] {
+    if (!policy.greenhouse && !ashby) return [];
+    return page.frames().map((frame) => frame.url()).filter((value) => {
+      // Playwright exposes an empty URL between frame attachment and navigation.
+      // That frame supplies no passive-CAPTCHA permission until its URL is known.
+      let url: URL;
+      try { url = new URL(value); } catch { return false; }
+      return url.origin === "https://www.recaptcha.net" && ["/recaptcha/enterprise/anchor", ...(ashby ? ["/recaptcha/api2/anchor"] : [])].includes(url.pathname) &&
+        url.searchParams.get("size") === "invisible" && recaptchaKeys.has(url.searchParams.get("k") ?? "");
+    });
+  }
+
   function isPresign(request: Request): boolean {
     if (!policy.greenhouse || request.method() !== "GET") return false;
     const url = new URL(request.url());
@@ -569,14 +581,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       activeSearch = { query, signal };
       try { return await work(); } finally { activeSearch = null; }
     },
-    passiveFrameUrls() {
-      if (!policy.greenhouse && !ashby) return [];
-      return page.frames().map((frame) => frame.url()).filter((value) => {
-        const url = new URL(value);
-        return url.origin === "https://www.recaptcha.net" && ["/recaptcha/enterprise/anchor", ...(ashby ? ["/recaptcha/api2/anchor"] : [])].includes(url.pathname) &&
-          url.searchParams.get("size") === "invisible" && recaptchaKeys.has(url.searchParams.get("k") ?? "");
-      });
-    },
+    passiveFrameUrls,
     async open(signal?: AbortSignal) {
       assertActive(signal);
       if (page.url() !== "about:blank" && canonical(page.url()) !== canonical(policy.startUrl) && !await currentStep()) throw new Error("DELIVERY_RESTORE_DESTINATION_INVALID");
@@ -669,7 +674,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       // A passive CAPTCHA may turn into a visible challenge after the click. Stop
       // before the final request is admitted; never interact with the challenge.
       const challenged = async () => {
-        if (!(policy.lever?.invisibleHcaptcha || ashby) || current.admitted || current.error || !await pageShowsCaptchaChallenge(page, ashby ? page.frames().map((frame) => frame.url()).filter((value) => { const url = new URL(value); return url.origin === "https://www.recaptcha.net" && ["/recaptcha/enterprise/anchor", "/recaptcha/api2/anchor"].includes(url.pathname) && url.searchParams.get("size") === "invisible" && recaptchaKeys.has(url.searchParams.get("k") ?? ""); }) : [])) return false;
+        if (!(policy.lever?.invisibleHcaptcha || ashby) || current.admitted || current.error || !await pageShowsCaptchaChallenge(page, ashby ? passiveFrameUrls() : [])) return false;
         if (current.admitted || current.error) return false;
         current.error = APPLICATION_FILL_CAPTCHA_TAKEOVER;
         return true;

@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import test from "node:test";
-import { chromium } from "playwright-core";
+import { chromium, type Page } from "playwright-core";
 import { ASHBY_FIXTURE_FINAL_ACTION, startSyntheticAshby, type AshbyFixtureMode } from "../../test-support/synthetic-ashby-delivery.ts";
 import { createAgentBrowserTools } from "./agents-browser-tools.ts";
 import { createApplicationDeliveryDriver } from "./application-delivery-driver.ts";
 import { createApplicationDeliveryBrowser } from "./application-delivery-browser.ts";
+import { pageShowsCaptchaChallenge } from "./agents-captcha.ts";
 
 const chrome = [process.env.ROLEDAWN_CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/chromium", "/usr/bin/google-chrome"].find((value): value is string => Boolean(value && existsSync(value)));
 const options = { skip: chrome ? false : "No local Chromium installed" };
@@ -14,6 +15,7 @@ const bytes = Buffer.from("%PDF-1.7 synthetic approved bytes");
 const artifact = { artifactVersionId: "fixture-artifact", variant: "RESUME_PDF" as const, filename: "Fixture-Resume.pdf", mediaType: "application/pdf", byteSize: bytes.length, bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
 
 async function fixture(mode: AshbyFixtureMode, run: (data: {
+ page: Page;
  runtime: Awaited<ReturnType<typeof createApplicationDeliveryBrowser>>;
  browserTools: ReturnType<typeof createAgentBrowserTools>;
  requests: Awaited<ReturnType<typeof startSyntheticAshby>>["requests"];
@@ -35,7 +37,7 @@ async function fixture(mode: AshbyFixtureMode, run: (data: {
   });
   await runtime.open();
   const browserTools = createAgentBrowserTools(page, server.policy.startUrl, { ashbyLabels: true });
-  await run({ runtime, browserTools, requests: server.requests, begins: () => begins });
+  await run({ page, runtime, browserTools, requests: server.requests, begins: () => begins });
   await runtime.dispose();
  } finally { await browser.close(); await server.close(); }
 }
@@ -176,3 +178,46 @@ for (const [mode, reason] of [["wrong-handle-length", "DELIVERY_ASHBY_REQUEST_HA
   });
  });
 }
+
+test("a real newly attached iframe with an empty URL cannot crash passive-frame detection", options, async () => {
+ await fixture("normal", async data => {
+  const observations: { url: string; permitted: string[]; error: unknown }[] = [];
+  data.page.on("frameattached", frame => {
+   try { observations.push({ url: frame.url(), permitted: data.runtime.passiveFrameUrls(), error: null }); }
+   catch (error) { observations.push({ url: frame.url(), permitted: [], error }); }
+  });
+  await data.page.evaluate(() => {
+   const frame = document.createElement("iframe"); frame.style.display = "none"; document.body.append(frame);
+  });
+  await data.page.locator("iframe").waitFor({ state: "attached" });
+  assert.ok(observations.some(item => item.url === ""), "exercise Playwright's transient frameattached state");
+  assert.ok(observations.every(item => item.error === null && item.permitted.length === 0));
+ });
+});
+
+test("transient frames supply no controls and their later foreign origin blocks final permission", options, async () => {
+ await fixture("normal", async data => {
+  let frameUrl = "";
+  const transient = { url: () => frameUrl, locator() { throw new Error("UNTRUSTED_FRAME_MUST_NOT_BE_READ"); }, evaluate() { throw new Error("UNTRUSTED_FRAME_MUST_NOT_BE_READ"); } };
+  const page = new Proxy(data.page, { get(target, property) {
+   if (property === "frames") return () => [...target.frames(), transient];
+   const value = Reflect.get(target, property); return typeof value === "function" ? value.bind(target) : value;
+  } });
+  const observer = createAgentBrowserTools(page, data.runtime.policy.startUrl, { ashbyLabels: true });
+  const initial = await observer.inspect();
+  assert.equal(initial.takeoverReason, null);
+  assert.equal(initial.fields.length, 2);
+  assert.equal(await pageShowsCaptchaChallenge(page), false);
+  await fill(data);
+  frameUrl = "https://unreviewed.example/frame";
+  assert.equal((await observer.verifyWrites()).takeoverReason, "AGENTS_FILL_CROSS_ORIGIN_FRAME_TAKEOVER");
+  const result = await data.runtime.submit("f".repeat(64), {}, undefined, async () => {
+   if ((await observer.verifyWrites()).takeoverReason) throw new Error("DELIVERY_FINAL_REVIEW_DRIFT");
+  });
+  assert.equal(result.kind, "TAKEOVER");
+  assert.equal(data.begins(), 0);
+  assert.equal(data.requests.submits, 0);
+  frameUrl = "invalid-url";
+  assert.equal((await observer.inspect()).takeoverReason, "AGENTS_FILL_CROSS_ORIGIN_FRAME_TAKEOVER");
+ });
+});

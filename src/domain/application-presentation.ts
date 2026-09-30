@@ -48,6 +48,15 @@ export function presentAutopilotStatus(status: ApplicationAutopilotStatus | unde
   }
 }
 
+/** Only FAILED_SAFE permits this next step; an unknown submit outcome must reconcile first. */
+export function explainAutopilotFormFailure(status: ApplicationAutopilotStatus | undefined, code: string | null | undefined): string | null {
+  if (status !== "FAILED_SAFE" || !code) return null;
+  if (code === "DELIVERY_EXECUTION_FAILED" || code.startsWith("DELIVERY_ASHBY_")) {
+    return "RoleDawn couldn’t verify the employer’s form before final submission. You can try again or finish on the employer’s site using your documents.";
+  }
+  return null;
+}
+
 export function presentApplication(input: ApplicationPresentationInput): ApplicationPresentation {
   if (input.intakeStatus === "FAILED") {
     return present("Couldn't read job", "The posting couldn't be imported. It may have closed.", "error", 0, { needsYou: true });
