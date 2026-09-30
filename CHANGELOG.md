@@ -4,6 +4,12 @@ This file records material repository changes. Product capability is described
 with evidence labels; repository implementation does not imply hosted activation
 or production readiness.
 
+## 2026-09-30 — Cleanup and agent guide
+
+- **Removed:** unused code no production entry point, script or route reached (`CandidateQueue`, `AutoApplyPanel`, `Icon`, `server/dashboard/automation.ts`, `ingestion/index.ts`, `browserbase-runtime.server.ts`, the application packet domain and its tests), and the kit worker's checks for v1 drafting errors it can no longer receive.
+- **Regenerated:** `src/lib/supabase/database.types.ts` from the hosted schema (it had drifted, e.g. the verification-code table was missing).
+- **Docs:** `AGENTS.md` rewritten as the working guide for coding agents (commands, repo map, answer sources, invariants, gotchas, lessons from the first live sends); `.env.example` reflects production (`ROLEDAWN_FORM_DRIVER=agents`); the link checker skips `tmp/`, `artifacts/` and `.netlify/`.
+
 ## 2026-09-30 — Standing answers, second confirmed application, observability
 
 - **Verified:** second confirmed application (Carvana Strategy Analyst) with a required GPA multi-select; Gmail code read in 6 s.

@@ -486,6 +486,69 @@ export type Database = {
           },
         ]
       }
+      application_autopilot_verifications: {
+        Row: {
+          attempt_id: string
+          autopilot_id: string
+          code: string | null
+          expires_at: string
+          id: string
+          provided_at: string | null
+          provided_by: string | null
+          recipient_hint: string
+          requested_at: string
+          retry_reason: string | null
+          settled_at: string | null
+          source: string
+          status: string
+        }
+        Insert: {
+          attempt_id: string
+          autopilot_id: string
+          code?: string | null
+          expires_at?: string
+          id?: string
+          provided_at?: string | null
+          provided_by?: string | null
+          recipient_hint: string
+          requested_at?: string
+          retry_reason?: string | null
+          settled_at?: string | null
+          source?: string
+          status?: string
+        }
+        Update: {
+          attempt_id?: string
+          autopilot_id?: string
+          code?: string | null
+          expires_at?: string
+          id?: string
+          provided_at?: string | null
+          provided_by?: string | null
+          recipient_hint?: string
+          requested_at?: string
+          retry_reason?: string | null
+          settled_at?: string | null
+          source?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_autopilot_verifications_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "application_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "application_autopilot_verifications_autopilot_id_fkey"
+            columns: ["autopilot_id"]
+            isOneToOne: false
+            referencedRelation: "application_autopilots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       application_autopilots: {
         Row: {
           application_id: string
@@ -513,6 +576,7 @@ export type Database = {
           sealed_diff_hash: string | null
           status: string
           stop_requested: string | null
+          transient_retries: number
           updated_at: string
           version: number
           workspace_id: string
@@ -543,6 +607,7 @@ export type Database = {
           sealed_diff_hash?: string | null
           status?: string
           stop_requested?: string | null
+          transient_retries?: number
           updated_at?: string
           version?: number
           workspace_id: string
@@ -573,6 +638,7 @@ export type Database = {
           sealed_diff_hash?: string | null
           status?: string
           stop_requested?: string | null
+          transient_retries?: number
           updated_at?: string
           version?: number
           workspace_id?: string
@@ -1402,6 +1468,47 @@ export type Database = {
           },
         ]
       }
+      application_send_intents: {
+        Row: {
+          application_id: string
+          candidate_id: string
+          close_reason: string | null
+          closed_at: string | null
+          created_at: string
+          delegate_command_id: string
+          requested_by: string
+          workspace_id: string
+        }
+        Insert: {
+          application_id: string
+          candidate_id: string
+          close_reason?: string | null
+          closed_at?: string | null
+          created_at?: string
+          delegate_command_id?: string
+          requested_by: string
+          workspace_id: string
+        }
+        Update: {
+          application_id?: string
+          candidate_id?: string
+          close_reason?: string | null
+          closed_at?: string | null
+          created_at?: string
+          delegate_command_id?: string
+          requested_by?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_send_intents_workspace_id_candidate_id_applica_fkey"
+            columns: ["workspace_id", "candidate_id", "application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["workspace_id", "candidate_id", "id"]
+          },
+        ]
+      }
       application_snapshot_evidence_refs: {
         Row: {
           application_id: string
@@ -1529,8 +1636,8 @@ export type Database = {
       }
       applications: {
         Row: {
-          archived_at: string | null
           aggregate_version: number
+          archived_at: string | null
           candidate_id: string
           created_at: string
           current_revision_id: string | null
@@ -1545,8 +1652,8 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
-          archived_at?: string | null
           aggregate_version?: number
+          archived_at?: string | null
           candidate_id: string
           created_at?: string
           current_revision_id?: string | null
@@ -1561,8 +1668,8 @@ export type Database = {
           workspace_id: string
         }
         Update: {
-          archived_at?: string | null
           aggregate_version?: number
+          archived_at?: string | null
           candidate_id?: string
           created_at?: string
           current_revision_id?: string | null
@@ -1835,6 +1942,8 @@ export type Database = {
           application_id: string
           candidate_id: string
           candidate_input_version: number
+          close_reason: string | null
+          closed_at: string | null
           consent_version: number
           created_at: string
           delegate_command_id: string
@@ -1850,6 +1959,8 @@ export type Database = {
           application_id: string
           candidate_id: string
           candidate_input_version: number
+          close_reason?: string | null
+          closed_at?: string | null
           consent_version: number
           created_at?: string
           delegate_command_id?: string
@@ -1865,6 +1976,8 @@ export type Database = {
           application_id?: string
           candidate_id?: string
           candidate_input_version?: number
+          close_reason?: string | null
+          closed_at?: string | null
           consent_version?: number
           created_at?: string
           delegate_command_id?: string
@@ -2319,6 +2432,118 @@ export type Database = {
           },
         ]
       }
+      candidate_interview_sessions: {
+        Row: {
+          aggregate_version: number
+          candidate_id: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          interviewer_release: string
+          state: Json
+          status: string
+          turn_count: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          aggregate_version?: number
+          candidate_id: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          interviewer_release: string
+          state?: Json
+          status?: string
+          turn_count?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          aggregate_version?: number
+          candidate_id?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          interviewer_release?: string
+          state?: Json
+          status?: string
+          turn_count?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_interview_sessions_workspace_id_candidate_id_fkey"
+            columns: ["workspace_id", "candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "candidate_interview_sessions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      candidate_interview_turns: {
+        Row: {
+          candidate_id: string
+          content: string
+          created_at: string
+          id: string
+          sequence_number: number
+          session_id: string
+          speaker: string
+          workspace_id: string
+        }
+        Insert: {
+          candidate_id: string
+          content: string
+          created_at?: string
+          id?: string
+          sequence_number: number
+          session_id: string
+          speaker: string
+          workspace_id: string
+        }
+        Update: {
+          candidate_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          sequence_number?: number
+          session_id?: string
+          speaker?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_interview_turns_workspace_id_candidate_id_fkey"
+            columns: ["workspace_id", "candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "candidate_interview_turns_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_interview_turns_workspace_id_session_id_fkey"
+            columns: ["workspace_id", "session_id"]
+            isOneToOne: false
+            referencedRelation: "candidate_interview_sessions"
+            referencedColumns: ["workspace_id", "id"]
+          },
+        ]
+      }
       candidate_job_decisions: {
         Row: {
           candidate_id: string
@@ -2380,81 +2605,6 @@ export type Database = {
           },
         ]
       }
-      candidate_interview_sessions: {
-        Row: {
-          aggregate_version: number
-          candidate_id: string
-          completed_at: string | null
-          created_at: string
-          id: string
-          interviewer_release: string
-          state: Json
-          status: string
-          turn_count: number
-          updated_at: string
-          workspace_id: string
-        }
-        Insert: {
-          aggregate_version?: number
-          candidate_id: string
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          interviewer_release: string
-          state?: Json
-          status?: string
-          turn_count?: number
-          updated_at?: string
-          workspace_id: string
-        }
-        Update: {
-          aggregate_version?: number
-          candidate_id?: string
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          interviewer_release?: string
-          state?: Json
-          status?: string
-          turn_count?: number
-          updated_at?: string
-          workspace_id?: string
-        }
-        Relationships: []
-      }
-      candidate_interview_turns: {
-        Row: {
-          candidate_id: string
-          content: string
-          created_at: string
-          id: string
-          sequence_number: number
-          session_id: string
-          speaker: string
-          workspace_id: string
-        }
-        Insert: {
-          candidate_id: string
-          content: string
-          created_at?: string
-          id?: string
-          sequence_number: number
-          session_id: string
-          speaker: string
-          workspace_id: string
-        }
-        Update: {
-          candidate_id?: string
-          content?: string
-          created_at?: string
-          id?: string
-          sequence_number?: number
-          session_id?: string
-          speaker?: string
-          workspace_id?: string
-        }
-        Relationships: []
-      }
       candidate_profile_document_versions: {
         Row: {
           candidate_id: string
@@ -2498,7 +2648,22 @@ export type Database = {
           version_number?: number
           workspace_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "candidate_profile_document_versi_workspace_id_candidate_id_fkey"
+            columns: ["workspace_id", "candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "candidate_profile_document_versions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       candidate_profile_documents: {
         Row: {
@@ -2543,7 +2708,76 @@ export type Database = {
           updated_at?: string
           workspace_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "candidate_profile_documents_workspace_id_candidate_id_fkey"
+            columns: ["workspace_id", "candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "candidate_profile_documents_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      candidate_search_profiles: {
+        Row: {
+          aggregate_version: number
+          candidate_id: string
+          created_at: string
+          desired_country_codes: string[]
+          employment_types: string[]
+          preferred_locations: string[]
+          target_roles: string[]
+          updated_at: string
+          work_modes: string[]
+          workspace_id: string
+        }
+        Insert: {
+          aggregate_version?: number
+          candidate_id: string
+          created_at?: string
+          desired_country_codes: string[]
+          employment_types: string[]
+          preferred_locations?: string[]
+          target_roles: string[]
+          updated_at?: string
+          work_modes: string[]
+          workspace_id: string
+        }
+        Update: {
+          aggregate_version?: number
+          candidate_id?: string
+          created_at?: string
+          desired_country_codes?: string[]
+          employment_types?: string[]
+          preferred_locations?: string[]
+          target_roles?: string[]
+          updated_at?: string
+          work_modes?: string[]
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_search_profiles_workspace_id_candidate_id_fkey"
+            columns: ["workspace_id", "candidate_id"]
+            isOneToOne: true
+            referencedRelation: "candidates"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "candidate_search_profiles_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       candidate_standing_answers: {
         Row: {
@@ -2573,7 +2807,22 @@ export type Database = {
           updated_at?: string
           workspace_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "candidate_standing_answers_workspace_id_candidate_id_fkey"
+            columns: ["workspace_id", "candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "candidate_standing_answers_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       candidate_stories: {
         Row: {
@@ -2606,7 +2855,22 @@ export type Database = {
           updated_at?: string
           workspace_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "candidate_stories_workspace_id_candidate_id_fkey"
+            columns: ["workspace_id", "candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "candidate_stories_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       candidate_story_versions: {
         Row: {
@@ -2693,92 +2957,34 @@ export type Database = {
           version_number?: number
           workspace_id?: string
         }
-        Relationships: []
-      }
-      application_send_intents: {
-        Row: {
-          application_id: string
-          candidate_id: string
-          close_reason: string | null
-          closed_at: string | null
-          created_at: string
-          delegate_command_id: string
-          requested_by: string
-          workspace_id: string
-        }
-        Insert: {
-          application_id: string
-          candidate_id: string
-          close_reason?: string | null
-          closed_at?: string | null
-          created_at?: string
-          delegate_command_id?: string
-          requested_by: string
-          workspace_id: string
-        }
-        Update: {
-          application_id?: string
-          candidate_id?: string
-          close_reason?: string | null
-          closed_at?: string | null
-          created_at?: string
-          delegate_command_id?: string
-          requested_by?: string
-          workspace_id?: string
-        }
-        Relationships: []
-      }
-      candidate_search_profiles: {
-        Row: {
-          aggregate_version: number
-          candidate_id: string
-          created_at: string
-          desired_country_codes: string[]
-          employment_types: string[]
-          preferred_locations: string[]
-          target_roles: string[]
-          updated_at: string
-          work_modes: string[]
-          workspace_id: string
-        }
-        Insert: {
-          aggregate_version?: number
-          candidate_id: string
-          created_at?: string
-          desired_country_codes: string[]
-          employment_types: string[]
-          preferred_locations?: string[]
-          target_roles: string[]
-          updated_at?: string
-          work_modes: string[]
-          workspace_id: string
-        }
-        Update: {
-          aggregate_version?: number
-          candidate_id?: string
-          created_at?: string
-          desired_country_codes?: string[]
-          employment_types?: string[]
-          preferred_locations?: string[]
-          target_roles?: string[]
-          updated_at?: string
-          work_modes?: string[]
-          workspace_id?: string
-        }
         Relationships: [
           {
-            foreignKeyName: "candidate_search_profiles_workspace_id_candidate_id_fkey"
+            foreignKeyName: "candidate_story_versions_session_fk"
+            columns: ["workspace_id", "interview_session_id"]
+            isOneToOne: false
+            referencedRelation: "candidate_interview_sessions"
+            referencedColumns: ["workspace_id", "id"]
+          },
+          {
+            foreignKeyName: "candidate_story_versions_workspace_id_candidate_id_fkey"
             columns: ["workspace_id", "candidate_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "candidates"
             referencedColumns: ["workspace_id", "id"]
           },
           {
-            foreignKeyName: "candidate_search_profiles_workspace_id_fkey"
+            foreignKeyName: "candidate_story_versions_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidate_story_versions_workspace_id_story_id_fkey"
+            columns: ["workspace_id", "story_id"]
+            isOneToOne: false
+            referencedRelation: "candidate_stories"
+            referencedColumns: ["workspace_id", "id"]
           },
         ]
       }
@@ -4412,6 +4618,41 @@ export type Database = {
         Args: { p_candidate: string; p_token: string; p_version: number }
         Returns: Json
       }
+      append_candidate_interview_exchange: {
+        Args: {
+          p_candidate_message: string
+          p_command_id: string
+          p_complete?: boolean
+          p_expected_turn_count: number
+          p_interviewer_reply: string
+          p_session_id: string
+          p_state: Json
+        }
+        Returns: {
+          replayed: boolean
+          status: string
+          turn_count: number
+        }[]
+      }
+      approve_reviewed_resume_evidence: {
+        Args: { p_command_id: string; p_text_review_id: string }
+        Returns: {
+          approved_count: number
+          carried_count: number
+          replayed: boolean
+        }[]
+      }
+      archive_candidate_story: {
+        Args: {
+          p_command_id: string
+          p_expected_aggregate_version: number
+          p_story_id: string
+        }
+        Returns: {
+          aggregate_version: number
+          replayed: boolean
+        }[]
+      }
       assert_application_autopilot_lease: {
         Args: { p_id: string; p_lease_token: string; p_mutating?: boolean }
         Returns: undefined
@@ -4486,6 +4727,10 @@ export type Database = {
           replayed: boolean
           workspace_id: string
         }[]
+      }
+      cancel_application_send: {
+        Args: { p_application_id: string }
+        Returns: boolean
       }
       cancel_resume_upload_reservation: {
         Args: { p_document_version_id: string }
@@ -4772,6 +5017,18 @@ export type Database = {
         }
         Returns: Json
       }
+      delegate_ready_send_intents: {
+        Args: { p_application_id?: string; p_limit?: number }
+        Returns: Json
+      }
+      delete_candidate_mailbox_connection: {
+        Args: { p_candidate_id: string }
+        Returns: Json
+      }
+      delete_candidate_standing_answer: {
+        Args: { p_id: string }
+        Returns: boolean
+      }
       enqueue_auto_apply_match: {
         Args: {
           p_candidate: string
@@ -4810,6 +5067,10 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: number
       }
+      extend_application_autopilot_lease: {
+        Args: { p_id: string; p_lease_token: string; p_seconds: number }
+        Returns: string
+      }
       fail_application_drafting_terminal: {
         Args: {
           p_application_id: string
@@ -4819,6 +5080,14 @@ export type Database = {
           p_outbox_id: string
           p_preparation_run_id: string
           p_worker_id: string
+        }
+        Returns: boolean
+      }
+      fail_candidate_career_profile_extraction: {
+        Args: {
+          p_candidate_id: string
+          p_error_code: string
+          p_workspace_id: string
         }
         Returns: boolean
       }
@@ -4911,6 +5180,10 @@ export type Database = {
           provider_session_ref: string
         }[]
       }
+      get_candidate_mailbox_connection: {
+        Args: { p_candidate_id: string }
+        Returns: Json
+      }
       get_candidate_onboarding_readiness: {
         Args: never
         Returns: {
@@ -4957,6 +5230,51 @@ export type Database = {
         }[]
       }
       mark_stale_catalog_jobs: { Args: never; Returns: number }
+      matching_catalog_index_json: {
+        Args: { p_after_job_id?: string; p_limit?: number }
+        Returns: Json
+      }
+      matching_catalog_index_page: {
+        Args: { p_after_job_id?: string; p_limit?: number }
+        Returns: {
+          apply_url: string
+          canonical_url: string
+          content_hash: string
+          employer_name: string
+          employment_type: string
+          job_id: string
+          job_version_id: string
+          location_text: string
+          observed_at: string
+          published_at: string
+          source_provider: string
+          title: string
+          version_number: number
+          work_mode: string
+        }[]
+      }
+      matching_catalog_jobs: {
+        Args: { p_job_ids: string[] }
+        Returns: {
+          apply_url: string
+          canonical_url: string
+          content_hash: string
+          description_text: string
+          employer_name: string
+          employment_type: string
+          job_id: string
+          job_version_id: string
+          location_text: string
+          observed_at: string
+          published_at: string
+          queued_application_id: string
+          saved: boolean
+          source_provider: string
+          title: string
+          version_number: number
+          work_mode: string
+        }[]
+      }
       matching_catalog_page: {
         Args: { p_after_job_id?: string; p_limit?: number }
         Returns: {
@@ -4979,17 +5297,43 @@ export type Database = {
           work_mode: string
         }[]
       }
+      prefill_application_autopilot_answers: {
+        Args: { p_id: string; p_lease_token: string; p_questions: Json }
+        Returns: Json
+      }
+      provide_application_autopilot_verification_code: {
+        Args: {
+          p_code: string
+          p_command_id: string
+          p_id: string
+          p_verification_id: string
+        }
+        Returns: Json
+      }
+      provide_application_autopilot_verification_from_mailbox: {
+        Args: {
+          p_code: string
+          p_id: string
+          p_lease_token: string
+          p_verification_id: string
+        }
+        Returns: undefined
+      }
       read_application_autopilot_answers: {
+        Args: { p_id: string; p_lease_token: string }
+        Returns: Json
+      }
+      read_application_autopilot_verification: {
+        Args: { p_id: string; p_lease_token: string }
+        Returns: Json
+      }
+      read_auto_apply_state: { Args: never; Returns: Json }
+      read_autopilot_mailbox_connection: {
         Args: { p_id: string; p_lease_token: string }
         Returns: Json
       }
       read_candidate_standing_answers: {
         Args: { p_id: string; p_lease_token: string }
-        Returns: Json
-      }
-      read_auto_apply_state: { Args: never; Returns: Json }
-      record_application_autopilot_standing_answers: {
-        Args: { p_answers: Json; p_id: string; p_lease_token: string }
         Returns: Json
       }
       reconcile_application_fill_runtime_release: {
@@ -5007,6 +5351,29 @@ export type Database = {
           application_status: string
           computer_session_state: string
           replayed: boolean
+        }[]
+      }
+      record_application_autopilot_standing_answers: {
+        Args: { p_answers: Json; p_id: string; p_lease_token: string }
+        Returns: Json
+      }
+      record_autopilot_mailbox_use: {
+        Args: { p_error?: string; p_id: string; p_lease_token: string }
+        Returns: undefined
+      }
+      record_candidate_career_profile_extraction: {
+        Args: {
+          p_candidate_id: string
+          p_content: Json
+          p_content_sha256: string
+          p_correlation_id: string
+          p_producer_release: string
+          p_text_review_id: string
+          p_workspace_id: string
+        }
+        Returns: {
+          profile_version_id: string
+          recorded: boolean
         }[]
       }
       record_resume_extraction: {
@@ -5034,6 +5401,19 @@ export type Database = {
           extraction_id: string
           replayed: boolean
         }[]
+      }
+      record_worker_event: {
+        Args: {
+          p_application_id?: string
+          p_autopilot_id?: string
+          p_code?: string
+          p_detail?: Json
+          p_duration_ms?: number
+          p_lane: string
+          p_outcome: string
+          p_stage: string
+        }
+        Returns: undefined
       }
       refresh_stale_application_packet: {
         Args: {
@@ -5099,6 +5479,15 @@ export type Database = {
         Args: { p_id: string; p_lease_token: string; p_questions: Json }
         Returns: undefined
       }
+      request_application_autopilot_verification: {
+        Args: {
+          p_id: string
+          p_lease_token: string
+          p_recipient_hint: string
+          p_retry_reason?: string
+        }
+        Returns: string
+      }
       request_application_fill_resume: {
         Args: {
           p_application_id: string
@@ -5115,6 +5504,21 @@ export type Database = {
           fill_attempt_id: string
           replayed: boolean
           resume_attempt_id: string
+        }[]
+      }
+      request_application_send: {
+        Args: { p_application_id: string; p_command_id: string }
+        Returns: {
+          application_id: string
+          intent_open: boolean
+          replayed: boolean
+        }[]
+      }
+      request_candidate_career_profile: {
+        Args: { p_command_id: string }
+        Returns: {
+          replayed: boolean
+          requested: boolean
         }[]
       }
       request_source_document_deletion: {
@@ -5195,6 +5599,14 @@ export type Database = {
           replayed: boolean
         }[]
       }
+      retry_pasted_link_intake: {
+        Args: { p_application_id: string; p_command_id: string }
+        Returns: {
+          aggregate_version: number
+          application_id: string
+          replayed: boolean
+        }[]
+      }
       review_candidate_evidence_item: {
         Args: {
           p_candidate_attested?: boolean
@@ -5250,10 +5662,6 @@ export type Database = {
           resume_attempt_id: string
         }[]
       }
-      save_candidate_standing_answer: {
-        Args: { p_answer: string; p_topic: string }
-        Returns: string
-      }
       save_application_autopilot_answers: {
         Args: {
           p_answers: Json
@@ -5262,92 +5670,6 @@ export type Database = {
           p_id: string
         }
         Returns: Json
-      }
-      save_candidate_fact: {
-        Args: {
-          p_command_id: string
-          p_expected_aggregate_version?: number
-          p_fact_key: string
-          p_normalized_text: string
-          p_value_json: Json
-        }
-        Returns: {
-          aggregate_version: number
-          fact_id: string
-          fact_version_id: string
-          fact_version_number: number
-          replayed: boolean
-        }[]
-      }
-      append_candidate_interview_exchange: {
-        Args: {
-          p_candidate_message: string
-          p_command_id: string
-          p_complete?: boolean
-          p_expected_turn_count: number
-          p_interviewer_reply: string
-          p_session_id: string
-          p_state: Json
-        }
-        Returns: {
-          replayed: boolean
-          status: string
-          turn_count: number
-        }[]
-      }
-      approve_reviewed_resume_evidence: {
-        Args: {
-          p_command_id: string
-          p_text_review_id: string
-        }
-        Returns: {
-          approved_count: number
-          carried_count: number
-          replayed: boolean
-        }[]
-      }
-      archive_candidate_story: {
-        Args: {
-          p_command_id: string
-          p_expected_aggregate_version: number
-          p_story_id: string
-        }
-        Returns: {
-          aggregate_version: number
-          replayed: boolean
-        }[]
-      }
-      fail_candidate_career_profile_extraction: {
-        Args: {
-          p_candidate_id: string
-          p_error_code: string
-          p_workspace_id: string
-        }
-        Returns: boolean
-      }
-      record_candidate_career_profile_extraction: {
-        Args: {
-          p_candidate_id: string
-          p_content: Json
-          p_content_sha256: string
-          p_correlation_id: string
-          p_producer_release: string
-          p_text_review_id: string
-          p_workspace_id: string
-        }
-        Returns: {
-          profile_version_id: string
-          recorded: boolean
-        }[]
-      }
-      request_candidate_career_profile: {
-        Args: {
-          p_command_id: string
-        }
-        Returns: {
-          replayed: boolean
-          requested: boolean
-        }[]
       }
       save_candidate_answer_fact: {
         Args: {
@@ -5365,96 +5687,19 @@ export type Database = {
           replayed: boolean
         }[]
       }
-      save_candidate_profile_document: {
+      save_candidate_fact: {
         Args: {
           p_command_id: string
-          p_content: Json
-          p_content_sha256: string
           p_expected_aggregate_version?: number
-          p_kind: string
+          p_fact_key: string
+          p_normalized_text: string
+          p_value_json: Json
         }
         Returns: {
           aggregate_version: number
-          profile_version_id: string
-          replayed: boolean
-          version_number: number
-        }[]
-      }
-      save_candidate_story: {
-        Args: {
-          p_command_id: string
-          p_disposition: string
-          p_expected_aggregate_version: number | null
-          p_interview_session_id?: string
-          p_source_kind?: string
-          p_story: Json
-          p_story_id: string | null
-          p_usage_policy: string
-        }
-        Returns: {
-          aggregate_version: number
-          replayed: boolean
-          story_id: string
-          story_version_id: string
-          version_number: number
-        }[]
-      }
-      start_candidate_interview: {
-        Args: {
-          p_command_id: string
-          p_interviewer_release: string
-          p_opening: string
-          p_state?: Json
-        }
-        Returns: {
-          replayed: boolean
-          session_id: string
-        }[]
-      }
-      cancel_application_send: {
-        Args: { p_application_id: string }
-        Returns: boolean
-      }
-      delegate_ready_send_intents: {
-        Args: { p_application_id?: string; p_limit?: number }
-        Returns: Json
-      }
-      matching_catalog_index_json: {
-        Args: { p_after_job_id?: string; p_limit?: number }
-        Returns: Json
-      }
-      matching_catalog_index_page: {
-        Args: { p_after_job_id?: string; p_limit?: number }
-        Returns: {
-          apply_url: string
-          canonical_url: string
-          content_hash: string
-          employer_name: string
-          employment_type: string | null
-          job_id: string
-          job_version_id: string
-          location_text: string | null
-          observed_at: string
-          published_at: string | null
-          source_provider: string
-          title: string
-          version_number: number
-          work_mode: string | null
-        }[]
-      }
-      retry_pasted_link_intake: {
-        Args: { p_application_id: string; p_command_id: string }
-        Returns: {
-          aggregate_version: number
-          application_id: string
-          replayed: boolean
-        }[]
-      }
-      request_application_send: {
-        Args: { p_application_id: string; p_command_id: string }
-        Returns: {
-          application_id: string
-          intent_open: boolean
+          fact_id: string
+          fact_version_id: string
+          fact_version_number: number
           replayed: boolean
         }[]
       }
@@ -5474,6 +5719,32 @@ export type Database = {
           replayed: boolean
         }[]
       }
+      save_candidate_mailbox_connection: {
+        Args: {
+          p_candidate_id: string
+          p_email: string
+          p_encrypted_token: string
+          p_key_id: string
+          p_provider: string
+          p_scopes: string[]
+        }
+        Returns: Json
+      }
+      save_candidate_profile_document: {
+        Args: {
+          p_command_id: string
+          p_content: Json
+          p_content_sha256: string
+          p_expected_aggregate_version?: number
+          p_kind: string
+        }
+        Returns: {
+          aggregate_version: number
+          profile_version_id: string
+          replayed: boolean
+          version_number: number
+        }[]
+      }
       save_candidate_search_profile: {
         Args: {
           p_command_id: string
@@ -5487,6 +5758,29 @@ export type Database = {
         Returns: {
           aggregate_version: number
           replayed: boolean
+        }[]
+      }
+      save_candidate_standing_answer: {
+        Args: { p_answer: string; p_topic: string }
+        Returns: string
+      }
+      save_candidate_story: {
+        Args: {
+          p_command_id: string
+          p_disposition: string
+          p_expected_aggregate_version: number
+          p_interview_session_id?: string
+          p_source_kind?: string
+          p_story: Json
+          p_story_id: string
+          p_usage_policy: string
+        }
+        Returns: {
+          aggregate_version: number
+          replayed: boolean
+          story_id: string
+          story_version_id: string
+          version_number: number
         }[]
       }
       seal_application_autopilot: {
@@ -5529,6 +5823,37 @@ export type Database = {
           work_mode: string
         }[]
       }
+      search_catalog_jobs_ranked: {
+        Args: {
+          p_cursor_job_id?: string
+          p_cursor_observed_at?: string
+          p_cursor_tier?: number
+          p_employment_type?: string
+          p_limit?: number
+          p_location?: string
+          p_query?: string
+          p_saved_only?: boolean
+          p_work_mode?: string
+        }
+        Returns: {
+          apply_url: string
+          canonical_url: string
+          description_text: string
+          employer_name: string
+          employment_type: string
+          job_id: string
+          job_version_id: string
+          location_text: string
+          match_tier: number
+          observed_at: string
+          published_at: string
+          queued_application_id: string
+          saved: boolean
+          source_provider: string
+          title: string
+          work_mode: string
+        }[]
+      }
       set_auto_apply_enabled: {
         Args: {
           p_command_id: string
@@ -5548,6 +5873,15 @@ export type Database = {
           replayed: boolean
           saved: boolean
         }[]
+      }
+      settle_application_autopilot_verification: {
+        Args: {
+          p_id: string
+          p_lease_token: string
+          p_outcome: string
+          p_verification_id: string
+        }
+        Returns: undefined
       }
       start_application_agent_run: {
         Args: {
@@ -5581,6 +5915,18 @@ export type Database = {
           replayed: boolean
           revision_id: string
           session_ttl_seconds: number
+        }[]
+      }
+      start_candidate_interview: {
+        Args: {
+          p_command_id: string
+          p_interviewer_release: string
+          p_opening: string
+          p_state?: Json
+        }
+        Returns: {
+          replayed: boolean
+          session_id: string
         }[]
       }
     }

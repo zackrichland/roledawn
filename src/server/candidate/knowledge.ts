@@ -264,8 +264,10 @@ export async function saveStory(actor: AuthenticatedActor, input: Readonly<{
   const supabase = await client(actor);
   const { data, error } = await supabase.rpc("save_candidate_story", {
     p_command_id: input.commandId,
-    p_story_id: input.storyId,
-    p_expected_aggregate_version: input.storyId ? input.expectedAggregateVersion : null,
+    // Null creates a new story. Generated types mark every SQL parameter
+    // without a default as non-null, so these two are asserted.
+    p_story_id: input.storyId as string,
+    p_expected_aggregate_version: (input.storyId ? input.expectedAggregateVersion : null) as number,
     p_story: { ...draft, storyText: renderStoryText(draft) } as unknown as Json,
     p_disposition: input.disposition,
     p_usage_policy: usagePolicy,

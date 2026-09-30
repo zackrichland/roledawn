@@ -54,4 +54,4 @@ boundaries. Nothing in this record authorizes an employer-side effect.
 - Revision contract: [application drafting domain](../../src/domain/application-drafting.ts)
 - Server handoff: [drafting-context boundary](../../src/server/applications/drafting-context.ts)
 - Hosted read adapter: [Supabase drafting-context reader](../../src/server/applications/supabase-drafting-context-reader.ts)
-- Later, unaccepted artifact boundary: [application packet domain](../../src/domain/application-packet.ts)
+- Later, unaccepted artifact boundary: the application packet domain (`src/domain/application-packet.ts`, removed on 2026-09-30 as unused; see git history)

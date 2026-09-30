@@ -17,7 +17,6 @@ import { buildApplicationKitManifestV4 } from "../../domain/application-kit.ts";
 import { validateApplicationResearchBundle } from "../../domain/application-research.ts";
 import { createSupabaseAdminClient } from "../../lib/supabase/admin.ts";
 import type { Database, Json } from "../../lib/supabase/database.types.ts";
-import { ApplicationDraftingPipelineError } from "../applications/application-drafting-pipeline.ts";
 import { renderApplicationDocuments } from "../applications/application-documents-render.ts";
 import { loadApplicationKitExactFacts } from "../applications/application-kit-facts.ts";
 import { verifyApplicationDraft, writeApplicationDraft } from "../applications/application-writer.ts";
@@ -296,8 +295,7 @@ function firstBoolean(value: unknown): boolean {
 export function decideApplicationKitFailureDisposition(attemptCount: number, error: unknown) {
   const errorCode = error instanceof Error && /^[A-Z][A-Z0-9_]{3,99}(?::ATTEMPTS_[0-2])?$/u.test(error.message)
     ? error.message : "WORKER_UNEXPECTED_FAILURE";
-  const permanent = (error instanceof ApplicationDraftingPipelineError && !error.retryable)
-    || (error instanceof ApplicationWritingError && !error.retryable)
+  const permanent = (error instanceof ApplicationWritingError && !error.retryable)
     || (error instanceof DraftingContextV2Error && !error.retryable)
     || errorCode.startsWith("DRAFTING_") || errorCode === "APPLICATION_KIT_NAME_REQUIRED";
   return permanent
@@ -349,7 +347,7 @@ export async function runApplicationKitWorkerOnce(environment: NodeJS.ProcessEnv
             p_outbox_id: message.outbox_id, p_worker_id: workerId, p_application_id: payload.applicationId,
             p_preparation_run_id: payload.preparationRunId, p_input_snapshot_id: payload.inputSnapshotId,
             p_error_code: disposition.errorCode,
-            p_attempt_history: error instanceof ApplicationDraftingPipelineError ? error.attempts : terminalAttemptHistory(error),
+            p_attempt_history: terminalAttemptHistory(error),
           }) : await supabase.rpc("dead_letter_outbox_message", {
             p_worker_id: workerId,
             p_outbox_id: message.outbox_id,

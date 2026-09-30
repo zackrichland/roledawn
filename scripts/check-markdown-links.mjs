@@ -2,7 +2,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 
 const root = resolve(process.cwd());
-const skippedDirectories = new Set([".git", ".next", "node_modules"]);
+// Generated or scratch output (tmp/, artifacts/, .netlify/) is not documentation.
+const skippedDirectories = new Set([".git", ".next", "node_modules", ".netlify", "tmp", "artifacts"]);
 
 function markdownFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {

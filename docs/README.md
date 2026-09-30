@@ -33,8 +33,10 @@ override accepted product or safety contracts.
 
 ### Engineering
 
+1. [AGENTS.md](../AGENTS.md): commands, repo map, invariants and gotchas
 1. [Founder directives](execution/founder-directives.md)
 1. [Application playbook](execution/application-playbook.md)
+1. [ATS board templates](boards/README.md)
 1. [Architecture at a glance](architecture/architecture-at-a-glance.md)
 2. [Product readiness audit](execution/product-readiness-audit.md)
 3. [Current state](execution/current-state.md)
