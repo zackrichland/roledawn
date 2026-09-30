@@ -3265,6 +3265,45 @@ export type Database = {
           },
         ]
       }
+      employer_logos: {
+        Row: {
+          attempted_at: string
+          board_slug: string
+          checked_at: string
+          content_type: string | null
+          created_at: string
+          fetched_at: string
+          logo_bytes: string | null
+          miss_count: number
+          provider: string
+          status: string
+        }
+        Insert: {
+          attempted_at?: string
+          board_slug: string
+          checked_at?: string
+          content_type?: string | null
+          created_at?: string
+          fetched_at?: string
+          logo_bytes?: string | null
+          miss_count?: number
+          provider: string
+          status: string
+        }
+        Update: {
+          attempted_at?: string
+          board_slug?: string
+          checked_at?: string
+          content_type?: string | null
+          created_at?: string
+          fetched_at?: string
+          logo_bytes?: string | null
+          miss_count?: number
+          provider?: string
+          status?: string
+        }
+        Relationships: []
+      }
       employers: {
         Row: {
           canonical_domain: string | null
@@ -5375,6 +5414,16 @@ export type Database = {
           profile_version_id: string
           recorded: boolean
         }[]
+      }
+      record_employer_logo_check: {
+        Args: {
+          p_board_slug: string
+          p_content_type?: string
+          p_logo_bytes?: string
+          p_outcome: string
+          p_provider: string
+        }
+        Returns: string
       }
       record_resume_extraction: {
         Args: {
