@@ -1,0 +1,121 @@
+-- Local PGlite check for 20260930000000_autopilot_remembered_answers.sql.
+--   node scripts/migration-harness.mjs supabase/checks/autopilot_remembered_answers.sql
+-- Synthetic rows only; everything is rolled back. Worker calls run as service_role.
+begin;
+create temporary table remembered_answer_checks(check_name text primary key, passed boolean not null) on commit drop;
+
+create function pg_temp.candidate() returns jsonb
+language plpgsql as $$
+declare v_user uuid:=gen_random_uuid(); v_workspace uuid:=gen_random_uuid(); v_candidate uuid:=gen_random_uuid();
+begin
+  insert into auth.users(id,email) values(v_user,'remembered-check-'||v_user||'@example.invalid');
+  insert into public.workspaces(id,name,kind,status,personal_owner_auth_user_id) values(v_workspace,'Remembered check','PERSONAL','ACTIVE',v_user);
+  insert into public.workspace_memberships(workspace_id,auth_user_id,role,status) values(v_workspace,v_user,'OWNER','ACTIVE');
+  insert into public.candidates(id,workspace_id,auth_user_id,display_name,status) values(v_candidate,v_workspace,v_user,'Remembered check','ACTIVE');
+  return jsonb_build_object('user',v_user,'workspace',v_workspace,'candidate',v_candidate);
+end $$;
+
+-- One application with a running autopilot that holds a fresh lease.
+create function pg_temp.running(p_who jsonb) returns jsonb
+language plpgsql as $$
+declare v_job uuid:=gen_random_uuid(); v_version uuid:=gen_random_uuid(); v_application uuid:=gen_random_uuid(); v_revision uuid:=gen_random_uuid();
+  v_snapshot uuid:=gen_random_uuid(); v_autopilot uuid:=gen_random_uuid(); v_lease uuid:=gen_random_uuid();
+  v_workspace uuid:=(p_who->>'workspace')::uuid; v_candidate uuid:=(p_who->>'candidate')::uuid; v_user uuid:=(p_who->>'user')::uuid;
+begin
+  insert into public.jobs(id,canonical_url,state) values(v_job,'https://job-boards.greenhouse.io/roledawncheck/jobs/'||abs(hashtext(v_job::text)),'OPEN');
+  insert into public.job_versions(id,job_id,version_number,content_hash,title,employer_name,description_text,apply_url,observed_at)
+    values(v_version,v_job,1,encode(sha256(convert_to(v_version::text,'UTF8')),'hex'),'Synthetic role','Synthetic employer','Synthetic only.','https://job-boards.greenhouse.io/roledawncheck/jobs/1',now());
+  insert into public.applications(id,workspace_id,candidate_id,job_id,job_version_id,status) values(v_application,v_workspace,v_candidate,v_job,v_version,'EXECUTING');
+  set local session_replication_role=replica;
+  insert into public.application_input_snapshots(id,workspace_id,candidate_id,application_id,preparation_run_id,job_id,job_version_id,tailoring_mode,submission_mode,readiness,snapshot_manifest,snapshot_hash,candidate_input_version,policy_release,assembler_release,blockers)
+    values(v_snapshot,v_workspace,v_candidate,v_application,gen_random_uuid(),v_job,v_version,'AS_UPLOADED','PER_APPLICATION_APPROVAL','BLOCKED','{}',repeat('a',64),
+      (select application_input_version from public.candidates where id=v_candidate),'check/1','check/1','["fixture"]');
+  insert into public.application_revisions(id,workspace_id,application_id,version_number,job_version_id,packet_manifest,material_diff,packet_hash,validation_status,input_snapshot_id,input_snapshot_hash,research_bundle_id,research_bundle_hash)
+    values(v_revision,v_workspace,v_application,1,v_version,'{}','{}',repeat('c',64),'PASSED',v_snapshot,repeat('a',64),gen_random_uuid(),repeat('e',64));
+  insert into public.application_autopilots(id,workspace_id,candidate_id,application_id,revision_id,delegated_by,command_id,packet_hash,destination_url,artifact_manifest,disclosure_manifest,
+      status,lease_token,lease_owner,lease_expires_at)
+    values(v_autopilot,v_workspace,v_candidate,v_application,v_revision,v_user,gen_random_uuid(),repeat('c',64),'https://job-boards.greenhouse.io/roledawncheck/jobs/1','[]','{}',
+      'RUNNING',v_lease,'remembered-check',now()+interval '5 minutes');
+  insert into private.application_autopilot_runtime(autopilot_id) values(v_autopilot);
+  set local session_replication_role=origin;
+  update public.applications set current_revision_id=v_revision where id=v_application;
+  return p_who||jsonb_build_object('autopilot',v_autopilot,'lease',v_lease,'application',v_application);
+end $$;
+
+create function pg_temp.question(p_label text, p_kind text, p_options jsonb, p_required boolean default true) returns jsonb
+language sql as $$
+  select jsonb_build_object('fieldId','field_'||md5(p_label||p_options::text),'fingerprint',encode(sha256(convert_to(p_label||p_options::text||random()::text,'UTF8')),'hex'),
+    'label',p_label,'kind',p_kind,'required',p_required,'reasonCode','MISSING_EXACT_ANSWER','options',p_options);
+$$;
+
+create function pg_temp.as_worker_request(p_fixture jsonb, p_questions jsonb) returns void
+language plpgsql as $$
+begin
+  execute 'set local role service_role';
+  perform public.request_application_autopilot_questions((p_fixture->>'autopilot')::uuid,(p_fixture->>'lease')::uuid,p_questions);
+  execute 'reset role';
+end $$;
+
+-- The candidate's earlier answer on another application.
+create function pg_temp.answer_earlier(p_fixture jsonb, p_descriptor jsonb, p_value jsonb) returns void
+language plpgsql as $$
+declare v_question uuid:=gen_random_uuid();
+begin
+  insert into public.application_autopilot_questions(id,autopilot_id,fingerprint,descriptor,status) values(v_question,(p_fixture->>'autopilot')::uuid,p_descriptor->>'fingerprint',p_descriptor,'ANSWERED');
+  insert into public.application_autopilot_answers(question_id,value_json,answered_by,command_id) values(v_question,p_value,(p_fixture->>'user')::uuid,gen_random_uuid());
+end $$;
+
+do $check$
+declare who jsonb:=pg_temp.candidate(); earlier jsonb; now_a jsonb; now_b jsonb; other jsonb;
+  sponsor_old jsonb:=pg_temp.question('Will you now or in the future require visa sponsorship?*','SINGLE_SELECT','[{"label":"Yes","value":"old-0"},{"label":"No","value":"old-1"}]');
+  heard_old jsonb:=pg_temp.question('How did you hear about this job?','TEXT','[]');
+  gpa_old jsonb:=pg_temp.question('What were your undergrad GPAs? *','MULTI_SELECT','[{"label":"3.4 - 3.59","value":"g-0"},{"label":"3.6 - 3.79","value":"g-1"}]');
+  sponsor_new jsonb:=pg_temp.question('Will you now or in the future require visa sponsorship? (required)','SINGLE_SELECT','[{"label":"Yes","value":"new-0"},{"label":"No","value":"new-1"}]');
+  heard_new jsonb:=pg_temp.question('How did you hear about this job? How did you hear about this job?','TEXT','[]');
+  gpa_new jsonb:=pg_temp.question('What were your undergrad GPAs?','MULTI_SELECT','[{"label":"3.6 - 3.79","value":"h-1"},{"label":"3.4 - 3.59","value":"h-0"}]');
+  unseen jsonb:=pg_temp.question('Are you open to working weekends?','SINGLE_SELECT','[{"label":"Yes","value":"w-0"},{"label":"No","value":"w-1"}]');
+  v_row public.application_autopilots%rowtype;
+begin
+  earlier:=pg_temp.running(who);
+  perform pg_temp.answer_earlier(earlier,sponsor_old,'"old-1"');
+  perform pg_temp.answer_earlier(earlier,heard_old,'"Carvana careers website"');
+  perform pg_temp.answer_earlier(earlier,gpa_old,'["g-0"]');
+
+  -- A remembered question is answered by option label; a new one still waits for the candidate.
+  now_a:=pg_temp.running(who);
+  perform pg_temp.as_worker_request(now_a,jsonb_build_array(sponsor_new,unseen));
+  if (select a.value_json from public.application_autopilot_questions q join public.application_autopilot_answers a on a.question_id=q.id
+      where q.autopilot_id=(now_a->>'autopilot')::uuid and q.fingerprint=sponsor_new->>'fingerprint')<>'"new-1"' then raise exception 'CHECK_SELECT_NOT_REMEMBERED'; end if;
+  if (select status from public.application_autopilot_questions where autopilot_id=(now_a->>'autopilot')::uuid and fingerprint=unseen->>'fingerprint')<>'OPEN' then raise exception 'CHECK_UNSEEN_ANSWERED'; end if;
+  if (select status from public.application_autopilots where id=(now_a->>'autopilot')::uuid)<>'WAITING_ANSWERS' then raise exception 'CHECK_NOT_WAITING'; end if;
+  insert into remembered_answer_checks values('remembered_answer_maps_by_option_label_and_new_questions_wait',true);
+
+  -- When every question is remembered, the send continues without the candidate.
+  now_b:=pg_temp.running(who);
+  perform pg_temp.as_worker_request(now_b,jsonb_build_array(heard_new,gpa_new));
+  select * into v_row from public.application_autopilots where id=(now_b->>'autopilot')::uuid;
+  if v_row.status<>'QUEUED' or v_row.lease_token is not null or v_row.available_at<=now() then raise exception 'CHECK_NOT_CONTINUED %',v_row.status; end if;
+  if (select a.value_json from public.application_autopilot_questions q join public.application_autopilot_answers a on a.question_id=q.id
+      where q.autopilot_id=(now_b->>'autopilot')::uuid and q.fingerprint=heard_new->>'fingerprint')<>'"Carvana careers website"' then raise exception 'CHECK_TEXT_NOT_REMEMBERED'; end if;
+  if (select a.value_json from public.application_autopilot_questions q join public.application_autopilot_answers a on a.question_id=q.id
+      where q.autopilot_id=(now_b->>'autopilot')::uuid and q.fingerprint=gpa_new->>'fingerprint')<>'["h-0"]' then raise exception 'CHECK_MULTI_NOT_REMEMBERED'; end if;
+  if (select status from public.applications where id=(now_b->>'application')::uuid)<>'EXECUTING' then raise exception 'CHECK_APPLICATION_NOT_EXECUTING'; end if;
+  insert into remembered_answer_checks values('all_remembered_questions_continue_the_send',true);
+
+  -- Another candidate's answers are never used.
+  other:=pg_temp.running(pg_temp.candidate());
+  perform pg_temp.as_worker_request(other,jsonb_build_array(pg_temp.question('Will you now or in the future require visa sponsorship?*','SINGLE_SELECT','[{"label":"Yes","value":"o-0"},{"label":"No","value":"o-1"}]')));
+  if (select status from public.application_autopilots where id=(other->>'autopilot')::uuid)<>'WAITING_ANSWERS'
+    or exists(select 1 from public.application_autopilot_answers a join public.application_autopilot_questions q on q.id=a.question_id where q.autopilot_id=(other->>'autopilot')::uuid) then
+    raise exception 'CHECK_CROSS_CANDIDATE_ANSWER'; end if;
+  insert into remembered_answer_checks values('other_candidates_answers_are_never_used',true);
+
+  -- A choice that no longer exists on the new form is asked again.
+  now_a:=pg_temp.running(who);
+  perform pg_temp.as_worker_request(now_a,jsonb_build_array(pg_temp.question('Will you now or in the future require visa sponsorship?','SINGLE_SELECT','[{"label":"Yes, now","value":"x-0"},{"label":"Not now","value":"x-1"}]')));
+  if (select status from public.application_autopilots where id=(now_a->>'autopilot')::uuid)<>'WAITING_ANSWERS' then raise exception 'CHECK_MISSING_OPTION_GUESSED'; end if;
+  insert into remembered_answer_checks values('missing_choice_is_asked_again',true);
+end $check$;
+
+select check_name, passed from remembered_answer_checks order by check_name;
+rollback;
