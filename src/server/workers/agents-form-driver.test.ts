@@ -9,6 +9,7 @@ import { chromium, type Page } from "playwright-core";
 import { validateAgentQuestionDescriptors, type AgentQuestionAnswer, type AgentQuestionDescriptor, type ApplicationAgentQuestionRepository } from "../../domain/application-agent-questions.ts";
 import type { ApplicationFillExecutionPackage } from "./application-fill-materializer.ts";
 import { createAgentBrowserTools, samePhoneNumber } from "./agents-browser-tools.ts";
+import { optionMatchForField } from "./application-field-facts.ts";
 import { createAgentsFormDriver, parseAgentFormToolArguments, type AgentFormHarness } from "./agents-form-driver.ts";
 
 const chrome = [process.env.ROLEDAWN_CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/chromium", "/usr/bin/google-chrome"]
@@ -204,7 +205,9 @@ test("Ashby city lookup selects one confirmed result and keeps identity after se
     const tools = createAgentBrowserTools(page, url, { ashbyLabels: true, remoteSearch: true, remoteSearchSemantic: "CITY", withRemoteSearch: async (query, run) => { approvedSearch = query; return run(); } });
     const field = (await tools.inspect()).fields[0];
     assert.equal(field.label, "Location"); assert.equal(field.required, true); assert.equal(field.searchable, true);
-    await tools.fillValue(field.fieldId, "Springfield", undefined, { semantic: "CITY", source: "FACT", hints: { region: "IL", country: "US" } });
+    assert.equal(field.provider, "ASHBY");
+    const match = optionMatchForField(field, "location.city", [{ factKey: "location.region", value: "IL" }, { factKey: "location.country_code", value: "US" }]);
+    await tools.fillValue(field.fieldId, "Springfield", undefined, match);
     assert.equal(approvedSearch, "Springfield");
     assert.equal(await page.locator("input").inputValue(), "Springfield, Illinois, United States");
     const after = (await tools.verifyWrites()).fields[0];

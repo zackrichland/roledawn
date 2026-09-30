@@ -19,6 +19,7 @@ const FAILURE_COPY: Readonly<Record<string, string>> = {
   DELIVERY_BROWSER_CONCURRENCY_LIMIT: "Too many applications were sending at once, so nothing was sent. Try again in a minute.",
   DELIVERY_SITE_UNSUPPORTED: "This job board is not supported yet. Use your files to apply on the employer’s site.",
   DELIVERY_REQUIRED_CONTROL_UNSUPPORTED: "A required field needs your help on the employer’s site.",
+  APPLICATION_FILL_CAPTCHA_TAKEOVER: "The employer’s form needs you to complete a verification check. Continue on the employer’s site.",
   DELIVERY_FORM_VALIDATION_OR_CAPTCHA: "The employer’s form needs a correction or a verification step. Continue on the employer’s site.",
   DELIVERY_ANSWER_NOT_ACCEPTED_BY_FORM: "The employer’s form did not accept an answer. Review it on the employer’s site.",
 };

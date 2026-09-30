@@ -69,6 +69,28 @@ test("a sensitive question may rest only on standing answers or work-authorizati
   assert.equal(acceptStandingAnswer(sponsorship, draft(["No"], ["f:location.city"]), basis), null);
 });
 
+test("residence-country sponsorship answers require authorization provenance, never location as answer evidence", async () => {
+  const descriptor = question("Will you now, or in the future, require visa sponsorship to work in the country that you are residing in?", "SINGLE_SELECT", ["Yes", "No"], { reasonCode: "SENSITIVE_REQUIRES_CANDIDATE" });
+  assert.equal(standingAnswerEligible(descriptor), true);
+  // These are synthetic drafts, not evidence that a live model chose the right
+  // jurisdiction. Country scopes the prompt; the unchanged guard checks basis.
+  for (const country of ["US", "CA"]) for (const answer of ["Yes", "No"]) {
+    const factKey = `work_authorization.${country.toLowerCase()}.sponsorship_required`;
+    for (const cited of [[`f:${factKey}`], [`f:${factKey}`, "f:location.country_code"], ["f:location.country_code"], ["f:location.city"]]) {
+      const resolver = createStandingAnswerResolver({ client: { responses: { async create() {
+        return { status: "completed", output_text: JSON.stringify({ answers: [draft([answer], cited)] }) };
+      } } } as never });
+      const result = await resolver.resolve({ questions: [descriptor], context: { answers: [], job: { title: "Synthetic role", employer: "Synthetic employer", location: "Unspecified", workMode: null } }, facts: [
+        { factKey: "location.country_code", value: country }, { factKey: "location.city", value: "Synthetic city" },
+        { factKey, value: answer === "Yes" ? "true" : "false" },
+      ] });
+      if (cited.length === 1 && cited[0] === `f:${factKey}`) {
+        assert.deepEqual(result.map(proposal => ({ value: proposal.value, basis: proposal.basis })), [{ value: answer === "Yes" ? "option-0" : "option-1", basis: [`fact:${factKey}`] }]);
+      } else assert.deepEqual(result, [], `reject sensitive answer resting on ${cited.join(", ")}`);
+    }
+  }
+});
+
 test("the resolver sends short ids only, skips ineligible questions, and maps the model's answers", async () => {
   const calls: { input: string; schema: unknown }[] = [];
   const client = { responses: { async create(request: { input: { content: { text: string }[] }[]; text: { format: { schema: unknown } } }) {

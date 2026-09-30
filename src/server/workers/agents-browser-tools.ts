@@ -43,6 +43,8 @@ export type AgentBrowserField = Readonly<{
   domId: string;
   /** Reviewed Ashby form render and field path, when the control has no native form. */
   formKey?: string;
+  /** Supplied by the reviewed adapter, never by page attributes or model arguments. */
+  provider?: "ASHBY";
   autocomplete: string;
   placeholder: string;
   required: boolean;
@@ -375,6 +377,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
         const label = group.length > 1 ? [...new Set(group.map((item) => item.label))].join(" / ") : control.label;
         const descriptor = {
           frameIndex, frameUrl: frame.url(), form: control.form, tag: control.tag, type: control.type, role: control.role,
+          ...(ashbyLabels && control.form !== "outside-form" ? { provider: "ASHBY" as const } : {}),
           name: control.name, id: control.id, label, autocomplete: control.autocomplete,
           placeholder: control.placeholder, required: group.some((item) => item.required),
           readOnly: group.some((item) => item.readOnly), kind: fieldKind, options,
@@ -404,6 +407,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
           fieldId: `field_${fingerprint}`, fingerprint, label, kind: fieldKind, inputType: control.type,
           name: control.name, domId: control.id, autocomplete: control.autocomplete, placeholder: control.placeholder,
           ...(ashbyLabels && control.form !== "outside-form" ? { formKey: control.form } : {}),
+          ...(descriptor.provider ? { provider: descriptor.provider } : {}),
           required: descriptor.required, readOnly: descriptor.readOnly,
           candidateOnly: PRIVATE_PATTERN.test(`${label} ${control.name}`) || /\b(?:without using|do not use|don.t use|no)\s+(?:AI|artificial intelligence)\b/iu.test(label), options, accept: control.accept,
           multiple: control.multiple, hasValue,

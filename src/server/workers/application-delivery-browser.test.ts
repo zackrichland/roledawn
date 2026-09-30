@@ -693,3 +693,43 @@ test("model-proposed look-alike facts are refused when a required field sends th
     assert.equal(writes.length, 0);
   });
 });
+
+test("an unresolved searchable saved answer does not starve another exact answer in the same batch", browserOptions, async () => {
+  await fixture(async ({ page, policy, requests }) => {
+    const answers: AgentQuestionAnswer[] = [];
+    let resolved: { answeredFromSavedAnswers: string[]; requestedFieldIds: string[] } | null = null;
+    let consentId = "";
+    let townId = "";
+    const questions: ApplicationAgentQuestionRepository = {
+      async loadAnswers({ questions }) { return answers.filter(answer => questions.some(question => question.fieldId === answer.fieldId)); },
+      async requestQuestions({ questions }) { return questions.map(question => ({ ...question, id: "fixture-question", status: "OPEN" as const })); },
+      async resolveSavedAnswers({ questions }) {
+        validateAgentQuestionDescriptors(questions);
+        const batch = questions.map((question, index) => ({ answerId: "saved-" + index, fieldId: question.fieldId, fingerprint: question.fingerprint, value: question.kind === "BOOLEAN" ? true : "Not among the offered cities" }));
+        answers.push(...batch); return batch;
+      },
+    };
+    const harness: AgentFormHarness = { async run(input) {
+      await page.evaluate(() => {
+        const label = document.createElement("label"); label.textContent = "Town";
+        const select = document.createElement("select"); select.name = "town"; select.required = true;
+        select.add(new Option("Choose", ""));
+        for (let i = 0; i < 81; i++) select.add(new Option("Fixture City " + i, "city-" + i));
+        label.append(select); document.querySelector("form")!.append(label);
+      });
+      const form = await input.executeTool("inspect_form", {}) as { fields: AgentBrowserField[] };
+      townId = form.fields.find(field => field.name === "town")!.fieldId;
+      consentId = form.fields.find(field => field.name === "consent")!.fieldId;
+      resolved = await input.executeTool("request_questions", { fieldIds: [townId, consentId] }) as typeof resolved;
+    } };
+    const authority = hooks(requests);
+    const driver = createApplicationDeliveryDriver({ harness, questions, resolvePage: () => page, sitePolicy: policy, submissionHooks: authority.value, browserTimeoutMs: 600 });
+    const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: policy.startUrl, executionPackage: packet(policy.startUrl) });
+    assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
+    if (result.kind === "TAKEOVER") assert.equal(result.reasonCode, "DELIVERY_ANSWER_NOT_ACCEPTED_BY_FORM");
+    assert.deepEqual(resolved, { ok: true, answeredFromSavedAnswers: [consentId], requestedFieldIds: [townId] });
+    assert.equal(await page.locator('[name="consent"]').isChecked(), true);
+    assert.equal(await page.locator('[name="town"]').inputValue(), "");
+    assert.equal(authority.begins(), 0); assert.equal(requests.submits, 0);
+  });
+});

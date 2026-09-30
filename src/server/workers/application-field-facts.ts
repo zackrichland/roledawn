@@ -16,6 +16,8 @@ export type FieldFactDescriptor = Readonly<{
   inputType: string;
   name?: string;
   domId?: string;
+  /** Trusted observer metadata from the reviewed board adapter. */
+  provider?: "ASHBY";
 }>;
 
 type FactLabelRule = Readonly<{
@@ -244,6 +246,10 @@ export function classifyFieldFact(field: FieldFactDescriptor): CandidateFactKey 
   const label = normalizeFieldLabel(field.label);
   if (!label || label.length > 80) return null;
   const identifiers = identifierText(field);
+  // Ashby's reviewed system Location field is a city lookup, despite its broad
+  // label. Generic "Location" controls retain no inferred location semantic.
+  if (field.provider === "ASHBY" && label === "location" && field.domId === "_systemfield_location" &&
+    field.name === "_systemfield_location" && field.kind === "SINGLE_SELECT" && field.inputType === "text") return "location.city";
   // The global exclusions govern the profile-fact table unchanged; saved
   // answers apply their own narrower exclusions (see ANSWER_LABEL_RULES).
   const matches = [

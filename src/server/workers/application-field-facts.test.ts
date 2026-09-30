@@ -561,3 +561,21 @@ test("self-identification fields resolve equivalent option wording only through 
   assert.equal(optionMatchForField(unclassified, null, facts).semantic, null);
   assert.throws(() => resolveOptionValue(unclassified.options, "Woman", optionMatchForField(unclassified, null, facts)), /OPTION_AMBIGUOUS/u);
 });
+
+test("only the reviewed Ashby system Location control receives city semantics", () => {
+  const field = browserField("Location", "SINGLE_SELECT", "text", { provider: "ASHBY", domId: "_systemfield_location", name: "_systemfield_location", searchable: true });
+  assert.equal(classifyFieldFact(field), "location.city");
+  assert.equal(deliveryFieldFactKey(field), "location.city");
+  assert.doesNotThrow(() => assertFactCompatible(field, fact("location.city", "Springfield")));
+  for (const factKey of [null, "location.city"] as const) {
+    assert.deepEqual(optionMatchForField(field, factKey, [{ factKey: "location.region", value: "IL" }, { factKey: "location.country_code", value: "US" }]),
+      { semantic: "CITY", source: factKey === null ? "ANSWER" : "FACT", hints: { region: "IL", country: "US" } });
+  }
+  for (const change of [{ provider: undefined }, { domId: "other" }, { name: "other" }, { kind: "TEXT" }, { inputType: "select-one" }, { label: "Employer location" }, { label: "Preferred work location" }, { label: "Location (country)" }]) {
+    const other = { ...field, ...change } as AgentBrowserField;
+    assert.notEqual(classifyFieldFact(other), "location.city", JSON.stringify(change));
+    assert.notEqual(optionMatchForField(other, null, []).semantic, "CITY");
+    if (other.kind === "SINGLE_SELECT") assert.throws(() => assertFactCompatible(other, fact("location.city", "Springfield")));
+  }
+  assert.equal(classifyFieldFact(browserField("Location", "SINGLE_SELECT", "select-one", { options: [{ label: "United States", value: "US" }] })), null);
+});

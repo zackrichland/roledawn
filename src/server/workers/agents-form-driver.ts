@@ -129,7 +129,7 @@ function isWorkAuthorizationMatch(field: AgentBrowserField, fact: MaterializedAp
 }
 
 export function assertFactCompatible(field: AgentBrowserField, fact: MaterializedApplicationFact): void {
-  const descriptor = { label: field.label, kind: field.kind, inputType: field.inputType, name: field.name, domId: field.domId };
+  const descriptor = { label: field.label, kind: field.kind, inputType: field.inputType, name: field.name, domId: field.domId, provider: field.provider };
   // Only an anchored legal-name label ("Legal name", "Full legal name") may take
   // the candidate's legal name; "Legal name of your employer" or a typed
   // signature/attestation stays with the candidate.

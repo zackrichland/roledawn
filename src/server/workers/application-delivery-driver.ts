@@ -91,7 +91,7 @@ function narrativeAllowed(field: AgentBrowserField): boolean {
  * those fields remain for the constrained model tools or the candidate.
  */
 export function deliveryFieldFactKey(field: AgentBrowserField): CandidateFactKey | null {
-  return classifyFieldFact({ label: field.label, kind: field.kind, inputType: field.inputType, name: field.name, domId: field.domId });
+  return classifyFieldFact(field);
 }
 const defaultFactKey = deliveryFieldFactKey;
 function needsExplicitDefault(field: AgentBrowserField): boolean {
@@ -217,8 +217,14 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
               const field = snapshot.fields.find((item) => item.fieldId === answer.fieldId && item.fingerprint === answer.fingerprint);
               if (!field) continue;
               answers = [...answers.filter((item) => item.fieldId !== answer.fieldId), answer];
-              await applyAnswer(field, answer, signal);
-              filled.add(field.fieldId);
+              try {
+                await applyAnswer(field, answer, signal);
+                filled.add(field.fieldId);
+              } catch (error) {
+                // One unmatched option remains unresolved; independent exact
+                // answers from this same batch must still be applied.
+                if (safeCode(error) !== "AGENTS_FILL_OPTION_AMBIGUOUS") throw error;
+              }
             }
             return filled;
           }
