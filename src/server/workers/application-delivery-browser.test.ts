@@ -173,6 +173,7 @@ test("standing answers fill a requested field in the same pass, so nothing is as
     const driver = createApplicationDeliveryDriver({ harness, questions, resolvePage: () => page, sitePolicy: policy, submissionHooks: authority.value, browserTimeoutMs: 600 });
     const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: policy.startUrl, executionPackage: packet(policy.startUrl) });
     assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+    for (const phase of ["openMs", "readMs", "modelMs", "submitMs", "totalMs"]) assert.equal(typeof result.timings?.[phase], "number", phase);
     assert.equal(offered.length, 1);
     assert.equal(asked.length, 0, "a covered question is never sent to the candidate");
     assert.deepEqual((results[0] as { requestedFieldIds: string[] }).requestedFieldIds, []);

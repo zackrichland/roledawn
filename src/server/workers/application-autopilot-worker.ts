@@ -17,6 +17,8 @@ export type DeliveryWorkerOutcome = Readonly<{
   reasonCode?: string; receipt?: DeliveryWorkerReceipt; attemptId?: string;
   /** Error class and short message behind a stop (D-116). */
   detail?: Readonly<Record<string, string>>;
+  /** Milliseconds per delivery phase, recorded with the send's worker event. */
+  timings?: Readonly<Record<string, number>>;
   questions?: readonly AgentQuestionDescriptor[];
 }>;
 export type DeliveryWorkerDriveInput = Readonly<{
@@ -219,7 +221,9 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
     stage: claim.mode === "RECONCILE" ? "reconcile" : "send",
     outcome: outcome.kind === "CONFIRMED" ? "OK" : outcome.kind === "QUESTIONS_REQUIRED" ? "INFO" : "FAILED",
     code: outcome.reasonCode ?? null,
-    detail: { kind: outcome.kind, ...(outcome.detail ?? {}), ...(timings.browserMs !== null ? { browserMs: String(timings.browserMs) } : {}),
+    detail: { kind: outcome.kind, ...(outcome.detail ?? {}),
+      ...Object.fromEntries(Object.entries(outcome.timings ?? {}).filter(([key, value]) => /^[a-z]+Ms$/u.test(key) && Number.isFinite(value)).map(([key, value]) => [key, String(Math.round(value))])),
+      ...(timings.browserMs !== null ? { browserMs: String(timings.browserMs) } : {}),
       ...(timings.driveMs !== null ? { driveMs: String(timings.driveMs) } : {}), ...(cleanupPending ? { cleanupPending: "true" } : {}) },
     durationMs: Date.now() - timings.started,
   });
