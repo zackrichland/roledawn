@@ -76,13 +76,21 @@ The diagram is a summary; the table below is authoritative.
 | Enter code | The employer emailed a code and Gmail didn't supply it. | Click the row and type the newest code. |
 | Confirming | Submitted; RoleDawn is checking the employer's response. | Nothing, unless it stays for hours (see known gaps). |
 | Applied | The employer's response confirmed it. | Nothing. |
-| Stopped | The application stopped. The row explains why and whether the employer refused it. | Click the row; Try again when offered. |
+| Trying again | A temporary provider problem stopped the send before anything was submitted; RoleDawn retries by itself (try 2 of 3). | Nothing. |
+| Stopped | The application stopped. The row explains why and whether the employer refused it. | Click the row; Try again is offered only when it can help. |
+| Finish on their site | RoleDawn can't complete this form itself: a verification challenge, a sign-in, an unsupported field or board, or an answer the form refused (D-133). | Open the employer's page from the row. |
+| Couldn't start | RoleDawn's browser time or capacity ran out before the form opened; nothing was sent. | Open the employer's page, or Try again later. |
+| Not confirmed yet | The employer's response hasn't shown the application was received, and the outcome is unknown. Nothing is sent again until it is reconciled (D-124). | Nothing; there is no Try again. |
+| Posting closed | The employer took the posting down. | Nothing. |
+| Writing stopped | The documents couldn't be finished: missing profile detail, a busy writing service or checks that failed. | Open Profile, or Try again when offered. |
 | Couldn't read job | The posting couldn't be imported. | Check the link or skip it. |
 
 ## When something fails
 
 - **Before any submission** (model or network timeout, full browser pool, unknown worker error): the send runs again by itself, 1 and then 5 minutes later, before it waits for the candidate (D-114).
 - **Employer refused the code**: one automatic retry, then Try again (D-111).
+- **Retry classes (D-133):** *automatic* (six pre-submit provider codes, twice), *manual* (Try again shown), *after a change* (a verification challenge, sign-in, unsupported field or board, refused answer or browser quota: the row says what would change the outcome and offers the employer's page), and *never* (an unknown outcome is reconciled first, so no Try again). `src/domain/application-stop-guidance.ts` owns every state's copy and action; add a stop code there, never inline.
+- **Open (needs a migration):** manual Try again and re-claimed expired-lease fill runs have no database cap, and browser-quota stops have no backoff. Proposed: `fill_claims` (park at 6), `manual_retries` (deny at 3) and a 30-minute quota backoff, three times.
 - **Unknown outcome after submitting**: RoleDawn reconciles before anything else is sent.
 - **Where to look**: `npm run ops:status` lists live applications, lanes, and recent failures with their cause; add `-- --app <id>` for one application's timeline and `-- --watch` to refresh (D-116).
 - **Works locally, fails in production**: the hosted browser is Linux Chrome on Browserbase. Page scripts can behave differently by platform. React Select, for example, marks options `aria-selected` everywhere except on Apple devices, and that difference hid the GPA field on 2026-09-30. Reproduce with a Linux user agent and `navigator.platform` before concluding a form works.
@@ -145,6 +153,7 @@ Developer plan since 2026-09-29: 25 browsers at once and 100 browser hours a mon
 | A no-build deploy was live | New visitors got pages with no scripts. | Fixed 2026-09-29 (`6abc4897`). |
 | Open sign-in | Anyone with the URL was signed into the founder's account. | Fixed 2026-09-29 (D-109). |
 | Code timeout left an application "Confirming" | The job could never be sent again. | Fixed 2026-09-29 (D-111); see below. |
+| Employer logo cache not applied | Migration `20260930143000_employer_logos.sql` is written and tested locally; until it is applied, logos are fetched live each time (D-134). | Open: apply by the hosted-migration steps, regenerate types, deploy. |
 | Archive has no button yet | Archiving is a database update (`applications.archived_at`). | Open. |
 | Standing answers have no page yet | They are saved with `save_candidate_standing_answer` (the founder's ten are in). | Open: an onboarding step and a Profile → Answers list to add, edit and remove them. |
 | Automatic answers aren't shown on the application page | Each is recorded with its source (`CANDIDATE`, `REMEMBERED`, `STANDING`) and basis, and `ops:status --app` shows the step. | Open: list "Answered from your saved answers" on the application page. |

@@ -93,6 +93,10 @@ In order: (1) profile facts through anchored label rules (`application-field-fac
 
 ## Gotchas
 
+- Board lessons: add one dated line to `docs/boards/<id>.md`, then promote it to `BOARD_CONTEXT` (`src/domain/board-agent-context.ts`, at most 10 bullets and 900 characters; only Greenhouse, Lever and Ashby reach a live prompt) by the README rules (D-132).
+- Stop and retry copy comes from `src/domain/application-stop-guidance.ts`; add a stop code there instead of inline copy. Try again shows only for MANUAL classes; an unknown outcome never retries (D-133).
+- Employer logos are cached per (provider, board) in `employer_logos`; pass the apply URL, not the canonical URL, to `CompanyLogo`. Until the migration is applied the route falls back to live fetching (D-134).
+- Interface fonts are the SF system stack with Inter; the serif is only `--font-document` for the résumé preview. Use the tokens in `globals.css` and keep motion under `prefers-reduced-motion` (D-135).
 - Never deploy without `--build`. On 2026-09-29 a no-build deploy served 404s for every script and exposed build files.
 - Stop the dev server before `npm run build` or a deploy; the build corrupts `.next/dev`.
 - Netlify reads changed environment variables only on the next deploy. Hosted workers see only `HOSTED_WORKER_ENVIRONMENT_KEYS` (`src/server/workers/hosted-worker-environment.ts`); files read at runtime also need `netlify.toml` `included_files` and `next.config.ts` `outputFileTracingIncludes`.

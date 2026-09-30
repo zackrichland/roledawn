@@ -93,7 +93,7 @@ Single page; the form sits under the posting.
 ## RoleDawn status and gaps
 
 - **Supported (US).** Release `greenhouse-embed-us/2026-09-28` in `resolveGreenhouseDeliveryPolicy` (`src/server/workers/application-delivery-browser.ts`); driver `application-delivery-driver.ts`; widgets `agents-browser-tools.ts`, `agents-aria-combobox.ts`; codes `src/server/mailbox/google-mailbox.ts`.
-- **Verified 2026-09-30:** two confirmed applications (Carvana: Specialist, Inventory Quality; Strategy Analyst). Codes were read from Gmail 7 s and 6 s after they were requested ([playbook](../execution/application-playbook.md)). n=2, one employer.
+- **Verified 2026-09-30:** three confirmed applications across two employers ([current state](../execution/current-state.md)). The two Carvana applications (Specialist, Inventory Quality; Strategy Analyst) read their codes from Gmail 7 s and 6 s after they were requested ([playbook](../execution/application-playbook.md)).
 - Gaps:
   - `multi_value_multi_select`: **Verified** live on 2026-09-30 (Carvana Strategy Analyst, GPA ranges). React Select marks options `aria-selected="false"` on Linux (the hosted browser) and omits it on Apple platforms. Test with a Linux user agent and platform (D-113 follow-up). Values come from candidate, remembered or standing answers (D-117).
   - **Location (City)** (D-118): filled from the candidate's city fact through Greenhouse's geocoding proxy (`api-geocode-earth-proxy.greenhouse.io/v1/autocomplete`, parameters pinned), confirmed by their region and country. School/degree typeaheads are still unsupported.
