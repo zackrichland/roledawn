@@ -56,7 +56,7 @@ select json_build_object('now', to_char(now() at time zone 'utc', 'YYYY-MM-DD HH
   select w.occurred_at, to_char(w.occurred_at at time zone 'utc', 'HH24:MI:SS'), 'worker:' || w.lane, w.stage || ' ' || w.outcome,
     coalesce(w.code, '') || coalesce(' ' || round(w.duration_ms / 1000.0) || 's', '') || coalesce(' ' || left(w.detail->>'message', 80), '')
       || coalesce(' (' || (select string_agg(replace(key, 'Ms', '') || ' ' || round(value::numeric / 1000) || 's', ', ' order by key)
-        from jsonb_each_text(w.detail) where key in ('openMs', 'readMs', 'modelMs', 'submitMs')) || ')', '')
+        from jsonb_each_text(w.detail) where key in ('openMs', 'readMs', 'fillMs', 'modelMs', 'submitMs')) || ')', '')
       || coalesce(' answered ' || (w.detail->>'answered') || '/' || (w.detail->>'questions'), '')
   from private.worker_events w where w.application_id::text like '${prefix}%'
   union all

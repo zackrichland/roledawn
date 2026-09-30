@@ -32,10 +32,10 @@ Saved on 2026-09-30. This repository is public, so exact personal details (emplo
 | Authorized to work in the US | Yes | Fact `work_authorization.us.authorized` |
 | Needs visa sponsorship now or later | No | Fact `work_authorization.us.sponsorship_required` |
 | Highest degree | Bachelor's degree (B.S. Business Management, Virginia Tech, 2017) | Fact `education.highest_degree` |
-| How did you hear about this job | The company's careers website | Fact `application.heard_about` |
+| How did you hear about this job | The company's careers website; "Other" when the choices don't include it | Fact `application.heard_about`; standing answer for the fallback |
 | Undergraduate GPA | 3.5; GPA ranges take the one containing 3.5 ("3.4 - 3.59"); no graduate degree | Standing answer |
 | Able to work on-site or commute | Yes, including five days a week | Standing answer |
-| Ever worked for the company applied to | No, except the employers in his profile's work history (listed in the saved answer) | Standing answer |
+| Ever worked for the company applied to | No (never directly, through a staffing agency, or as a contractor), except the employers in his profile's work history (listed in the saved answer) | Standing answer |
 | Referred by a current employee | No | Standing answer |
 | Currently employed | Yes (per his profile; never at the company applied to) | Standing answer |
 | Phone country code | United States (+1) | Standing answer |

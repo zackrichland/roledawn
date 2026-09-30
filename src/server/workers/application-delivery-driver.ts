@@ -225,6 +225,8 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           // Candidate answers are already exact, bound authority. Applying them
           // must not depend on whether the model elects to issue a tool call.
           await timed("readMs", () => inspect());
+          // Saved answers, facts and files filled before any model turn.
+          const fillStarted = Date.now();
           for (const answer of answers) {
             snapshot = await browser.inspect(input.signal);
             const field = snapshot.fields.find((item) => item.fieldId === answer.fieldId && item.fingerprint === answer.fingerprint);
@@ -263,6 +265,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
               catch (error) { if (safeCode(error) !== "AGENTS_FILL_OPTION_AMBIGUOUS") throw error; }
             }
           }
+          timings.fillMs = (timings.fillMs ?? 0) + Date.now() - fillStarted;
           const initialForm = await inspect();
           snapshot = await browser.verifyWrites(input.signal);
           // Optional fields without a known fact or answer stay empty; they never
