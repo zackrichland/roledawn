@@ -14,7 +14,7 @@ One file per applicant tracking system (ATS). Each file tells the form agent how
 |---|---|---|---|---|
 | Greenhouse | `job-boards.greenhouse.io/<board>/jobs/<id>`, `boards.greenhouse.io`, `?gh_jid=`, `#grnhse_app` | supported (US) | medium | [greenhouse.md](greenhouse.md) |
 | Lever | `jobs.lever.co/<site>/<uuid>/apply`, `#application-form` | fills-only | medium | [lever.md](lever.md) |
-| Ashby | `jobs.ashbyhq.com/<org>/<uuid>/application`, `?ashby_jid=` | prep-only | medium | [ashby.md](ashby.md) |
+| Ashby | `jobs.ashbyhq.com/<org>/<uuid>/application`, `?ashby_jid=` | fills-only | medium | [ashby.md](ashby.md) |
 | Workday | `<tenant>.wd<N>.myworkdayjobs.com/<site>/job/...`, `data-automation-id` | unsupported | hard | [workday.md](workday.md) |
 | iCIMS | `<prefix>-<company>.icims.com/jobs/<id>/<slug>/job`, `in_iframe=1` | unsupported | hard | [icims.md](icims.md) |
 | SmartRecruiters | `jobs.smartrecruiters.com/<Company>/<id>-<slug>`, "I'm interested" | unsupported | medium | [smartrecruiters.md](smartrecruiters.md) |

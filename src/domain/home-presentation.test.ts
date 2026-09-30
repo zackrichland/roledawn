@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { presentHomeApplication } from "./home-presentation.ts";
 
-const base = { status: "TAKEOVER", intakeStatus: "RESOLVED", preparationStage: null, hasReceipt: false, sendIntentOpen: false, autoApplySelected: false } as const;
+const base = { status: "TAKEOVER", intakeStatus: "RESOLVED", preparationStage: null, hasReceipt: false, sendIntent: "NONE", autoApplySelected: false } as const;
 
 test("a Home row says exactly what the application needs", () => {
   const code = presentHomeApplication({ ...base, need: { kind: "CODE", recipient: "z***@example.test", expiresAt: "2026-09-29T00:00:00Z" } });

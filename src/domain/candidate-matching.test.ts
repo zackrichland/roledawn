@@ -124,7 +124,7 @@ test("transferable product-building work supports an AI product pivot without an
   assert.equal(rankCandidateJobs(builder,[{...product,title:"Clinical Product Specialist, AI Development"}]).length,0);
 });
 test("automatic selection filters unsupported and review jobs before the limit",()=>{
-  const unsupported=Array.from({length:110},(_,index)=>({...fixtures[0].job,jobId:id(index+1000),applyUrl:`https://jobs.ashbyhq.com/example/${id(index+1000)}`}));
+  const unsupported=Array.from({length:110},(_,index)=>({...fixtures[0].job,jobId:id(index+1000),applyUrl:`https://careers.example.test/jobs/${id(index+1000)}`}));
   const supported={...fixtures[0].job,jobId:id(9999)};
   const visible=rankCandidateJobs(fde,[...unsupported,supported],100);
   assert.ok(visible.some(row=>!row.matching.autoApplyEligible));

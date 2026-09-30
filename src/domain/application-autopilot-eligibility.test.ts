@@ -31,7 +31,7 @@ test("autopilot accepts only the concrete US hosted Greenhouse route and normali
   });
 });
 
-test("Lever delivery binds an exact tenant and UUID; Ashby remains preparation only", () => {
+test("Lever delivery binds an exact tenant and UUID", () => {
   const base = "https://jobs.lever.co/example/10000000-0000-4000-8000-000000000001";
   for (const url of [base, `${base}/`, `${base}/apply`, `${base}/apply/`]) {
     const destination = parseAutopilotDestination(url);
@@ -41,11 +41,11 @@ test("Lever delivery binds an exact tenant and UUID; Ashby remains preparation o
     assert.equal(policy.steps[0].submit?.request.url, `${base}/apply`);
     assert.equal(policy.receipt.url, `${base}/thanks`);
   }
-  for (const url of [`${base}?source=anything`, `${base}#apply`, `${base}/thanks`, base.replace("jobs.lever.co", "jobs.eu.lever.co"), base.replace("jobs.lever.co", "jobs.lever.co.evil.example"), base.replace("https://", "https://user@"), base.replace("/example/", "/a%2fb/"), base.replace("jobs.lever.co", "jobs.ashbyhq.com")]) {
+  for (const url of [`${base}?source=anything`, `${base}#apply`, `${base}/thanks`, base.replace("jobs.lever.co", "jobs.eu.lever.co"), base.replace("jobs.lever.co", "jobs.lever.co.evil.example"), base.replace("https://", "https://user@"), base.replace("/example/", "/a%2fb/")]) {
     assert.equal(parseAutopilotDestination(url), null, url);
     assert.throws(() => resolveApplicationDeliveryPolicy(url), /SITE_UNSUPPORTED/u);
   }
-  assert.equal(ATS_DELIVERY_CAPABILITIES.ASHBY.status, "PREPARATION_ONLY");
+
 });
 test("autopilot rejects unsupported providers, regions, origins and route variants", () => {
   for (const value of rejected) assert.equal(parseGreenhouseAutopilotDestination(value), null, String(value));
@@ -53,4 +53,22 @@ test("autopilot rejects unsupported providers, regions, origins and route varian
 test("candidate eligibility and the final browser policy cannot disagree", () => {
   for (const value of accepted) assert.equal(resolveGreenhouseDeliveryPolicy(value).destinationUrl, parseGreenhouseAutopilotDestination(value)?.startUrl);
   for (const value of rejected) if (typeof value === "string") assert.throws(() => resolveGreenhouseDeliveryPolicy(value), /DELIVERY_SITE_UNSUPPORTED/u);
+});
+
+test("Ashby delivery binds an exact hosted board and job UUID with a canonical application URL", () => {
+  const base = "https://jobs.ashbyhq.com/Example/10000000-0000-4000-8000-000000000001";
+  for (const url of [base, base + "/", base + "/application", base + "/application/"]) {
+    const destination = parseAutopilotDestination(url);
+    assert.equal(destination?.provider, "ASHBY");
+    assert.equal(destination?.startUrl, base + "/application");
+    const policy = resolveApplicationDeliveryPolicy(url);
+    assert.equal(policy.startUrl, base + "/application");
+    assert.deepEqual(policy.ashby, { board: "Example", jobId: "10000000-0000-4000-8000-000000000001" });
+  }
+  for (const url of [base + "?utm_source=referral", base + "#application", base + "/apply", base.replace("ashbyhq.com", "ashbyhq.com.evil.example"), base.replace("https://", "https://user@"), base.replace("/Example/", "/other/../Example/")]) {
+    assert.equal(parseAutopilotDestination(url), null);
+    assert.throws(() => resolveApplicationDeliveryPolicy(url), /SITE_UNSUPPORTED/u);
+  }
+  assert.equal(ATS_DELIVERY_CAPABILITIES.ASHBY.status, "DELIVERY_IMPLEMENTED");
+  assert.equal(ATS_DELIVERY_CAPABILITIES.ASHBY.liveEmployerAccepted, false);
 });

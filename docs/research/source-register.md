@@ -1,11 +1,18 @@
 ---
 title: Research source register
 status: active evidence index
-last_updated: 2026-09-29
+last_updated: 2026-09-30
 accessed_at: 2026-08-06 unless otherwise stated; backend architecture, Supabase, ATS endpoint, and Browserbase Live View sources refreshed through 2026-09-16
 ---
 
 # Source register
+
+## Ashby hosted form and branding — checked 2026-09-30
+
+| ID | Primary source | Evidence class and observed use | Limit |
+|---|---|---|---|
+| AB-20260930-01 | [Official hosted application](https://jobs.ashbyhq.com/coder/a923d2a8-a994-4cc2-9c71-bc8e7d99f583/application), [public posting API](https://developers.ashbyhq.com/docs/public-job-posting-api) | **Verified public client and DOM observation:** the form uses named GraphQL reads and draft-field saves, upload-handle creation, file attachment, and single/multiple-form final submission. Yes/No uses pressed buttons; the city widget exposes a controlled listbox. A non-candidate public city query was inspected without selecting a location or submitting an application. | The hosted frontend protocol is not a documented applicant API. Exact operation and payload checks must fail closed on drift. Source inspection alone is not employer acceptance. |
+| AB-20260930-02 | [Official hosted board](https://jobs.ashbyhq.com/coder) | **Verified public page metadata:** board bootstrap supplies square and wordmark logo URLs. The square logo is a first-party source that needs no paid logo service or guessed company domain. | Some employers supply no square logo. Preserve initials as fallback. Logos identify the source company; they do not imply endorsement. |
 
 ## Greenhouse city lookup constants — checked 2026-09-29
 

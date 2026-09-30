@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import ui from "@/components/app/ui.module.css";
 import { StatusRail } from "@/components/app/StatusRail";
+import { CompanyLogo } from "@/components/app/CompanyLogo";
 import { ApplicationAgentQuestions } from "@/components/applications/ApplicationAgentQuestions";
 import { ApplicationAutopilot } from "@/components/applications/ApplicationAutopilot";
 import { ApplicationDocuments, type DownloadLink } from "@/components/applications/ApplicationDocuments";
@@ -18,6 +19,7 @@ import { ApplicationAgentQuestionError, type ApplicationAgentQuestion } from "@/
 import { ApplicationAutopilotError, type ApplicationAutopilotView } from "@/domain/application-autopilot";
 import { AUTOPILOT_UNSUPPORTED_DESTINATION_COPY, parseAutopilotDestination } from "@/domain/application-autopilot-eligibility";
 import { explainFailure, presentApplication, type ApplicationPresentation } from "@/domain/application-presentation";
+import { applicationSendIntentState, canOfferApplicationSend, type ApplicationSendIntentState } from "@/domain/application-send-intent";
 import { isApplicationWorkInProgress } from "@/domain/dashboard-queue";
 import { formatUtcDateTime } from "@/domain/date-format";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -114,7 +116,7 @@ function autopilotPresentation(view: ApplicationAutopilotView | null): Applicati
     case "SUBMITTING": return freeze("Sending", "Submitting and waiting for the employer's confirmation.", "working");
     case "QUEUED":
     case "RUNNING": return freeze("Applying", "Filling out the employer's form with your documents and saved answers.", "working");
-    case "FAILED_SAFE": return freeze("Stopped", "RoleDawn stopped before sending anything. Details below.", "error", true);
+    case "FAILED_SAFE": return freeze("Stopped", "The application stopped. See the reason and next step below.", "error", true);
     default: return null;
   }
 }
@@ -146,17 +148,17 @@ function documentDownloads(applicationId: string, artifacts: readonly Applicatio
   };
 }
 
-async function readSendIntentOpen(applicationId: string): Promise<boolean> {
+async function readSendIntent(applicationId: string): Promise<ApplicationSendIntentState> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.from("application_send_intents")
-    .select("application_id").eq("application_id", applicationId).is("closed_at", null).maybeSingle();
-  return !error && Boolean(data);
+    .select("closed_at,close_reason").eq("application_id", applicationId).maybeSingle();
+  return error ? "UNAVAILABLE" : applicationSendIntentState(data);
 }
 
 type WorkspaceProps = Readonly<{
   application: ApplicationWorkspaceDTO;
   documents: ApplicationDocumentsView | null;
-  sendIntentOpen: boolean;
+  sendIntent: ApplicationSendIntentState;
   agentQuestions: readonly ApplicationAgentQuestion[];
   questionsError: string | null;
   canContinueAgentQuestions: boolean;
@@ -165,7 +167,7 @@ type WorkspaceProps = Readonly<{
 }>;
 
 function ApplicationWorkspace({
-  application, documents, sendIntentOpen, agentQuestions, questionsError, canContinueAgentQuestions, autopilot, autopilotEnabled,
+  application, documents, sendIntent, agentQuestions, questionsError, canContinueAgentQuestions, autopilot, autopilotEnabled,
 }: WorkspaceProps) {
   const id = application.applicationRouteKey;
   const preparationRun = application.runs.find((run) => run.kind === "PREPARATION") ?? null;
@@ -178,19 +180,21 @@ function ApplicationWorkspace({
     intakeStatus: application.intakeStatus,
     preparationStage: preparationRun?.preparationStage ?? null,
     hasReceipt: Boolean(application.receipt),
-    sendIntentOpen,
+    sendIntent,
   });
   const postingHref = application.applyUrl ?? application.sourceUrl;
   const destinationSupported = application.applyUrl ? Boolean(parseAutopilotDestination(application.applyUrl)) : true;
+  const sendIntentOpen = sendIntent === "OPEN";
   const preparing = application.status === "DRAFTING" || application.status === "NEEDS_USER";
   const intakeFailed = application.intakeStatus === "FAILED";
   const canRefreshStaleFiles = application.profileChanged && ["READY", "NEEDS_USER", "FAILED_SAFE"].includes(application.status);
   const showPreparation = preparing && !intakeFailed && application.intakeStatus !== "PENDING" && application.intakeStatus !== "RESOLVING";
   const writingProblem = ["NEEDS_USER", "FAILED_SAFE"].includes(application.status) ? explainFailure(preparationRun?.errorCode) : null;
-  const showSendSwitch = autopilotEnabled && destinationSupported && !intakeFailed && !autopilot &&
+  const showSendSwitch = autopilotEnabled && destinationSupported && !intakeFailed && !autopilot && sendIntent !== "UNAVAILABLE" && sendIntent !== "DELEGATED" && sendIntent !== "NOT_DELIVERABLE" &&
     (preparing || (application.status === "READY" && sendIntentOpen));
+  const showSendRetry = autopilotEnabled && !autopilot && application.status === "READY" && sendIntent === "NOT_DELIVERABLE";
   const showApply = autopilotEnabled && Boolean(application.currentRevision) &&
-    (autopilot ? autopilot.status !== "CONFIRMED" : application.status === "READY" && !sendIntentOpen);
+    (autopilot ? autopilot.status !== "CONFIRMED" : application.status === "READY" && canOfferApplicationSend(sendIntent));
   // The older approve-then-fill flow still owns applications it started.
   const showManualFill = (!autopilotEnabled || (Boolean(application.fillAttempt) && !autopilot)) &&
     application.currentRevision && agentQuestions.length === 0 &&
@@ -200,7 +204,7 @@ function ApplicationWorkspace({
   const refreshCycleKey = [
     application.status, application.intakeStatus, application.updatedAt, preparationRun?.preparationStage,
     application.fillAttempt?.status, application.fillResumeAttempt?.status, application.computerSession?.state,
-    autopilot?.version, sendIntentOpen,
+    autopilot?.version, sendIntent,
   ].join(":");
 
   return (
@@ -209,7 +213,7 @@ function ApplicationWorkspace({
         active={
           isApplicationWorkInProgress(application.status, application.intakeStatus) ||
           application.fillResumeAttempt?.status === "QUEUED" ||
-          (sendIntentOpen && application.status === "READY") ||
+          (["OPEN", "DELEGATED"].includes(sendIntent) && application.status === "READY") ||
           Boolean(autopilot && ["QUEUED", "RUNNING", "SUBMITTING", "RECONCILING", "UNCERTAIN"].includes(autopilot.status))
         }
         cycleKey={refreshCycleKey}
@@ -219,7 +223,7 @@ function ApplicationWorkspace({
 
       <header className={styles.header}>
         <div className={styles.employer}>
-          <span className={ui.avatar} aria-hidden="true">{(application.company ?? "?").slice(0, 1)}</span>
+          <CompanyLogo name={application.company} postingUrl={postingHref} className={ui.avatar} />
           <span>
             <strong>{application.company ?? (intakeFailed ? hostOf(application.sourceUrl) ?? "Job link" : "Reading the posting…")}</strong>
             <small>
@@ -271,7 +275,14 @@ function ApplicationWorkspace({
 
         {showSendSwitch ? (
           <section className={styles.panel}>
-            <SendWhenReady applicationId={id} open={sendIntentOpen} ready={application.status === "READY"} />
+            <SendWhenReady key={sendIntent} applicationId={id} open={sendIntentOpen} ready={application.status === "READY"} />
+          </section>
+        ) : null}
+
+        {showSendRetry ? (
+          <section className={styles.panel}>
+            {destinationSupported ? <SendWhenReady key={sendIntent} applicationId={id} open={false} ready retry />
+              : <p>{AUTOPILOT_UNSUPPORTED_DESTINATION_COPY} Your documents are available below.</p>}
           </section>
         ) : null}
 
@@ -382,9 +393,9 @@ export default async function ApplicationPage({ params }: Readonly<{ params: Pro
   let autopilot: ApplicationAutopilotView | null = null;
   let agentQuestions: readonly ApplicationAgentQuestion[] = [];
 
-  const [documents, sendIntentOpen] = await Promise.all([
+  const [documents, sendIntent] = await Promise.all([
     application.currentRevision ? getApplicationDocumentsView(application.currentRevision.id).catch(() => null) : Promise.resolve(null),
-    readSendIntentOpen(application.applicationRouteKey).catch(() => false),
+    readSendIntent(application.applicationRouteKey).catch((): ApplicationSendIntentState => "UNAVAILABLE"),
   ]);
 
   if (autopilotEnabled) {
@@ -422,7 +433,7 @@ export default async function ApplicationPage({ params }: Readonly<{ params: Pro
       canContinueAgentQuestions={canContinueAgentQuestions}
       documents={documents}
       questionsError={questionsError}
-      sendIntentOpen={sendIntentOpen}
+      sendIntent={sendIntent}
     />
   );
 }

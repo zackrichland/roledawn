@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type 
 import { applyToJobLinkAction } from "@/app/(candidate)/apply-actions";
 import { setAccountAutoApply } from "@/app/dashboard/actions";
 import { useClientNow } from "@/components/app/useClientNow";
+import { CompanyLogo } from "@/components/app/CompanyLogo";
 import { useReviewFirst } from "@/components/app/useReviewFirst";
 import { RouteAutoRefresh } from "@/components/ui/RouteAutoRefresh";
 import type { ApplicationPresentation } from "@/domain/application-presentation";
@@ -52,10 +53,6 @@ function ago(from: Date | null, value: string | number, fallback: string): strin
 function shortDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? "" : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(date);
-}
-
-function initial(value: string | null): string {
-  return (value ?? "").trim().slice(0, 1).toUpperCase() || "·";
 }
 
 /** Stable, pleasant tint per company so rows are easy to scan. */
@@ -108,7 +105,7 @@ export function HomeView({ data }: Readonly<{ data: HomeData }>) {
   const openRow = openId ? rows.find((row) => row.application.applicationRouteKey === openId) ?? null : null;
   const autopilot = data.autoApply;
   const autopilotOn = autopilot?.enabled === true;
-  const working = rows.some((row) => row.presentation.tone === "working" || row.presentation.label === "Sending soon");
+  const working = rows.some((row) => row.presentation.tone === "working");
 
   // Highlight rows that arrive while the page is open (autopilot or a new link).
   useEffect(() => {
@@ -316,7 +313,7 @@ export function HomeView({ data }: Readonly<{ data: HomeData }>) {
                     >
                       <td>
                         <span className={styles.company}>
-                          <span className={styles.logo} style={{ ["--h" as string]: tint(application.company) }} aria-hidden="true">{initial(application.company)}</span>
+                          <CompanyLogo name={application.company} postingUrl={application.sourceUrl} className={styles.logo} style={{ ["--h" as string]: tint(application.company) }} />
                           <span>
                             <strong>{company}</strong>
                             {application.autoApplySelected ? <em className={styles.auto}>Autopilot</em> : null}

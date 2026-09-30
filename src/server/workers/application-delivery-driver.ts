@@ -114,7 +114,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
       let completedStepCount = 0;
       const page = dependencies.resolvePage(input.runtimeHandle);
       const policy = typeof dependencies.sitePolicy === "function" ? dependencies.sitePolicy(input.startUrl) : dependencies.sitePolicy ?? resolveApplicationDeliveryPolicy(input.startUrl);
-      const policyDestination = policy.greenhouse || policy.lever ? parseAutopilotDestination(input.startUrl)?.startUrl ?? input.startUrl : input.startUrl;
+      const policyDestination = policy.greenhouse || policy.lever || policy.ashby ? parseAutopilotDestination(input.startUrl)?.startUrl ?? input.startUrl : input.startUrl;
       if ((policy.destinationUrl ?? policy.startUrl) !== policyDestination || input.executionPackage.destinationUrl !== input.startUrl || hash(input.binding) !== hash(input.executionPackage.binding)) throw new Error("DELIVERY_CONTENT_BINDING_MISMATCH");
       const runtime = await createApplicationDeliveryBrowser({ page, policy, hooks: dependencies.submissionHooks, timeoutMs: dependencies.browserTimeoutMs, requestTransport: dependencies.requestTransport });
       const started = Date.now();
@@ -144,8 +144,8 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           const step = await runtime.currentStep();
           if (!step || visited.has(step.id)) return { ...counts(), kind: "TAKEOVER", reasonCode: "DELIVERY_STEP_UNSUPPORTED_OR_LOOP" };
           visited.add(step.id);
-          const browser = createAgentBrowserTools(page, step.url, { permittedPassiveFrameUrls: runtime.passiveFrameUrls(), allowReactSelectDisplay: Boolean(policy.greenhouse), leverLabels: Boolean(policy.lever),
-            remoteSearch: Boolean(policy.searches?.length), remoteSearchSemantic: "CITY", withRemoteSearch: runtime.withSearch, invisibleHcaptcha: Boolean(policy.lever?.invisibleHcaptcha) });
+          const browser = createAgentBrowserTools(page, step.url, { permittedPassiveFrameUrls: runtime.passiveFrameUrls(), allowReactSelectDisplay: Boolean(policy.greenhouse), leverLabels: Boolean(policy.lever), ashbyLabels: Boolean(policy.ashby),
+            remoteSearch: Boolean(policy.searches?.length || policy.ashby), remoteSearchSemantic: "CITY", withRemoteSearch: runtime.withSearch, invisibleHcaptcha: Boolean(policy.lever?.invisibleHcaptcha) });
           let snapshot = await browser.inspect(input.signal);
           if (snapshot.takeoverReason) return { ...counts(), kind: "TAKEOVER", reasonCode: snapshot.takeoverReason };
           const requiredUploads = snapshot.fields.filter((field) => field.kind === "FILE" && field.required).map((field) => field.fieldId);
@@ -194,7 +194,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
             await active(signal);
             const match = optionMatch(field, null);
             if (field.hasValue && await browser.verifyValue(field.fieldId, answer.value, signal ?? input.signal, match)) verifiedDefaults.add(field.fieldId);
-            else await browser.fillValue(field.fieldId, answer.value, signal ?? input.signal, match);
+            else await runtime.withField(field, answer.value, () => browser.fillValue(field.fieldId, answer.value, signal ?? input.signal, match), signal ?? input.signal, match);
             writes.push({ fieldId: field.fieldId, fingerprint: field.fingerprint, answerId: answer.answerId, valueHash: hash(answer.value) });
           }
           async function applyFact(field: AgentBrowserField, fact: MaterializedApplicationFact, signal?: AbortSignal) {
@@ -205,7 +205,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
             await active(signal);
             const match = optionMatch(field, fact.factKey);
             if (field.hasValue && await browser.verifyValue(field.fieldId, fact.value, signal ?? input.signal, match)) recordDefault(field, { factVersionId: fact.factVersionId, valueHash: fact.valueHash });
-            else await browser.fillValue(field.fieldId, fact.value, signal ?? input.signal, match);
+            else await runtime.withField(field, fact.value, () => browser.fillValue(field.fieldId, fact.value, signal ?? input.signal, match), signal ?? input.signal, match);
             writes.push({ fieldId: field.fieldId, fingerprint: field.fingerprint, factVersionId: fact.factVersionId, valueHash: fact.valueHash });
           }
           // Standing answers (D-117): whatever the candidate's saved answers
@@ -334,7 +334,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
                   if (!sources.length || sourceIds.some((id) => !sources!.some((source) => source.sourceId === id))) throw new Error("DELIVERY_EVIDENCE_NOT_AUTHORIZED");
                   if (!await dependencies.evidence.validate({ question: field.label, text: args.text as string, sourceIds, sources, signal: signal ?? input.signal })) throw new Error("DELIVERY_NARRATIVE_NOT_SUPPORTED");
                   await active(signal);
-                  await browser.fillValue(field.fieldId, args.text as string, signal ?? input.signal);
+                  await runtime.withField(field, args.text as string, () => browser.fillValue(field.fieldId, args.text as string, signal ?? input.signal), signal ?? input.signal);
                   writes.push({ fieldId: field.fieldId, fingerprint: field.fingerprint, sourceIds, valueHash: hash(args.text) });
                 }
                 return { ok: true };
@@ -365,7 +365,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           await dependencies.questions?.requestQuestions({ binding: input.binding, questions: descriptors });
           if (descriptors.length) return { ...counts(), kind: "QUESTIONS_REQUIRED", reasonCode: "DELIVERY_CANDIDATE_ANSWERS_REQUIRED", questions: descriptors };
           if (missing.length || requiredUploads.some((id) => !runtime.uploaded(id))) return { ...counts(), kind: "TAKEOVER", reasonCode: "DELIVERY_REQUIRED_CONTROL_UNSUPPORTED" };
-          const readback = { stepId: step.id, pageUrl: page.url(), readbackHash: browser.readbackHash(), fields: snapshot.fields.map(reviewField), writes, verifiedDefaults: [...defaultSources.values()], uploads: runtime.uploadProofs() };
+          const readback = { stepId: step.id, pageUrl: page.url(), readbackHash: browser.readbackHash(), fields: snapshot.fields.map(reviewField), writes, verifiedDefaults: [...defaultSources.values()], uploads: runtime.uploadProofs(), savedFields: runtime.savedFieldProofs() };
           readbacks.push(readback);
           completedStepCount += 1;
           await dependencies.submissionHooks.checkpoint?.({ phase: "STEP_REVIEWED", ...readback });
@@ -380,6 +380,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
             await runtime.verifyCurrentUploads();
             // A challenge that appears with the final request is handed over as a CAPTCHA, unsent.
             if (actual.takeoverReason === APPLICATION_FILL_CAPTCHA_TAKEOVER) throw new Error(APPLICATION_FILL_CAPTCHA_TAKEOVER);
+            if (hash(runtime.savedFieldProofs()) !== hash(readback.savedFields)) throw new Error("DELIVERY_FINAL_SAVED_FIELD_DRIFT");
             if (actual.takeoverReason || missingFields(actual).length || browser.readbackHash() !== readback.readbackHash) throw new Error("DELIVERY_FINAL_REVIEW_DRIFT");
           });
           // The employer emailed the candidate a code instead of accepting the

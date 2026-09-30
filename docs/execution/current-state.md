@@ -17,8 +17,10 @@ path, not every Greenhouse form or every ATS.
 The review started at `7408a7c` and was initially local only. This snapshot now
 includes the authorized rollout's verified hosted metadata, three applied
 migrations, and approved private profile update. Backend commit `30e7a19` is
-published in verified Netlify deployment `6abc7f1ecfcaeba896cb4c16`. No new employer submission is part of this rollout, and the interface
-remains unchanged under the founder's no-UI-change instruction.
+published in verified Netlify deployment `6abc7f1ecfcaeba896cb4c16`. The first review kept the interface unchanged. The founder then requested Ashby
+delivery, faster intake, company logos, and removal of redundant send approval.
+The follow-up changes below are locally implemented; their deployment and live
+acceptance remain to be recorded.
 The earlier dated observations are preserved in
 [state history](state-history-through-2026-09-30.md); they are not current
 operating instructions.
@@ -42,7 +44,7 @@ operating instructions.
 |---|---|---|
 | Greenhouse | Prepare, fill, submit, handle the employer's emailed code, and confirm. | **Verified hosted readback:** three confirmed applications across two employers on 2026-09-30 UTC; all three record mailbox-supplied codes. No new submission was made during this rollout. |
 | Lever | Delivery adapter and fixture coverage. | No recorded live employer confirmation. |
-| Ashby | Prepare documents. | Candidate submits on the employer's site. |
+| Ashby | Hosted-form delivery adapter: schema-bound drafts, attachments, single/multiple-form submission, and employer receipts. | Synthetic browser coverage and public form inspection; no live employer confirmation yet. |
 | Other boards | Research templates only. | No delivery adapter proof; see [board templates](../boards/README.md). |
 
 The Greenhouse location lookup was checked on a live form without submitting
@@ -82,9 +84,35 @@ the built deployment and its private pages, assets and worker health are verifie
 The approved private career entry and responsibility-only story were saved
 through the owning RPCs and verified by readback. Existing career entries and
 evidence bindings were preserved; exact private content stays outside this
-public repository. There are no open send intents, enabled account auto-apply
-settings, or unarchived unsent packets. The profile update therefore leaves no
-pending packet to regenerate.
+public repository. At that profile-update boundary, no open send intents or enabled account
+auto-apply settings existed. A later founder-pasted Ashby application prepared
+successfully but its old send intent closed as `NOT_DELIVERABLE`, with no
+submission attempt. The follow-up adapter must be published before enabling
+its SQL gate; recovery requires a fresh authenticated candidate command.
+
+## Ashby and intake follow-up
+
+- Ashby uses the existing browser, approved facts, sealed submission permission,
+  durable attempts and receipt rules. Exact public GraphQL operations bind every
+  autosave to the approved field/value; uploads require acknowledged exact bytes.
+  A visible CAPTCHA still stops the run. Security clearance and explicit
+  no-AI response instructions require candidate answers.
+- An existing open send request means **Queued to apply**, then **Applying**.
+  It no longer asks the candidate to approve the same send again. A closed
+  unsupported request remains **Send stopped** until a fresh retry; an uncertain
+  result never becomes an automatic retry. Cancellation reports success only
+  when the database actually cancels the request.
+- Production intake and successful lane completion wake the next due lanes.
+  Database leases and the scheduled dispatcher remain authoritative. Local web
+  development still relies on the hosted scheduler for the initial tick.
+- Ashby company icons come from that exact employer's published ATS theme,
+  without an API subscription or guessed domain. Bounded image fetching and
+  caching retain initials when branding is unavailable. Other ATS logo sources
+  remain follow-up work.
+
+Local verification: all 761 tests, typecheck, lint and documentation links pass;
+all 15 SQL check files pass across 93 migrations. Hosted rollout and live
+acceptance remain pending.
 
 ## Remaining limits
 
@@ -107,9 +135,11 @@ pending packet to regenerate.
 2. Inspect newly prepared documents from the updated private profile before the
    next authorized application. Existing confirmed applications remain history;
    no current unsent packet requires regeneration.
-3. Observe that future named Greenhouse application through a terminal or
-   needs-you state. This rollout makes no new employer submission. Keep each
-   uncertain historical attempt blocked until its own outcome is reconciled.
+3. Publish and verify the Ashby adapter before applying migration
+   `20260930100000`, then recover the authorized stopped application with a
+   fresh candidate command. Observe a terminal or needs-you state; only an
+   employer receipt establishes live Ashby acceptance. Keep historical uncertain
+   attempts blocked until their own outcomes are reconciled.
 
 The [application playbook](application-playbook.md) owns operating instructions;
 the [decision log](decision-log.md) owns decisions and reversal triggers;

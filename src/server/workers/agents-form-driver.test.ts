@@ -160,6 +160,87 @@ test("native radio, checkbox groups, multi-select and boolean controls have dete
   });
 });
 
+test("Ashby Yes/No buttons retain the question, requiredness, form identity and explicit No readback", browserOptions, async () => {
+  await fixture(`<div class="ashby-application-form-field-entry" data-field-path="clearance" data-field-entry-id="form-one_clearance">
+    <label class="ashby-application-form-question-title _required_fixture_1">Do you possess the required clearance?</label>
+    <div class="ashby-application-form-input-yesno">
+      <button data-option="yes" aria-pressed="false">Yes</button><button data-option="no" aria-pressed="false">No</button>
+      <input style="display:none" type="checkbox" name="clearance">
+    </div></div>
+    <script>document.querySelectorAll('button').forEach(button => button.onclick = () => {
+      document.querySelectorAll('button').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
+    });</script>`, async (page, url, requests) => {
+    const disabled = await createAgentBrowserTools(page, url).inspect();
+    assert.equal(disabled.fields.length, 0);
+    const tools = createAgentBrowserTools(page, url, { ashbyLabels: true });
+    const before = await tools.inspect();
+    assert.equal(before.fields.length, 1);
+    const field = before.fields[0];
+    assert.equal(field.label, "Do you possess the required clearance?");
+    assert.equal(field.domId, "clearance"); assert.equal(field.formKey, "form-one");
+    assert.equal(field.kind, "SINGLE_SELECT"); assert.equal(field.required, true); assert.equal(field.hasValue, false);
+    await tools.fillValue(field.fieldId, "No");
+    const after = await tools.verifyWrites();
+    assert.equal(after.fields[0].fieldId, field.fieldId); assert.equal(after.fields[0].hasValue, true); assert.equal(after.fields[0].valid, true);
+    assert.equal(await page.locator('button[data-option="no"]').getAttribute("aria-pressed"), "true");
+    assert.equal(requests(), 0);
+  });
+});
+
+test("Ashby city lookup selects one confirmed result and keeps identity after selection", browserOptions, async () => {
+  await fixture(`<div class="ashby-application-form-field-entry" data-field-path="_systemfield_location" data-field-entry-id="form-one__systemfield_location">
+    <label class="ashby-application-form-question-title _required_fixture_1">Location</label>
+    <input class="ashby-application-form-input-autocomplete" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox">
+    </div><script>
+    const input = document.querySelector('input');
+    input.oninput = () => {
+      document.getElementById(':r0:')?.remove();
+      const list = document.createElement('div'); list.id = ':r0:'; list.setAttribute('role', 'listbox');
+      list.innerHTML = '<div class="ashby-application-form-input-autocomplete-popup"><div class="ashby-application-form-input-autocomplete-popup-result" role="option" id=":r1:" aria-selected="true">Springfield, Missouri, United States</div><div class="ashby-application-form-input-autocomplete-popup-result" role="option" id=":r2:" aria-selected="false">Springfield, Illinois, United States</div></div>';
+      list.querySelectorAll('[role=option]').forEach(option => option.onclick = () => { input.value = option.textContent; input.setAttribute('aria-expanded', 'false'); list.remove(); });
+      document.body.append(list); input.setAttribute('aria-controls', ':r0:'); input.setAttribute('aria-expanded', 'true');
+    };</script>`, async (page, url) => {
+    let approvedSearch = "";
+    const tools = createAgentBrowserTools(page, url, { ashbyLabels: true, remoteSearch: true, remoteSearchSemantic: "CITY", withRemoteSearch: async (query, run) => { approvedSearch = query; return run(); } });
+    const field = (await tools.inspect()).fields[0];
+    assert.equal(field.label, "Location"); assert.equal(field.required, true); assert.equal(field.searchable, true);
+    await tools.fillValue(field.fieldId, "Springfield", undefined, { semantic: "CITY", source: "FACT", hints: { region: "IL", country: "US" } });
+    assert.equal(approvedSearch, "Springfield");
+    assert.equal(await page.locator("input").inputValue(), "Springfield, Illinois, United States");
+    const after = (await tools.verifyWrites()).fields[0];
+    assert.equal(after.fieldId, field.fieldId); assert.equal(after.valid, true); assert.equal(after.hasValue, true);
+  });
+});
+
+test("Ashby ambiguous button state is unsupported and cannot hide a required question", browserOptions, async () => {
+  await fixture(`<div class="ashby-application-form-field-entry" data-field-path="clearance" data-field-entry-id="form-one_clearance">
+    <label class="ashby-application-form-question-title _required_fixture_1">Do you currently possess an active TS/SCI with FSP or CI?</label>
+    <div class="ashby-application-form-input-yesno"><button data-option="yes" aria-pressed="true">Yes</button><button data-option="no" aria-pressed="true">No</button></div>
+    </div>`, async (page, url) => {
+    const tools = createAgentBrowserTools(page, url, { ashbyLabels: true });
+    const field = (await tools.inspect()).fields[0];
+    assert.equal(field.kind, "UNSUPPORTED"); assert.equal(field.required, true); assert.equal(field.candidateOnly, true);
+    assert.equal(field.valid, false);
+    await assert.rejects(tools.fillValue(field.fieldId, "No"), /CONTROL_UNSUPPORTED/u);
+  });
+});
+
+test("Ashby scoped instructions preserve candidate authorship without absorbing other fields", browserOptions, async () => {
+  await fixture(`<div class="ashby-application-form-field-entry" data-field-path="interest" data-field-entry-id="form-one_interest">
+    <label class="ashby-application-form-question-title">What interests you here?</label>
+    <div class="ashby-application-form-question-description"><p>In your own words, without using AI.</p></div><textarea></textarea>
+    </div><div class="ashby-application-form-field-entry" data-field-path="email" data-field-entry-id="form-one_email">
+    <label class="ashby-application-form-question-title">Email</label><input type="email"></div>`, async (page, url) => {
+    const browser = createAgentBrowserTools(page, url, { ashbyLabels: true });
+    const fields = (await browser.inspect()).fields;
+    assert.equal(fields[0].candidateOnly, true);
+    assert.match(fields[0].label, /without using AI/u);
+    assert.equal(fields[1].label, "Email"); assert.equal(fields[1].candidateOnly, false);
+    await page.locator('.ashby-application-form-question-description').evaluate(node => { node.textContent = 'A brief answer is fine.'; });
+    assert.notEqual((await browser.inspect()).fields[0].fingerprint, fields[0].fingerprint);
+  });
+});
+
 test("agent declarations cannot bypass missing required fields or upload byte authority", browserOptions, async () => {
   await fixture('<form><label>Required reply<input name="reply" required></label><label>Resume<input type="file" name="file" required></label></form>', async (page, url) => {
     const questions = repository();

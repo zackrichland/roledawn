@@ -44,12 +44,12 @@ The diagram is a summary; the table below is authoritative.
 
 | Step | What happens | Main code |
 |---|---|---|
-| 1. Intake | A pasted link (Home) or a match (Jobs, Autopilot) creates an application. The official posting is fetched and parsed. | `src/server/dashboard/queue.ts`, ingestion workers |
+| 1. Intake | A pasted link (Home) or a match (Jobs, Autopilot) creates an application. After the durable command commits, the hosted web app wakes due workers. Completed stages wake their queued successors; the minute schedule remains recovery. The official posting is fetched and parsed. | `src/server/dashboard/queue.ts`, ingestion workers |
 | 2. Prepare | Your approved résumé facts, stories, profile, and answers are frozen into a hashed snapshot for this application. | `src/server/workers/application-preparation.ts` |
 | 3. Write | Research (GPT-6 Sol with web search), then drafting (GPT-6 Astra) under the five writing rules, up to three write-check-repair rounds. An independent model (GPT-5.6 Terra) checks each sentence against its cited sources, and a writing lint blocks banned and self-undercutting phrasing. | `src/server/applications/application-writing-pipeline.ts`, `policies/application-writing/` |
 | 4. Render and store | Five files: résumé and cover letter as PDF and DOCX, plus one combined PDF. Text is read back out of each file. Files go to the private `application-artifacts` bucket under a content-addressed path, with SHA-256 hashes; rows are append-only. | `src/server/applications/application-document-renderer.ts`, `src/server/workers/application-kit.ts` |
 | 5. Send | With "Let me review before it's sent" off (the default), sending starts by itself. A fresh Browserbase session opens; the form agent (GPT-6.1 Sol) maps each field; RoleDawn types exact values from your profile, uploads byte-checked files, and reads every field back. | `src/server/workers/application-autopilot.ts`, `application-delivery-driver.ts`, `application-delivery-browser.ts` |
-| 6. Questions | Answers come from four places, in order. (1) Profile facts matched by exact label rules. (2) Earlier candidate answers to the same wording. D-122 requires current candidate inputs; explicit GPA/degree questions may cross jobs, while other answers require the same frozen job; its migration is applied and read back. (3) Standing answers: a required question nothing else covers is matched by one model call to the candidate's saved answers ("GPA: 3.5") and filled in the same pass. Code checks the chosen options, and the answer is labeled `STANDING` with what it rests on (D-117). (4) Only what is left appears on Home as "Answer N questions". Optional fields never block a send. Demographic, legal, consent and signature questions always go to the candidate. | `src/server/workers/standing-answers.ts`, `application-autopilot-worker.ts`, `application-delivery-driver.ts` |
+| 6. Questions | Answers come from four places, in order. (1) Profile facts matched by exact label rules. (2) Earlier candidate answers to the same wording. D-122 requires current candidate inputs; explicit GPA/degree questions may cross jobs, while other answers require the same frozen job; its migration is applied and read back. (3) Standing answers: a required question nothing else covers is matched by one model call to the candidate's saved answers ("GPA: 3.5") and filled in the same pass. Code checks the chosen options, and the answer is labeled `STANDING` with what it rests on (D-117). (4) Only what is left appears on Home as "Answer N questions". Optional fields never block a send. Demographic, legal, consent, signature and security-clearance questions always go to the candidate. | `src/server/workers/standing-answers.ts`, `application-autopilot-worker.ts`, `application-delivery-driver.ts` |
 | 7. Submit | The exact answers and files are sealed; the database grants one permission for one network submission, and records the request and response. | `begin_application_autopilot_submit` |
 | 8. Employer code | Greenhouse answers a cloud-browser submission with HTTP 428 and emails you an 8-character code. RoleDawn polls your Gmail every 5 seconds for up to 8 minutes, takes only a "Security code for your application to <Company>" email from Greenhouse whose company matches this job, types it into the page, and lets the page resend. Without Gmail, Home shows "Enter code". | `src/server/mailbox/google-mailbox.ts`, `createAutopilotVerificationRelay` |
 | 9. Confirm | Only the employer's own response counts as a receipt. A model never decides that an application went through. | `receiptEvidence` in `application-autopilot-worker.ts` |
@@ -60,7 +60,7 @@ The diagram is a summary; the table below is authoritative.
 |---|---|---|
 | Greenhouse | Fills, submits, and confirms | **Verified** end to end twice on 2026-09-30: Carvana Specialist, Inventory Quality (code read from Gmail 7 s after the request), and Carvana Strategy Analyst with a required GPA multi-select (code read in 6 s; final pass 262 s). The required "Location (City)" typeahead is filled from your city, confirmed by region and country (D-118). See the [Greenhouse template](../boards/greenhouse.md). |
 | Lever | Fills and submits | Fixture tests only; **not yet proven live**. Passive hCaptcha is allowed; a visible challenge stops for you. |
-| Ashby | Prepares documents | You submit on the employer's site. |
+| Ashby | Hosted-form delivery adapter | Named draft saves, location lookups, uploads and final submission share the existing approval and receipt controls. Public-client observation and fixture checks are separate from live employer acceptance; see the [Ashby template](../boards/ashby.md). |
 | Workday, iCIMS, SmartRecruiters, others | Not supported | Per-board templates for the agent: [docs/boards/](../boards/README.md). See [Next: any site](#next-any-site-including-workday). |
 
 ## What Home tells you
@@ -69,12 +69,14 @@ The diagram is a summary; the table below is authoritative.
 |---|---|---|
 | Reading the job, Preparing, Researching, Writing, Finishing | Documents are being made. | Nothing. |
 | Ready to send | Documents are ready and "Let me review" is on. | Review, then Apply for me. |
-| Sending soon, Applying | The browser is filling the employer's form. | Nothing. |
+| Queued to apply | The saved send request is waiting for a worker. | Nothing; no second approval is needed. |
+| Applying | The browser is filling the employer's form. | Nothing. |
+| Send stopped | The earlier send request closed because the board was unsupported. | Retry sending when the new adapter is available. |
 | Answer N questions | The form asked something only you can answer. | Click the row and answer. |
 | Enter code | The employer emailed a code and Gmail didn't supply it. | Click the row and type the newest code. |
 | Confirming | Submitted; RoleDawn is checking the employer's response. | Nothing, unless it stays for hours (see known gaps). |
 | Applied | The employer's response confirmed it. | Nothing. |
-| Stopped | RoleDawn stopped before sending. The row explains why. | Click the row; Try again when offered. |
+| Stopped | The application stopped. The row explains why and whether the employer refused it. | Click the row; Try again when offered. |
 | Couldn't read job | The posting couldn't be imported. | Check the link or skip it. |
 
 ## When something fails
@@ -122,7 +124,7 @@ Never use `supabase db push`; eight 2026-08-19 migrations are recorded remotely 
 | `ROLEDAWN_MAILBOX_TOKEN_KEY`, `GOOGLE_MAILBOX_CLIENT_ID`, `GOOGLE_MAILBOX_CLIENT_SECRET` | Gmail code reading. |
 | `ROLEDAWN_SINGLE_ACCOUNT_MODE`, `ROLEDAWN_TEST_ACCOUNT_ID`, `ROLEDAWN_TEST_ACCESS_KEY` | Single-account sign-in (below). |
 
-Background workers see only the variables listed in `src/server/workers/hosted-worker-environment.ts`.
+Background workers see only the variables listed in `src/server/workers/hosted-worker-environment.ts`. Immediate web wake-ups require Netlify’s runtime request context to identify the current published production deploy, enabled hosted workers and the dispatch secret. Build-only `CONTEXT` is not used; local and preview runtimes cannot wake workers. Local web-only development still waits for the initial hosted schedule; it never starts competing local workers.
 
 ### Signing in
 

@@ -5,20 +5,10 @@ import { useRouter } from "next/navigation";
 import { controlApplicationAutopilotAction, delegateApplicationAutopilotAction, provideApplicationAutopilotVerificationCodeAction, saveApplicationAutopilotAnswersAction } from "@/app/(candidate)/applications/[applicationId]/autopilot-actions";
 import { AGENT_QUESTION_LIMITS, displayQuestionLabel, validateAgentQuestionAnswer, type AgentQuestionValue } from "@/domain/application-agent-questions";
 import type { ApplicationAutopilotView } from "@/domain/application-autopilot";
+import { presentAutopilotStatus } from "@/domain/application-presentation";
 import styles from "./ApplicationAutopilot.module.css";
 
 type Props = Readonly<{ applicationId: string; aggregateVersion: number; revisionId: string; packetHash: string; view: ApplicationAutopilotView | null; canStart: boolean; startBlockedReason?: string }>;
-const STATUS_COPY = {
-  QUEUED: "Your application is queued.", RUNNING: "RoleDawn is filling your application.", WAITING_ANSWERS: "Answer below, and RoleDawn will continue.",
-  PAUSED: "This application is paused.", SUBMITTING: "The application is being sent. We’re checking for confirmation.",
-  UNCERTAIN: "Submission is not confirmed. RoleDawn will check its status before any further action.", RECONCILING: "RoleDawn is checking whether the application was received.",
-  CONFIRMED: "Your application was received.", CANCELED: "This application was canceled.", FAILED_SAFE: "The application stopped before submission.",
-} as const;
-/** An unconfirmed send whose cause is known: the employer never accepted it. */
-const UNCONFIRMED_COPY: Readonly<Record<string, string>> = {
-  DELIVERY_EMAIL_VERIFICATION_TIMEOUT: "The employer asked for the code it emailed you, and it wasn’t entered in time, so the employer didn’t accept this application. Finish it on the employer’s site with your files.",
-  DELIVERY_VERIFICATION_ATTEMPTS_EXCEEDED: "The employer didn’t accept the codes entered, so it didn’t accept this application. Finish it on the employer’s site with your files.",
-};
 /** The employer refused the send twice (RoleDawn already retried once); nothing is pending. */
 const NOT_ACCEPTED_COPY: Readonly<Record<string, string>> = {
   DELIVERY_EMAIL_VERIFICATION_TIMEOUT: "The employer’s emailed verification code didn’t arrive in time, twice, so it hasn’t accepted this application. Nothing is pending. Press Try again to send it again.",
@@ -101,9 +91,10 @@ function AutopilotForm({ applicationId, aggregateVersion, revisionId, packetHash
     run(() => provideApplicationAutopilotVerificationCodeAction({ ...payload, commandId: id }));
   }
   const controllable = view && ["QUEUED","RUNNING","WAITING_ANSWERS","PAUSED","FAILED_SAFE"].includes(view.status);
+  const presentation = presentAutopilotStatus(view?.status, Boolean(view?.verification));
   return <section className={styles.card} aria-labelledby="application-autopilot-heading">
-    <h2 id="application-autopilot-heading">{view?.status === "WAITING_ANSWERS" ? "A few details are missing" : view?.verification ? "Check your email" : "Apply for me"}</h2>
-    {view ? (view.verification ? null : <p role="status">{view.status === "UNCERTAIN" && view.failureCode && UNCONFIRMED_COPY[view.failureCode] ? UNCONFIRMED_COPY[view.failureCode] : STATUS_COPY[view.status]}</p>) : <>
+    <h2 id="application-autopilot-heading">{presentation.heading}</h2>
+    {view ? (view.verification ? null : <p role="status">{presentation.detail}</p>) : <>
       {startBlockedReason ? <p id="application-autopilot-unavailable">{startBlockedReason}</p> : <>
         <p>RoleDawn will apply to this job using these files and your approved details. If an answer is missing, we’ll ask you here.</p>
         <p className={styles.hint}>This authorizes one application to this employer. You can pause or cancel before submission begins.</p>

@@ -1,0 +1,38 @@
+<!doctype html><html><body>
+<div class="ashby-application-form-container">
+<div class="ashby-application-form-field-entry" data-field-path="_systemfield_name"><label class="ashby-application-form-question-title" for="_systemfield_name">Name</label><input id="_systemfield_name" name="_systemfield_name" required></div>
+<div class="ashby-application-form-field-entry" data-field-path="_systemfield_resume"><label class="ashby-application-form-question-title" for="_systemfield_resume">Resume</label><input type="file" id="_systemfield_resume" name="_systemfield_resume" required><span class="ashby-application-form-input-file-item-name"></span></div>
+<button class="ashby-application-form-submit-button" disabled>Submit Application</button></div>
+<script>
+const fixture = __FIXTURE__;
+const {queries, formId, definition, actionId, surveyId, jobId, mode, multiple} = fixture;
+for (const entry of document.querySelectorAll('[data-field-path]')) entry.dataset.fieldEntryId = formId + "_" + entry.dataset.fieldPath;
+window.send = async (op, variables, query) => {
+ const r = await fetch('/api/non-user-graphql?op=' + op, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({operationName:op,variables,query:query || queries[op]})});
+ return r.json();
+};
+const base = () => ({organizationHostedJobsPageName:'fixture',formRenderIdentifier:formId,formDefinitionIdentifier:definition});
+window.ready = send('ApiJobPosting',{organizationHostedJobsPageName:'fixture',jobPostingId:jobId}).then(() => document.querySelector('button').disabled = false);
+document.querySelector('#_systemfield_name').oninput = () => {
+ send('ApiSetFormValue',{...base(),path:'_systemfield_name',value:mode === 'wrong-value' ? 'Unapproved Other Person' : document.querySelector('#_systemfield_name').value}).catch(()=>{});
+};
+document.querySelector('#_systemfield_resume').onchange = async (e) => { try {
+ const file = e.target.files[0];
+ const h = (await send('ApiCreateFileUploadHandle',{organizationHostedJobsPageName:'fixture',fileUploadContext:'NonUserFormEngine',filename:file.name,contentType:file.type,contentLength:file.size})).data.fileUploadHandle;
+ const data = new FormData(); data.append('Content-Type',file.type);
+ Object.entries(h.fields).forEach(([k,v])=>data.append(k,v));
+ data.append('file',mode === 'upload-corrupt' ? new File(['different bytes'],file.name,{type:file.type}) : file);
+ const uploaded = await fetch(h.url,{method:'POST',body:data}); if (!uploaded.ok) return;
+ await send('ApiSetFormValueToFile',{...base(),path:'_systemfield_resume',fileHandle:h.handle});
+ document.querySelector('.ashby-application-form-input-file-item-name').textContent = file.name;
+} catch {} };
+document.querySelector('button').onclick = async () => { try {
+ const op = multiple ? 'ApiSubmitMultipleFormsAction' : 'ApiSubmitSingleApplicationFormAction';
+ const variables = multiple ?
+ {organizationHostedJobsPageName:'fixture',jobPostingId:jobId,applicationFormRenderIdentifier:formId,applicationFormDefinitionIdentifier:definition,applicationFormActionIdentifier:actionId,surveyIdentifiers:[{formRenderId:surveyId,actionIdentifier:actionId,sourceFormDefinitionId:definition}]} :
+ {...base(),jobPostingId:jobId,actionIdentifier:actionId};
+ Object.assign(variables,{recaptchaToken:'synthetic-passive-token',deviceFingerprint:null,sourceAttributionCode:null,viewedAutomatedProcessingLegalNoticeRuleId:null,applicationRequestId:null});
+ await send(op,variables,mode === 'bad-submit' ? 'mutation Wrong { deleteCandidate }' : undefined);
+ document.body.innerHTML = '<div class="ashby-application-form-success-container" role="status">Success! Thank you.</div>';
+} catch {} };
+</script></body></html>

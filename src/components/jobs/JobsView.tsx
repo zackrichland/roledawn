@@ -8,6 +8,7 @@ import { applyToCatalogJobAction } from "@/app/(candidate)/apply-actions";
 import { getJobDetailAction } from "@/app/(candidate)/search/job-actions";
 import { saveCatalogJobAction } from "@/app/opportunities/actions";
 import { useClientNow } from "@/components/app/useClientNow";
+import { CompanyLogo } from "@/components/app/CompanyLogo";
 import { useReviewFirst } from "@/components/app/useReviewFirst";
 import type { OpportunityCatalogDTO } from "@/domain/opportunity-catalog";
 import type { JobDetail, JobListItem } from "@/server/opportunities/jobs-view";
@@ -80,11 +81,9 @@ function fromCatalog(item: OpportunityCatalogDTO["items"][number]): JobListItem 
   };
 }
 
-function Logo({ name, size = 40 }: Readonly<{ name: string; size?: number }>) {
+function Logo({ name, url, size = 40 }: Readonly<{ name: string; url: string; size?: number }>) {
   return (
-    <span aria-hidden="true" className={styles.logo} style={{ ["--h" as string]: tint(name), width: size, height: size }}>
-      {name.trim().slice(0, 1).toUpperCase() || "·"}
-    </span>
+    <CompanyLogo name={name} postingUrl={url} className={styles.logo} style={{ ["--h" as string]: tint(name), width: size, height: size }} />
   );
 }
 
@@ -264,7 +263,7 @@ export function JobsView({ mode, items: initialItems, query, totalOpen, nextCurs
             return (
               <li className={styles.row} key={item.jobId} style={{ ["--i" as string]: Math.min(index, 14) }}>
                 <button aria-label={`Read ${item.title} at ${item.employerName}`} className={styles.rowButton} onClick={() => show(item)} type="button" />
-                <Logo name={item.employerName} />
+                <Logo name={item.employerName} url={item.url} />
                 <div className={styles.rowMain}>
                   <div className={styles.titleLine}>
                     <strong>{item.title}</strong>
@@ -318,7 +317,7 @@ export function JobsView({ mode, items: initialItems, query, totalOpen, nextCurs
                 <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>
               </button>
               <div className={styles.sheetCompany}>
-                <Logo name={open.employerName} size={48} />
+                <Logo name={open.employerName} url={open.url} size={48} />
                 <span>{open.employerName}</span>
               </div>
               <h2>{open.title}</h2>

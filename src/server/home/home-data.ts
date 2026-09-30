@@ -5,13 +5,14 @@ import { cache } from "react";
 import type { AutoApplyState } from "@/domain/account-auto-apply";
 import type { HomeNeed } from "@/domain/home-presentation";
 import type { PersistentQueueApplication } from "@/domain/dashboard-queue";
+import { applicationSendIntentState, type ApplicationSendIntentState } from "@/domain/application-send-intent";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { AuthenticatedActor } from "@/server/auth/session";
 import { readAutoApplyState } from "@/server/auto-apply/state";
 import { getQueueWorkspace } from "@/server/dashboard/queue";
 
 export type { HomeNeed };
-export type HomeApplication = PersistentQueueApplication & Readonly<{ sendIntentOpen: boolean; need: HomeNeed | null }>;
+export type HomeApplication = PersistentQueueApplication & Readonly<{ sendIntent: ApplicationSendIntentState; need: HomeNeed | null }>;
 
 export type HomeData = Readonly<{
   firstName: string | null;
@@ -32,10 +33,17 @@ async function currentFactText(key: string): Promise<string | null> {
   return version?.normalized_text ?? null;
 }
 
-async function openIntentIds(): Promise<ReadonlySet<string>> {
+async function sendIntentStates(applicationIds: readonly string[]): Promise<ReadonlyMap<string, ApplicationSendIntentState> | null> {
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase.from("application_send_intents").select("application_id").is("closed_at", null);
-  return new Set((data ?? []).map((row) => row.application_id));
+  const states = new Map<string, ApplicationSendIntentState>();
+  // Query only this feed's IDs. Historical closed intents must not consume the API row limit.
+  for (let offset = 0; offset < applicationIds.length; offset += 100) {
+    const { data, error } = await supabase.from("application_send_intents").select("application_id,closed_at,close_reason")
+      .in("application_id", applicationIds.slice(offset, offset + 100));
+    if (error) return null;
+    for (const row of data ?? []) states.set(row.application_id, applicationSendIntentState(row));
+  }
+  return states;
 }
 
 /** Open code requests and question batches, keyed by application. */
@@ -64,10 +72,11 @@ async function openNeeds(): Promise<ReadonlyMap<string, HomeNeed>> {
 }
 
 export async function loadHomeData(actor: AuthenticatedActor): Promise<HomeData> {
+  const queueRequest = getQueueWorkspace(actor).then((value) => ({ ok: true as const, value })).catch(() => ({ ok: false as const }));
   const [queue, autoApply, intents, needs, firstName] = await Promise.all([
-    getQueueWorkspace(actor).then((value) => ({ ok: true as const, value })).catch(() => ({ ok: false as const })),
+    queueRequest,
     createSupabaseServerClient().then((client) => readAutoApplyState(client)).catch(() => null),
-    openIntentIds().catch(() => new Set<string>()),
+    queueRequest.then((queue) => queue.ok ? sendIntentStates(queue.value.applications.map((application) => application.applicationRouteKey)) : null).catch(() => null),
     openNeeds().catch(() => new Map<string, HomeNeed>()),
     currentFactText("identity.preferred_name").then((preferred) => preferred ?? currentFactText("identity.given_name")).catch(() => null),
   ]);
@@ -75,7 +84,7 @@ export async function loadHomeData(actor: AuthenticatedActor): Promise<HomeData>
     firstName,
     backendStatus: queue.ok ? "available" : "unavailable",
     applications: Object.freeze(queue.ok
-      ? queue.value.applications.map((application) => Object.freeze({ ...application, sendIntentOpen: intents.has(application.applicationRouteKey),
+      ? queue.value.applications.map((application) => Object.freeze({ ...application, sendIntent: intents ? intents.get(application.applicationRouteKey) ?? "NONE" : "UNAVAILABLE",
         need: needs.get(application.applicationRouteKey) ?? null }))
       : []),
     autoApply: autoApply ?? null,

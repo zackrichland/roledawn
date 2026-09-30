@@ -23,8 +23,8 @@ export function isHcaptchaFrameUrl(value: string): boolean {
  * prompts for verification. Hidden, zero-size or off-page elements (the
  * invisible widget and its idle challenge frame) are passive.
  */
-export async function frameShowsCaptchaChallenge(frame: Frame): Promise<boolean> {
-  return frame.evaluate(() => {
+export async function frameShowsCaptchaChallenge(frame: Frame, permittedPassiveFrameUrls: readonly string[] = []): Promise<boolean> {
+  return frame.evaluate((permittedPassiveFrameUrls) => {
     const presenting = (element: Element) => {
       for (let node: Element | null = element; node; node = node.parentElement) {
         const style = getComputedStyle(node);
@@ -37,7 +37,7 @@ export async function frameShowsCaptchaChallenge(frame: Frame): Promise<boolean>
       return box.right + scrollX > 0 && box.bottom + scrollY > 0 && box.left + scrollX < width && box.top + scrollY < height;
     };
     const captchaFrames = [...document.querySelectorAll("iframe")].filter((element) => /captcha|turnstile|challenges\.cloudflare/iu.test(element.src));
-    if (captchaFrames.some(presenting)) return true;
+    if (captchaFrames.filter((element) => !permittedPassiveFrameUrls.includes(element.src)).some(presenting)) return true;
     // A widget container (any provider) that renders a visible checkbox or challenge.
     if ([...document.querySelectorAll("[data-sitekey]")].some(presenting)) return true;
     const prompt = /\b(?:(?:please )?complete (?:the )?h?captcha|h?captcha (?:is required|required|failed|expired|error)|invalid h?captcha|verify (?:that )?you(?:'re| are) (?:a )?human|prove (?:that )?you(?:'re| are) (?:a )?human|i am human|i'?m not a robot|select all (?:the )?(?:images|squares))\b/iu;
@@ -54,15 +54,15 @@ export async function frameShowsCaptchaChallenge(frame: Frame): Promise<boolean>
       if (visible && box.width > 0 && box.height > 0) return true;
     }
     return false;
-  });
+  }, permittedPassiveFrameUrls);
 }
 
 /** Any same-origin frame of the page shows a challenge. Cross-origin frames are checked through their iframe element. */
-export async function pageShowsCaptchaChallenge(page: Page): Promise<boolean> {
+export async function pageShowsCaptchaChallenge(page: Page, permittedPassiveFrameUrls: readonly string[] = []): Promise<boolean> {
   const origin = new URL(page.url()).origin;
   for (const frame of page.frames()) {
     if (frame.url() !== "about:blank" && new URL(frame.url()).origin !== origin) continue;
-    if (await frameShowsCaptchaChallenge(frame).catch(() => false)) return true;
+    if (await frameShowsCaptchaChallenge(frame, permittedPassiveFrameUrls).catch(() => false)) return true;
   }
   return false;
 }

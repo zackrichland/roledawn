@@ -1,6 +1,6 @@
 # RoleDawn agent guide
 
-RoleDawn applies to jobs for a candidate. A job arrives as a pasted link or a ranked match from the catalog (reviewed Greenhouse, Lever and Ashby boards). RoleDawn freezes the candidate's approved facts, writes a résumé and cover letter under `policies/application-writing/`, fills the employer's form in a Browserbase browser with a GPT form agent, submits once, and counts only the employer's own confirmation as a receipt. Next.js 16 runs on Netlify; Supabase Postgres is the source of truth; background lanes run as Netlify functions. **Verified:** Greenhouse works end to end (three confirmed applications across two employers, hosted readback 2026-09-30). Lever has fixture tests only. Ashby prepares documents only.
+RoleDawn applies to jobs for a candidate. A job arrives as a pasted link or a ranked match from the catalog (reviewed Greenhouse, Lever and Ashby boards). RoleDawn freezes the candidate's approved facts, writes a résumé and cover letter under `policies/application-writing/`, fills the employer's form in a Browserbase browser with a GPT form agent, submits once, and counts only the employer's own confirmation as a receipt. Next.js 16 runs on Netlify; Supabase Postgres is the source of truth; background lanes run as Netlify functions. **Verified:** Greenhouse works end to end (three confirmed applications across two employers, hosted readback 2026-09-30). Lever and Ashby have delivery adapters with fixture coverage; live employer acceptance remains unproven.
 
 ## Read first
 
@@ -49,7 +49,7 @@ Never run `npx supabase db push`: eight 2026-08-19 migrations are recorded remot
 | `src/server/workers/` | Background lanes (below). Delivery: `application-delivery-driver.ts` (one step at a time), `application-delivery-browser.ts` (network guard, uploads, submit, receipt), `agents-browser-tools.ts` and `agents-aria-combobox.ts` (read and fill controls), `standing-answers.ts`, `worker-events.ts`. |
 | `src/lib/supabase/` | Clients and generated `database.types.ts`. |
 | `src/proxy.ts` | Next 16 request proxy (formerly middleware): refreshes the Supabase session. |
-| `netlify/functions/` | `worker-dispatch` (every minute) wakes due lanes; `worker-background` runs one lane; `worker-health`. |
+| `netlify/functions/` | Durable commands and completed stages wake due lanes; `worker-dispatch` (every minute) recovers missed wakes; `worker-background` runs one leased lane. |
 | `supabase/migrations/`, `supabase/checks/` | Forward-only SQL; SQL tests for the harness. |
 | `policies/application-writing/` | The writing rules the drafting model reads. Change writing behavior here first. |
 | `docs/boards/` | One template per ATS: how its form works and where automation breaks. |
@@ -97,6 +97,7 @@ In order: (1) profile facts through anchored label rules (`application-field-fac
 - Stop the dev server before `npm run build` or a deploy; the build corrupts `.next/dev`.
 - Netlify reads changed environment variables only on the next deploy. Hosted workers see only `HOSTED_WORKER_ENVIRONMENT_KEYS` (`src/server/workers/hosted-worker-environment.ts`); files read at runtime also need `netlify.toml` `included_files` and `next.config.ts` `outputFileTracingIncludes`.
 - Lanes run only on the published production deploy with `ROLEDAWN_HOSTED_WORKERS_ENABLED=true` and a 64-hex-character dispatch secret.
+- Ashby autosaves approved fields before final submission; exact GraphQL operations and server echoes are part of the sealed review. A stopped run can leave an employer draft (D-123).
 - The hosted browser is Linux Chrome. Page scripts differ by platform: React Select marks options `aria-selected` on Linux but not on a Mac, which hid a required GPA field only in production (2026-09-30). Reproduce form bugs with a Linux user agent and a `navigator.platform` override.
 - Greenhouse answers every cloud-browser submission with HTTP 428 and emails an 8-character code; the worker reads it from the candidate's read-only Gmail within about 8 minutes, or Home shows "Enter code". Testing-mode Google tokens expire about weekly (Inference).
 - Opening React Select menus is slow (about 22 s per full inspection); menu reads are cached while a control's visible state is unchanged (D-104).

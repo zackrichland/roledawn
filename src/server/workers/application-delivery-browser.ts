@@ -2,10 +2,13 @@ import { createHash } from "node:crypto";
 
 import type { Page, Request, Response, Route } from "playwright-core";
 
-import { parseAutopilotDestination, parseGreenhouseAutopilotDestination, parseLeverAutopilotDestination } from "../../domain/application-autopilot-eligibility.ts";
-import type { AgentBrowserField } from "./agents-browser-tools.ts";
+import { parseAutopilotDestination, parseAshbyAutopilotDestination, parseGreenhouseAutopilotDestination, parseLeverAutopilotDestination } from "../../domain/application-autopilot-eligibility.ts";
+import type { AgentBrowserField, AgentFieldValue } from "./agents-browser-tools.ts";
 import { APPLICATION_FILL_CAPTCHA_TAKEOVER, pageShowsCaptchaChallenge } from "./agents-captcha.ts";
 import type { MaterializedApplicationArtifact } from "./application-fill-materializer.ts";
+
+import type { OptionMatch } from "./agents-option-match.ts";
+import { ashbySubmissionAccepted, createAshbyProtocol, parseAshbyEnvelope, type AshbyEnvelope } from "./ashby-delivery-protocol.ts";
 
 export const DELIVERY_BROWSER_RELEASE = "application-delivery-browser/1";
 export type DeliveryRequestRule = Readonly<{ method: "GET" | "POST" | "PUT"; url: string }>;
@@ -67,9 +70,10 @@ export type DeliverySitePolicy = Readonly<{
    * visible challenge at any point hands over. Answers are never sent.
    */
   lever?: Readonly<{ accountIdSelector: string; invisibleHcaptcha?: boolean }>;
+  ashby?: Readonly<{ board: string; jobId: string }>;
 }>;
 export type DeliverySubmissionLease = Readonly<{ attemptId: string; idempotencyKey: string; sealHash?: string }>;
-export type DeliveryResponseEvidence = Readonly<{ url: string; status: number; bodyHash: string | null; redirectUrl?: string }>;
+export type DeliveryResponseEvidence = Readonly<{ url: string; status: number; bodyHash: string | null; redirectUrl?: string; ashbyAccepted?: boolean }>;
 export type DeliveryPriorSubmission = DeliverySubmissionLease & Readonly<{
   reviewHash: string; requestFingerprint: string; response?: DeliveryResponseEvidence;
 }>;
@@ -101,6 +105,7 @@ type ActionWindow = {
   response?: DeliveryResponseEvidence;
   artifact?: MaterializedApplicationArtifact;
   uploadFields?: Readonly<Record<string, string>>;
+  strictMultipart?: boolean;
   presign?: Presign;
   reviewHash?: string;
   review?: Readonly<Record<string, unknown>>;
@@ -206,7 +211,17 @@ function uploadBodyMatches(request: Request, action: ActionWindow): boolean {
   const artifact = action.artifact;
   if (!body || !artifact) return false;
   const contentType = request.headers()["content-type"] || "";
-  if (!contentType.includes("multipart/form-data")) return body.length === artifact.byteSize && hash(body) === artifact.sha256;
+  if (action.strictMultipart) {
+    const boundary = /boundary=(?:"([^"\r\n]+)"|([^;\s]+))/iu.exec(contentType)?.slice(1).find(Boolean);
+    if (!boundary || !body.subarray(0, boundary.length + 4).equals(Buffer.from(`--${boundary}\r\n`)) || !body.subarray(-(boundary.length + 8)).equals(Buffer.from(`\r\n--${boundary}--\r\n`))) return false;
+    const parts = body.toString("latin1").split(`--${boundary}`);
+    for (const part of parts.slice(1, -1)) {
+      const header = part.slice(2, part.indexOf("\r\n\r\n"));
+      const fileHeader = `Content-Disposition: form-data; name="file"; filename="${artifact.filename}"\r\nContent-Type: ${artifact.mediaType}`;
+      if (header !== fileHeader && !/^Content-Disposition: form-data; name="[A-Za-z0-9_-]{1,100}"$/u.test(header)) return false;
+    }
+  }
+  if (!contentType.includes("multipart/form-data")) return !action.strictMultipart && body.length === artifact.byteSize && hash(body) === artifact.sha256;
   const multipart = parseMultipart(body, contentType);
   if (!multipart || multipart.file.length !== artifact.byteSize || hash(multipart.file) !== artifact.sha256) return false;
   if (action.uploadFields && (Object.keys(multipart.fields).length !== Object.keys(action.uploadFields).length || Object.entries(action.uploadFields).some(([key, value]) => multipart.fields[key] !== value))) return false;
@@ -278,6 +293,10 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   let submittedRequests = 0;
   let closed = false;
   let pendingVerification: PendingVerification | null = null;
+  const ashby = policy.ashby ? createAshbyProtocol(policy.ashby.board, policy.ashby.jobId) : null;
+  const ashbyRequests = new WeakMap<Request, AshbyEnvelope>();
+  let ashbyError: string | null = null;
+  let ashbyFieldSignal: AbortSignal | undefined;
   let activeSearch: Readonly<{ query: string; signal?: AbortSignal }> | null = null;
   const presigns = new Map<string, Presign>();
   const recaptchaKeys = new Set<string>();
@@ -294,22 +313,23 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       url.searchParams.getAll("fields[]").length > 0 && url.searchParams.getAll("fields[]").every((field) => ["resume", "cover_letter"].includes(field));
   }
   function isRecaptcha(request: Request): boolean {
-    if (!policy.greenhouse) return false;
+    if (!policy.greenhouse && !ashby) return false;
     const url = new URL(request.url());
     if (url.origin === "https://www.gstatic.com" && url.pathname.startsWith("/recaptcha/") && request.method() === "GET") return true;
     if (url.origin !== "https://www.recaptcha.net") return false;
-    if (request.method() === "GET" && url.pathname === "/recaptcha/enterprise.js") {
+    if (request.method() === "GET" && (url.pathname === "/recaptcha/enterprise.js" || ashby && url.pathname === "/recaptcha/api.js")) {
       const key = url.searchParams.get("render");
       if (!key || !/^[A-Za-z0-9_-]{25,100}$/u.test(key)) return false;
+      if (ashby && !["6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y", "6LezdY0tAAAAAEnollNLCAI0z1VDGwM7AzGrU4XZ"].includes(key)) return false;
       recaptchaKeys.add(key); return true;
     }
-    if (request.method() === "GET" && url.pathname === "/recaptcha/enterprise/webworker.js") return recaptchaKeys.size > 0;
+    if (request.method() === "GET" && ["/recaptcha/enterprise/webworker.js", ...(ashby ? ["/recaptcha/api2/webworker.js"] : [])].includes(url.pathname)) return recaptchaKeys.size > 0;
     if (!recaptchaKeys.has(url.searchParams.get("k") ?? "")) return false;
-    if (request.method() === "GET" && ["/recaptcha/enterprise/anchor", "/recaptcha/enterprise/bframe"].includes(url.pathname)) return true;
+    if (request.method() === "GET" && ["/recaptcha/enterprise/anchor", "/recaptcha/enterprise/bframe", ...(ashby ? ["/recaptcha/api2/anchor", "/recaptcha/api2/bframe"] : [])].includes(url.pathname)) return true;
     // Ordinary passive assessment only. No userverify/solve endpoint or model
     // interaction with a challenge is ever exposed or allowed.
     return action?.kind === "SUBMIT" && request.method() === "POST" &&
-      ["/recaptcha/enterprise/reload", "/recaptcha/enterprise/clr"].includes(url.pathname) && (request.postDataBuffer()?.length ?? 0) <= 128_000;
+      ["/recaptcha/enterprise/reload", "/recaptcha/enterprise/clr", ...(ashby ? ["/recaptcha/api2/reload", "/recaptcha/api2/clr"] : [])].includes(url.pathname) && (request.postDataBuffer()?.length ?? 0) <= 128_000;
   }
   const startHost = new URL(policy.startUrl).hostname;
   function isHcaptcha(request: Request): boolean {
@@ -342,7 +362,18 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         presigns.set(field, { url: canonical(data.url), keyPattern: value.key, fields: Object.fromEntries(entries) });
       }
     }
-    if (current?.requestObject === response.request()) {
+    const ashbyEnvelope = ashbyRequests.get(response.request());
+    if (ashby && ashbyEnvelope && !ashbyEnvelope.operation.startsWith("ApiSubmit")) {
+      if (!response.ok()) throw new Error("DELIVERY_ASHBY_RESPONSE_REJECTED");
+      ashby.observe(ashbyEnvelope, await response.json());
+      if (ashbyEnvelope.operation === "ApiCreateFileUploadHandle" && current?.kind === "UPLOAD") {
+        const upload = ashby.upload();
+        if (!upload?.url || !upload.fields) throw new Error("DELIVERY_ASHBY_UPLOAD_HANDLE_UNVERIFIED");
+        current.request = { method: "POST", url: upload.url };
+        current.uploadFields = upload.fields;
+      }
+    }
+    if (current?.requestObject === response.request() || current?.kind === "UPLOAD" && ashbyEnvelope?.operation === "ApiSetFormValueToFile") {
       // Chromium can leave getResponseBody pending after a fast redirect. The
       // HTTP status remains observed evidence; unavailable bytes are explicit.
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -353,6 +384,9 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       if (timer) clearTimeout(timer);
       const location = response.headers().location;
       current.response = { url: canonical(response.url()), status: response.status(), bodyHash: body ? hash(body) : null, ...(location ? { redirectUrl: canonical(new URL(location, response.url()).href) } : {}) };
+      if (ashby && current.kind === "UPLOAD" && current.requestObject === response.request() && response.ok()) ashby.acknowledgeBytes();
+      if (ashbyEnvelope?.operation.startsWith("ApiSubmit")) current.response = { ...current.response,
+        ashbyAccepted: Boolean(body && ashbySubmissionAccepted(ashbyEnvelope.operation, jsonObject(body), ashby?.surveyCount())) };
       // Greenhouse answers 428 {code: "captcha-failed", security_code_recipient}
       // when it wants the applicant to confirm by email instead.
       if (policy.greenhouse && current.kind === "SUBMIT" && response.status() === 428 && body && body.length <= 64_000) {
@@ -367,7 +401,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     }
   }
   const responseListener = (response: Response) => {
-    const operation = onResponse(response).catch(() => { if (action) action.error = "DELIVERY_RESPONSE_CHECKPOINT_FAILED"; });
+    const operation = onResponse(response).catch((error) => { if (ashby) ashbyError = safeError(error); if (action) action.error = safeError(error); });
     pending.add(operation); void operation.finally(() => pending.delete(operation));
   };
   page.on("response", responseListener);
@@ -386,9 +420,22 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         if (hcaptcha && request.method() === "GET" && new URL(request.url()).origin === "https://newassets.hcaptcha.com") { await dispatch(route); return; }
         blockedRequests += 1; await route.abort(); return;
       }
+      // Ashby chains each mutation from the previous response. Complete its
+      // server-side readback before admitting the browser's next chained step.
+      if (ashby) await drain();
       const url = new URL(request.url());
+      const ashbyEnvelope = ashby ? parseAshbyEnvelope(request.url(), request.method(), request.postDataBuffer(), new URL(policy.startUrl).origin) : null;
+      if (ashby && url.origin === new URL(policy.startUrl).origin && url.pathname === "/api/non-user-graphql" && !ashbyEnvelope) throw new Error("DELIVERY_ASHBY_REQUEST_NOT_AUTHORIZED");
+      if (ashbyEnvelope && ashby) {
+        if (ashbyError || ashbyFieldSignal?.aborted || current?.error || current?.signal?.aborted) throw new Error(ashbyError || "DELIVERY_CANCELED");
+        const permission = ashby.authorize(ashbyEnvelope, activeSearch && !activeSearch.signal?.aborted ? activeSearch.query : undefined, current?.kind === "SUBMIT" && !current.admitted && !submitConsumed);
+        if (!permission) throw new Error("DELIVERY_ASHBY_REQUEST_NOT_AUTHORIZED");
+        ashbyRequests.set(request, ashbyEnvelope);
+        if (permission !== "SUBMIT") { await dispatch(route); return; }
+      }
       const asset = request.method() === "GET" && ["script", "stylesheet", "image", "font"].includes(request.resourceType()) &&
         policy.assets?.some((rule) => url.origin === rule.origin && url.pathname.startsWith(rule.pathPrefix));
+      const ashbyManifest = Boolean(ashby) && request.method() === "GET" && url.origin === "https://cdn.ashbyprd.com" && !url.search && !url.hash && /^\/frontend_non_user\/[a-f0-9]{40}\/\.vite\/manifest\.json$/u.test(url.pathname);
       const translation = Boolean(policy.greenhouse) && request.method() === "GET" && url.origin === "https://job-boards.cdn.greenhouse.io" && !url.search &&
         /^\/locales\/[A-Za-z-]{2,20}\/(?:job_post|common|confirmation)\.[A-Za-z0-9_-]{20,100}\.json$/u.test(url.pathname);
       const bootstrap = loading && request.method() === "GET" && canonical(request.url()) === canonical(policy.startUrl) ||
@@ -397,7 +444,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         Boolean(policy.searches?.some((rule) => searchPermitted(url, rule, activeSearch!.query)));
       const receiptNavigation = current?.kind === "SUBMIT" && current.admitted && request.method() === "GET" && canonical(request.url()) === canonical(policy.receipt.url);
       const moveNavigation = current?.kind === "MOVE" && current.admitted && request.method() === "GET" && policy.steps.some((step) => canonical(step.url) === canonical(request.url()));
-      if (asset || translation || bootstrap || search || recaptcha || hcaptcha || receiptNavigation || moveNavigation) { await dispatch(route); return; }
+      if (asset || ashbyManifest || translation || bootstrap || search || recaptcha || hcaptcha || receiptNavigation || moveNavigation) { await dispatch(route); return; }
       // A CORS preflight has no candidate payload; it is limited to this exact
       // active action endpoint and requested method, never a wildcard origin.
       if (current?.request && request.method() === "OPTIONS" && canonical(request.url()) === canonical(current.request.url) &&
@@ -465,7 +512,14 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       if (canonical(page.url()) === canonical(step.url) && await page.locator(step.readySelector).count() === 1 && await page.locator(step.readySelector).isVisible()) matches.push(step);
     }
     if (matches.length > 1) throw new Error("DELIVERY_STEP_AMBIGUOUS");
-    return matches[0] ?? null;
+    const step = matches[0];
+    if (!step || !ashby) return step ?? null;
+    if (!ashby.ready() || ashbyError) return null;
+    return { ...step, uploads: ashby.fileFields().map(({ formId, path }) => ({ fieldId: path, fieldName: path,
+      selector: `[data-field-entry-id="${formId}_${path}"] input[type="file"]`,
+      acknowledgementSelector: `[data-field-entry-id="${formId}_${path}"] .ashby-application-form-input-file-item-name` })),
+      submit: { selector: ".ashby-application-form-submit-button", request: { method: "POST", url: ashby.endpoint(ashby.submitOperation(), new URL(policy.startUrl).origin) } } };
+
   }
   async function verificationShown(): Promise<boolean> {
     if (!policy.greenhouse) return false;
@@ -475,7 +529,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   async function receipt(submission: DeliveryPriorSubmission): Promise<DeliveryReceipt | null> {
     const response = submission.response;
     const acceptedResponse = response && (response.status >= 200 && response.status < 300 || [302, 303].includes(response.status) && response.redirectUrl === canonical(policy.receipt.url));
-    if (!response || !acceptedResponse || canonical(page.url()) !== canonical(policy.receipt.url)) return null;
+    if (!response || ashby && response.ashbyAccepted !== true || !acceptedResponse || canonical(page.url()) !== canonical(policy.receipt.url)) return null;
     const locator = page.locator(policy.receipt.selector);
     if (await locator.count() !== 1 || !await locator.isVisible()) return null;
     const text = (await locator.innerText()).trim();
@@ -486,20 +540,34 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   }
   return Object.freeze({
     policy, currentStep,
+    async withField<T>(field: AgentBrowserField, approved: AgentFieldValue, work: () => Promise<T>, signal?: AbortSignal, match?: OptionMatch): Promise<T> {
+      if (!ashby) return work();
+      assertActive(signal);
+      if (closed || action || submitConsumed || ashbyError) throw new Error(ashbyError || "DELIVERY_ACTION_NOT_AVAILABLE");
+      ashby.beginField(field, approved, match);
+      ashbyFieldSignal = signal;
+      try {
+        const result = await work();
+        const acknowledged = await waitFor(async () => Boolean(ashbyError || ashby.fieldAcknowledged()), signal);
+        if (!acknowledged || ashbyError || !ashby.fieldAcknowledged()) throw new Error(ashbyError || "DELIVERY_ASHBY_FIELD_NOT_ACKNOWLEDGED");
+        return result;
+      } finally { await drain(); ashby.endField(); ashbyFieldSignal = undefined; }
+    },
+    savedFieldProofs: () => ashby?.review() ?? [],
     /** Opened only around a server-approved field fill, never by the page or model. */
     async withSearch<T>(query: string, work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
       assertActive(signal);
-      if (closed || action || submitConsumed || activeSearch || !policy.searches?.length || !query.trim() || query.length > 200 || /[\u0000-\u001f\u007f]/u.test(query)) {
+      if (closed || action || submitConsumed || activeSearch || !(policy.searches?.length || ashby) || !query.trim() || query.length > 200 || /[\u0000-\u001f\u007f]/u.test(query)) {
         throw new Error("DELIVERY_SEARCH_NOT_AUTHORIZED");
       }
       activeSearch = { query, signal };
       try { return await work(); } finally { activeSearch = null; }
     },
     passiveFrameUrls() {
-      if (!policy.greenhouse) return [];
+      if (!policy.greenhouse && !ashby) return [];
       return page.frames().map((frame) => frame.url()).filter((value) => {
         const url = new URL(value);
-        return url.origin === "https://www.recaptcha.net" && url.pathname === "/recaptcha/enterprise/anchor" &&
+        return url.origin === "https://www.recaptcha.net" && ["/recaptcha/enterprise/anchor", ...(ashby ? ["/recaptcha/api2/anchor"] : [])].includes(url.pathname) &&
           url.searchParams.get("size") === "invisible" && recaptchaKeys.has(url.searchParams.get("k") ?? "");
       });
     },
@@ -538,8 +606,9 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       await drain();
       const presign = policy.greenhouse ? presigns.get(field.domId) : undefined;
       const request = rule.request ?? (presign ? { method: "POST" as const, url: presign.url } : undefined);
-      if (!request) throw new Error("DELIVERY_UPLOAD_ENDPOINT_UNVERIFIED");
-      const current: ActionWindow = { kind: "UPLOAD", request, admitted: false, artifact, presign, signal };
+      if (!request && !ashby) throw new Error("DELIVERY_UPLOAD_ENDPOINT_UNVERIFIED");
+      ashby?.beginUpload(field, artifact);
+      const current: ActionWindow = { kind: "UPLOAD", request, admitted: false, artifact, presign, signal, strictMultipart: Boolean(ashby) };
       if (policy.lever) {
         const account = page.locator(policy.lever.accountIdSelector);
         if (await account.count() !== 1) throw new Error("DELIVERY_UPLOAD_ACCOUNT_UNVERIFIED");
@@ -555,9 +624,9 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
           if (current.error || current.response && (current.response.status < 200 || current.response.status >= 300)) return true;
           const ack = page.locator(rule.acknowledgementSelector);
           const success = !rule.successSelector || await page.locator(rule.successSelector).count() === 1 && await page.locator(rule.successSelector).isVisible();
-          return Boolean(current.response && success && await ack.count() === 1 && await ack.isVisible() && displaysUploadFilename(await ack.innerText(), artifact.filename));
+          return Boolean(current.response && (!ashby || ashby.upload()?.acknowledged) && success && await ack.count() === 1 && await ack.isVisible() && displaysUploadFilename(await ack.innerText(), artifact.filename));
         }, signal);
-        if (!acknowledged || current.error || !current.response || current.response.status < 200 || current.response.status >= 300) throw new Error(current.error || "DELIVERY_UPLOAD_NOT_ACKNOWLEDGED");
+        if (!acknowledged || current.error || ashby && !ashby.upload()?.acknowledged || !current.response || current.response.status < 200 || current.response.status >= 300) throw new Error(current.error || "DELIVERY_UPLOAD_NOT_ACKNOWLEDGED");
         // The review records the exact name the employer received with the bytes.
         const proof = { artifactVersionId: artifact.artifactVersionId, filename: artifact.filename, sha256: artifact.sha256, byteSize: artifact.byteSize, acknowledgementHash: hash((await page.locator(rule.acknowledgementSelector).innerText()).trim()), response: current.response };
         uploadProofs.set(field.fieldId, proof);
@@ -565,7 +634,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         uploadChecks.set(field.fieldId, { stepId: step!.id, selector: rule.acknowledgementSelector, filename: artifact.filename });
         await hooks.checkpoint?.({ phase: "UPLOAD_ACKNOWLEDGED", stepId: step!.id, fieldId: field.fieldId, proof });
         return proof;
-      } finally { temporary.fill(0); await drain(); action = null; }
+      } finally { temporary.fill(0); await drain(); action = null; ashby?.endUpload(); }
     },
     async move(direction: "FORWARD" | "BACK", signal?: AbortSignal) {
       assertActive(signal);
@@ -594,7 +663,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       // A passive CAPTCHA may turn into a visible challenge after the click. Stop
       // before the final request is admitted; never interact with the challenge.
       const challenged = async () => {
-        if (!policy.lever?.invisibleHcaptcha || current.admitted || current.error || !await pageShowsCaptchaChallenge(page)) return false;
+        if (!(policy.lever?.invisibleHcaptcha || ashby) || current.admitted || current.error || !await pageShowsCaptchaChallenge(page, ashby ? page.frames().map((frame) => frame.url()).filter((value) => { const url = new URL(value); return url.origin === "https://www.recaptcha.net" && ["/recaptcha/enterprise/anchor", "/recaptcha/api2/anchor"].includes(url.pathname) && url.searchParams.get("size") === "invisible" && recaptchaKeys.has(url.searchParams.get("k") ?? ""); }) : [])) return false;
         if (current.admitted || current.error) return false;
         current.error = APPLICATION_FILL_CAPTCHA_TAKEOVER;
         return true;
@@ -762,8 +831,23 @@ export function resolveLeverDeliveryPolicy(destinationUrl: string): DeliverySite
   });
 }
 
+/** Ashby's reviewed GraphQL draft and final protocols are enforced in runtime. */
+export function resolveAshbyDeliveryPolicy(destinationUrl: string): DeliverySitePolicy {
+  const destination = parseAshbyAutopilotDestination(destinationUrl);
+  if (!destination) throw new Error("DELIVERY_SITE_UNSUPPORTED");
+  const { startUrl, boardToken, jobId } = destination;
+  return Object.freeze({ release: "ashby-hosted/2026-09-30", startUrl,
+    ashby: { board: boardToken, jobId },
+    assets: [{ origin: "https://cdn.ashbyprd.com", pathPrefix: "/frontend_non_user/" }, { origin: "https://fonts.gstatic.com", pathPrefix: "/" }],
+    bootstrapRequests: [{ method: "GET" as const, url: "https://cdn.ashbyprd.com/frontend_non_user/06905250b594d4f5cf131e84b29a46a36af89dc5/.vite/manifest.json" }],
+    steps: [{ id: "application", url: startUrl, readySelector: ".ashby-application-form-submit-button",
+      submit: { selector: ".ashby-application-form-submit-button", request: { method: "POST" as const, url: "https://jobs.ashbyhq.com/api/non-user-graphql?op=ApiSubmitSingleApplicationFormAction" } } }],
+    receipt: { url: startUrl, selector: ".ashby-application-form-success-container", textPattern: "\\S" },
+  });
+}
+
 export function resolveApplicationDeliveryPolicy(destinationUrl: string): DeliverySitePolicy {
   const destination = parseAutopilotDestination(destinationUrl);
   if (!destination) throw new Error("DELIVERY_SITE_UNSUPPORTED");
-  return destination.provider === "GREENHOUSE" ? resolveGreenhouseDeliveryPolicy(destinationUrl) : resolveLeverDeliveryPolicy(destinationUrl);
+  return destination.provider === "GREENHOUSE" ? resolveGreenhouseDeliveryPolicy(destinationUrl) : destination.provider === "ASHBY" ? resolveAshbyDeliveryPolicy(destinationUrl) : resolveLeverDeliveryPolicy(destinationUrl);
 }

@@ -10,11 +10,12 @@ import {
 } from "./agents-aria-combobox.ts";
 import { chooseSearchResult, MAX_SEARCHABLE_OPTIONS, MODEL_OPTION_SAMPLE, resolveOptionValue, type OptionMatch, type OptionSemantic } from "./agents-option-match.ts";
 import { APPLICATION_FILL_CAPTCHA_TAKEOVER, frameShowsCaptchaChallenge, isHcaptchaFrameUrl } from "./agents-captcha.ts";
+import { readAshbyLocation, selectAshbyLocation } from "./agents-ashby-controls.ts";
 
-const CONTROL_SELECTOR = 'input, select, textarea, [role="combobox"], [role="textbox"], [role="checkbox"], [role="radio"]';
+const CONTROL_SELECTOR = 'input, select, textarea, [role="combobox"], [role="textbox"], [role="checkbox"], [role="radio"], .ashby-application-form-input-yesno';
 // "Ethnicity", "Hispanic/Latino", "Pronouns" and "Veterans" are demographic
 // questions too; only their own saved answer or the candidate may fill them.
-const PRIVATE_PATTERN = /\b(?:gender|race|racial|ethnic\w*|hispanic|latin[aeox]|veteran\w*|disabilit\w*|sexual orientation|pronouns?|birth|age|citizen\w*|nationality|passport|religio\w*|marital|pregnan\w*|authori[sz]\w*|sponsor\w*|visa|eligible|eligibility|legal\w*|criminal|conviction|background check|certif\w*|attest\w*|signature|consent|terms|privacy|eeo)\b/iu;
+const PRIVATE_PATTERN = /\b(?:gender|race|racial|ethnic\w*|hispanic|latin[aeox]|veteran\w*|disabilit\w*|sexual orientation|pronouns?|birth|age|citizen\w*|nationality|passport|religio\w*|marital|pregnan\w*|authori[sz]\w*|sponsor\w*|visa|eligible|eligibility|legal\w*|criminal|conviction|clearance|ts[\s/-]*sci|top[\s-]+secret|polygraph|fsp|background check|certif\w*|attest\w*|signature|consent|terms|privacy|eeo)\b/iu;
 
 export type AgentFieldValue = string | boolean | readonly string[];
 export type AgentFieldKind = AgentQuestionDescriptor["kind"] | "FILE" | "UNSUPPORTED";
@@ -40,6 +41,8 @@ export type AgentBrowserField = Readonly<{
   inputType: string;
   name: string;
   domId: string;
+  /** Reviewed Ashby form render and field path, when the control has no native form. */
+  formKey?: string;
   autocomplete: string;
   placeholder: string;
   required: boolean;
@@ -114,6 +117,7 @@ export function modelFieldView(field: AgentBrowserField): AgentBrowserField {
 }
 
 function kind(control: RawControl): AgentFieldKind {
+  if (control.type === "ashby-yesno") return control.options.length === 2 ? "SINGLE_SELECT" : "UNSUPPORTED";
   if (control.role === "combobox" && control.tag !== "select") {
     return control.aria ? control.aria.multiple ? "MULTI_SELECT" : "SINGLE_SELECT" : control.remote ? "SINGLE_SELECT" : "UNSUPPORTED";
   }
@@ -127,10 +131,16 @@ function kind(control: RawControl): AgentFieldKind {
   return "TEXT";
 }
 
-async function rawControls(frame: Frame, leverLabels = false): Promise<RawControl[]> {
-  return frame.locator(CONTROL_SELECTOR).evaluateAll((elements, useLeverLabels) => elements.flatMap((element, index) => {
+async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = false): Promise<RawControl[]> {
+  return frame.locator(CONTROL_SELECTOR).evaluateAll((elements, flags) => elements.flatMap((element, index) => {
     const native = element as HTMLInputElement;
-    const type = String(native.type ?? element.getAttribute("role") ?? "").toLowerCase();
+    const ashbyEntry = flags.ashbyLabels ? element.closest('.ashby-application-form-field-entry[data-field-path][data-field-entry-id]') : null;
+    const yesNo = element.classList.contains("ashby-application-form-input-yesno");
+    if (yesNo && !ashbyEntry || ashbyEntry && !yesNo && element.closest(".ashby-application-form-input-yesno")) return [];
+    const type = yesNo ? "ashby-yesno" : String(native.type ?? element.getAttribute("role") ?? "").toLowerCase();
+    // Ashby's optional résumé autofill helper is outside the actual form.
+    // Only schema-bound attachment fields may receive approved document bytes.
+    if (flags.ashbyLabels && type === "file" && !ashbyEntry) return [];
     const style = getComputedStyle(element);
     const bounds = element.getBoundingClientRect();
     if (native.disabled || element.getAttribute("aria-disabled") === "true" || ["hidden", "submit", "reset", "button", "image"].includes(type) ||
@@ -148,7 +158,16 @@ async function rawControls(frame: Frame, leverLabels = false): Promise<RawContro
       .map((id) => ownText(document.getElementById(id))).join(" ");
     const labels = [...(native.labels ?? [])].map((label) => ownText(label)).join(" ");
     const legend = element.closest("fieldset")?.querySelector(":scope > legend")?.textContent ?? "";
-    const leverHeading = useLeverLabels ? element.closest(".application-field")?.parentElement?.querySelector(":scope > .application-label") : null;
+    const leverHeading = flags.leverLabels ? element.closest(".application-field")?.parentElement?.querySelector(":scope > .application-label") : null;
+    const ashbyHeading = ashbyEntry?.querySelector(":scope > .ashby-application-form-question-title");
+    const ashbyPath = ashbyEntry?.getAttribute("data-field-path") ?? "";
+    const ashbyRequired = [...ashbyHeading?.classList ?? []].some(name => name.startsWith("_required_"));
+    const yesNoButtons = yesNo ? [...element.querySelectorAll(":scope > button[data-option]")] : [];
+    const yesNoValid = yesNoButtons.length === 2 && ["yes", "no"].every(option =>
+      yesNoButtons.filter(button => button.getAttribute("data-option") === option &&
+        button.textContent?.trim().toLowerCase() === option && !button.hasAttribute("disabled") &&
+        ["true", "false"].includes(button.getAttribute("aria-pressed") ?? "")).length === 1);
+    const yesNoSelected = yesNoButtons.filter(button => button.getAttribute("aria-pressed") === "true");
     let uploadHeading = "";
     if (type === "file") {
       let ancestor = element.parentElement;
@@ -160,24 +179,29 @@ async function rawControls(frame: Frame, leverLabels = false): Promise<RawContro
         if (headings.length === 1) { uploadHeading = headings[0]; break; }
       }
     }
-    const label = leverHeading?.textContent?.replace(/\s+/gu, " ").trim() || [...new Set([legend, uploadHeading, labelledBy, element.getAttribute("aria-label"), labels || ownText(element.closest("label"))]
+    const ashbyDescription = ownText(ashbyEntry?.querySelector(":scope > .ashby-application-form-question-description")).replace(/\s+/gu, " ").trim();
+    // Preserve the employer's authorship constraint in the question and its
+    // fingerprint, so prose generation and reusable answers cannot erase it.
+    const ownAnswerRequired = /\b(?:without using|do not use|don.t use|no)\s+(?:AI|artificial intelligence)\b/iu.test(ashbyDescription);
+    const ashbyQuestion = ashbyHeading ? [ashbyHeading.textContent, ownAnswerRequired ? ashbyDescription : ""].filter(Boolean).join(" ").replace(/\s+/gu, " ").trim() : "";
+    const label = ashbyQuestion || leverHeading?.textContent?.replace(/\s+/gu, " ").trim() || [...new Set([legend, uploadHeading, labelledBy, element.getAttribute("aria-label"), labels || ownText(element.closest("label"))]
       .filter(Boolean).map((text) => text!.replace(/\s+/gu, " ").trim()))].join(" ");
     const form = native.form;
-    const options = element instanceof HTMLSelectElement
+    const options = yesNo && yesNoValid && yesNoSelected.length <= 1 ? [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] : element instanceof HTMLSelectElement
       ? [...element.options].filter((option) => !option.disabled && option.value.trim() !== "").map((option) => ({ value: option.value, label: option.text.trim() }))
       : [];
     return [{
-      index, tag: element.tagName.toLowerCase(), type, role: element.getAttribute("role") ?? "", name: native.name ?? "", id: element.id,
+      index, tag: element.tagName.toLowerCase(), type, role: element.getAttribute("role") ?? "", name: ashbyPath || native.name || "", id: ashbyPath || element.id,
       label: label || native.placeholder || native.name || element.id || "Unlabelled field",
       optionLabel: [labelledBy, element.getAttribute("aria-label"), labels || ownText(element.closest("label"))]
         .filter(Boolean).join(" ").replace(/\s+/gu, " ").trim(),
       autocomplete: native.autocomplete ?? "", placeholder: native.placeholder ?? "",
-      required: Boolean(native.required) || element.getAttribute("aria-required") === "true" || Boolean(leverHeading?.querySelector(".required")) || type === "file" && Boolean(element.closest('.file-upload[aria-required="true"]')),
+      required: ashbyRequired || Boolean(native.required) || element.getAttribute("aria-required") === "true" || Boolean(leverHeading?.querySelector(".required")) || type === "file" && Boolean(element.closest('.file-upload[aria-required="true"]')),
       readOnly: (Boolean(native.readOnly) && element.getAttribute("role") !== "combobox") || element.getAttribute("aria-readonly") === "true",
-      form: form ? JSON.stringify([form.id, form.getAttribute("name"), form.getAttribute("action"), form.method]) : "outside-form",
-      value: native.value ?? "", checked: Boolean(native.checked),
+      form: ashbyEntry ? ashbyEntry.getAttribute("data-field-entry-id")!.slice(0, -(ashbyPath.length + 1)) : form ? JSON.stringify([form.id, form.getAttribute("name"), form.getAttribute("action"), form.method]) : "outside-form",
+      value: yesNo ? yesNoSelected.length === 1 ? String(yesNoSelected[0].getAttribute("data-option") === "yes") : "" : native.value ?? "", checked: Boolean(native.checked),
       selected: element instanceof HTMLSelectElement ? [...element.selectedOptions].map((option) => option.value) : [],
-      valid: element.getAttribute("aria-invalid") !== "true" && (native.validity ? native.validity.valid : false), accept: native.accept ?? "", multiple: Boolean(native.multiple),
+      valid: yesNo ? yesNoValid && yesNoSelected.length <= 1 && (!ashbyRequired || yesNoSelected.length === 1) : element.getAttribute("aria-invalid") !== "true" && (native.validity ? native.validity.valid : false), accept: native.accept ?? "", multiple: Boolean(native.multiple),
       options, files: native.files ? [...native.files].map((file) => ({ name: file.name, size: file.size, type: file.type })) : [],
       menuState: (() => {
         const shell = element.getAttribute("role") === "combobox" && element.getAttribute("aria-expanded") === "false" ? element.closest(".select-shell") : null;
@@ -187,12 +211,12 @@ async function rawControls(frame: Frame, leverLabels = false): Promise<RawContro
             .map((node) => `${node.className}:${(node.textContent ?? "").replace(/\s+/gu, " ").trim()}`)]);
       })(),
     }];
-  }), leverLabels);
+  }), { leverLabels, ashbyLabels });
 }
 
 /** Fixed browser operations only. No model-supplied script, selector, URL or click. */
 export function createAgentBrowserTools(page: Page, destinationUrl: string, options?: Readonly<{
-  permittedPassiveFrameUrls?: readonly string[]; allowReactSelectDisplay?: boolean; leverLabels?: boolean;
+  permittedPassiveFrameUrls?: readonly string[]; allowReactSelectDisplay?: boolean; leverLabels?: boolean; ashbyLabels?: boolean;
   /** Only when the delivery policy permits the page's own search lookups. */
   remoteSearch?: boolean;
   /** The approved field semantic whose value this site's lookup may receive. */
@@ -212,6 +236,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     throw new Error("AGENTS_FILL_DESTINATION_INVALID");
   }
   const expectedOrigin = destination.origin;
+  const ashbyLabels = options?.ashbyLabels === true;
   // Reading a React Select menu means opening it: about a dozen browser round
   // trips per control, on every inspection. A closed menu whose visible state
   // and surrounding form are unchanged keeps its last verified read. Any
@@ -262,7 +287,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
           return bounds.width > 0 && bounds.height > 0 &&
             /^(?:next|continue|save and continue|next step)\b/iu.test((element.textContent || (element as HTMLInputElement).value || "").trim());
         }));
-      const controls = await rawControls(frame, options?.leverLabels);
+      const controls = await rawControls(frame, options?.leverLabels, options?.ashbyLabels);
       const containsIdentityGate = controls.some((control) => control.type === "password" || control.autocomplete === "one-time-code");
       const structure = hash(controls.map((control) => [control.tag, control.type, control.role, control.id, control.name, control.label, control.required, control.form]));
       const frameKey = `${frameIndex}:${frame.url()}`;
@@ -271,6 +296,14 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       if (!takeoverReason && !containsIdentityGate) {
         for (const control of controls) {
           if (control.role !== "combobox" || control.tag === "select" || control.readOnly) continue;
+          if (options?.ashbyLabels && options.remoteSearch && control.id === "_systemfield_location") {
+            const remote = await readAshbyLocation(frame.locator(CONTROL_SELECTOR).nth(control.index));
+            if (remote) {
+              control.remote = remote; control.options = []; control.value = remote.selectedLabel;
+              control.valid = !control.required || remote.selectedLabel.length > 0;
+            }
+            continue;
+          }
           const readKey = options?.allowReactSelectDisplay && control.menuState !== null ? `${control.index}:${control.id}:${control.menuState}` : null;
           let read = readKey ? reads.get(readKey) : undefined;
           if (!read) {
@@ -354,8 +387,9 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
         let field: AgentBrowserField = Object.freeze({
           fieldId: `field_${fingerprint}`, fingerprint, label, kind: fieldKind, inputType: control.type,
           name: control.name, domId: control.id, autocomplete: control.autocomplete, placeholder: control.placeholder,
+          ...(ashbyLabels && control.form !== "outside-form" ? { formKey: control.form } : {}),
           required: descriptor.required, readOnly: descriptor.readOnly,
-          candidateOnly: PRIVATE_PATTERN.test(`${label} ${control.name}`), options, accept: control.accept,
+          candidateOnly: PRIVATE_PATTERN.test(`${label} ${control.name}`) || /\b(?:without using|do not use|don.t use|no)\s+(?:AI|artificial intelligence)\b/iu.test(label), options, accept: control.accept,
           multiple: control.multiple, hasValue,
           valid: control.type === "radio" ? hasValue : group.every((item) => item.valid),
           optionCount: options.length, searchable: longList || Boolean(control.remote),
@@ -427,13 +461,18 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       if (options?.remoteSearchSemantic && match?.semantic !== options.remoteSearchSemantic) throw new Error("AGENTS_FILL_OPTION_AMBIGUOUS");
       // Type the approved value; select only a result that equals it or starts
       // with it and is confirmed by the candidate's own region/country facts.
-      const search = () => searchRemoteComboboxOption(frame, controls.nth(indexes[0]), answer, (labels) => chooseSearchResult(labels, answer, match), signal, options);
+      const search = () => options?.ashbyLabels && field.domId === "_systemfield_location"
+        ? selectAshbyLocation(controls.nth(indexes[0]), answer, labels => chooseSearchResult(labels, answer, match), signal)
+        : searchRemoteComboboxOption(frame, controls.nth(indexes[0]), answer, (labels) => chooseSearchResult(labels, answer, match), signal, options);
       expected = options?.withRemoteSearch ? await options.withRemoteSearch(answer, search, signal) : await search();
     } else if (field.kind === "SINGLE_SELECT") {
       if (typeof answer !== "string") throw new Error("AGENTS_FILL_ANSWER_TYPE_INVALID");
       expected = optionValue(field, answer, match);
       if (located.aria) {
         await selectAriaComboboxOption(frame, controls.nth(indexes[0]), located.aria, expected, signal, options);
+      } else if (field.inputType === "ashby-yesno") {
+        if (!["true", "false"].includes(expected)) throw new Error("AGENTS_FILL_OPTION_AMBIGUOUS");
+        await controls.nth(indexes[0]).locator(`:scope > button[data-option="${expected === "true" ? "yes" : "no"}"]`).click({ timeout: 5_000 });
       } else if (field.inputType === "radio") {
         const optionIndex = field.options.findIndex((option) => option.value === expected);
         await controls.nth(indexes[optionIndex]).check({ timeout: 5_000 });

@@ -25,7 +25,8 @@ test("demographic, legal, consent and optional questions always stay with the ca
   assert.equal(standingAnswerEligible(gpa), true);
   assert.equal(standingAnswerEligible(onsite), true);
   for (const label of ["Gender", "Are you a protected veteran?", "Have you ever been convicted of a felony?", "I agree to the privacy policy", "Signature", "Are you a U.S. citizen?",
-    "Do you accept binding arbitration?", "Please confirm that all information provided is true", "Are you bound by a non-compete?", "Do you identify as a person of color?"]) {
+    "Do you accept binding arbitration?", "Please confirm that all information provided is true", "Are you bound by a non-compete?", "Do you identify as a person of color?",
+    "Do you currently possess an active TS/SCI with FSP or CI?", "Do you have security clearance?", "Current TS SCI status", "Top-secret eligibility", "Have you completed a polygraph?", "Active FSP?"]) {
     assert.equal(standingAnswerEligible(question(label, "SINGLE_SELECT", ["Yes", "No"])), false, label);
     assert.equal(acceptStandingAnswer(question(label, "BOOLEAN"), draft(["Yes"], ["s2"]), basis), null, label);
   }
@@ -47,6 +48,20 @@ test("an answer is kept only with choices on the form and cited saved answers", 
   assert.equal(acceptStandingAnswer(question("Can you start in two weeks?", "BOOLEAN"), draft(["Yes"], ["s2"]), basis)?.value, true);
   assert.equal(acceptStandingAnswer(question("Undergraduate GPA", "TEXT"), draft([], ["s1"], " 3.5 "), basis)?.value, "3.5");
   assert.equal(acceptStandingAnswer(question("Undergraduate GPA", "TEXT"), draft([], ["s1"], ""), basis), null);
+});
+
+test("explicit requests for answers without AI stay with the candidate even when a standing answer matches", () => {
+  for (const label of [
+    "Tell us why you are interested. We would love to hear this in your own words, without using AI.",
+    "Do not use artificial intelligence to answer this question.",
+    "Please don't use AI for this answer.", "Please don’t use artificial intelligence.",
+    "No AI in this response.", "NO ARTIFICIAL INTELLIGENCE", "Answer without\nusing\nAI.",
+  ]) {
+    const descriptor = question(label, "LONG_TEXT");
+    assert.equal(standingAnswerEligible(descriptor), false, label);
+    assert.equal(acceptStandingAnswer(descriptor, draft([], ["s2"], "Saved answer"), basis), null, label);
+  }
+  assert.equal(standingAnswerEligible(question("Describe your experience using AI", "LONG_TEXT")), true);
 });
 
 test("a sensitive question may rest only on standing answers or work-authorization facts", () => {

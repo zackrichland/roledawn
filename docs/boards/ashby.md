@@ -1,6 +1,6 @@
 ---
 board: ashby
-status: prep-only
+status: fills-only
 difficulty: medium
 last_verified: 2026-09-30
 url_patterns:
@@ -51,9 +51,9 @@ Single page.
 
 ## Questions and widgets
 
-- Yes/No questions render as `<button>Yes</button>` / `<button>No</button>` pairs, which RoleDawn's observer cannot see (manual annotation of the 2026-09-28 audit).
+- Yes/No questions render as pressed-button pairs. The Ashby observer reads the parent question and required marker, offers explicit Yes/No values, clicks one observed choice, and reads back `aria-pressed` (2026-09-30).
 - Multi-selects render as checkbox groups; single choices as radio groups.
-- Location: "Start typing…" typeahead backed by `ApiAutocompleteGeoLocation`.
+- Location: "Start typing…" typeahead backed by `ApiAutocompleteGeoLocation`. The driver selects one result confirmed by the approved city, region and country. The request guard separately requires that exact server-returned location and provider ID.
 - Salary expectations may be split into begin/end fields with format rules (1Password: base and OTE ranges).
 - EEOC survey covers gender, race and veteran status; disability is asked, if at all, in an optional diversity survey. Survey answers are anonymous by default and kept out of the application payload (vendor docs).
 - Example diversity survey (1Password): gender radios, a 12-option race/ethnicity checkbox group, a veteran radio and several "No / Yes / Prefer not to say" radios.
@@ -61,42 +61,50 @@ Single page.
 
 ## Verification and anti-bot
 
-- Spam protection levels per employer: Strict, Less Permissive, Permissive (default), No Protection. Ashby names no CAPTCHA vendor (vendor docs).
-- Observed: reCAPTCHA on 5 of 5 audited forms; its invisible anchor (`api2/anchor?size=invisible`) renders as a 256×60 badge, so RoleDawn's generic observer hands over (`APPLICATION_FILL_CAPTCHA_TAKEOVER`).
-- **Verified (diagnostic):** with that invisible frame explicitly permitted, the observer read 50 fields on the 1Password form with no takeover. Nothing was submitted.
-- Optional fraud detection uses device, IP, email and phone signals and routes flags to manual review (vendor docs).
+- Spam protection levels per employer: Strict, Less Permissive, Permissive (default), No Protection (vendor docs).
+- The reviewed public form uses standard reCAPTCHA. RoleDawn admits its passive invisible badge and native scoring requests. Any visible challenge stops delivery; it never solves, suppresses or retries a challenge to improve its score.
+- The page's own device fingerprint is an opaque, bounded vendor-format field on the final request. It supplies no application authority.
+- No account sign-in or employer API key is used.
 
 ## Submission and proof
 
-- **Inference:** the hosted form submits through a GraphQL mutation on the shared endpoint; its name and response were not captured.
-- The embed script's `application_submitted` message is a candidate receipt signal for embedded boards (**Inference**, unproven).
-- Confirmation message text is set by the employer. The confirmation email comes from Ashby's no-reply address only when the employer enables it (vendor docs). Exact sender **Unverified**.
-- No Ashby receipt contract exists until a real submission is observed.
+- **Verified public-client protocol:** the common endpoint is `POST /api/non-user-graphql?op=<name>`. Reads, lookups, draft writes, file attachment and final submission each have separately reviewed operation documents and payload checks.
+- `ApiSetFormValue` saves an approved field to the employer's draft before final submission. The exact board, form, field and value must match, and the server response must echo the value without changing another field.
+- `ApiCreateFileUploadHandle` binds the approved filename, media type and byte length. One exact server-issued S3 upload sends the hashed file; `ApiSetFormValueToFile` may attach its handle only after the upload succeeds. The field must show the approved filename.
+- `ApiSubmitSingleApplicationFormAction` handles a form without surveys. `ApiSubmitMultipleFormsAction` binds the application and each survey's server-issued form/action identifiers.
+- The final request still needs RoleDawn's sealed, single-use database permission. Its review includes the acknowledged server-side field values and document proofs.
+- A receipt requires the response to that admitted request to contain `FormSubmitSuccess` for the application and every expected survey, no GraphQL errors or employer block, and the employer's visible success container. A static page, a model statement, or an HTTP 200 alone is insufficient.
+- **Not yet verified:** a live employer-confirmed Ashby application. Fixture acceptance is separate from that proof.
 
 ## Known quirks
 
-- **Inference:** fields may autosave server-side as they change, so data could reach the employer before **Submit**; an origin-level allow rule would admit more than the final submission (D-086).
-- The shared GraphQL endpoint serves reads, lookups and writes; it cannot be allowlisted by URL alone.
-- Button-rendered Yes/No controls and the location typeahead escape generic `input/select/textarea` observers.
-- Auto-reject rules can act on form answers, with a delayed rejection email (vendor docs).
+- Field saves disclose approved data before final submission; a stopped run may have an employer-side draft. Copy must not claim that no data was sent.
+- One shared GraphQL URL handles both reads and writes. Never allow it by origin or operation name alone; query documents, variables and the current action must agree.
+- `aria-selected` on a location option marks keyboard focus, not a saved choice. The selected label and acknowledged draft value establish readback.
+- The form has no native `<form>` element. Ashby labels, field paths and form identifiers supply the control identity.
+- A changed public operation document fails closed until reviewed. Defaults, hidden values, legal-processing notices and unrecognized widgets can still require candidate help; support does not promise every employer-specific form.
 
 ## RoleDawn status and gaps
 
-- **Prep-only.** `ATS_DELIVERY_CAPABILITIES.ASHBY.status = "PREPARATION_ONLY"`; `parseAutopilotDestination` accepts only Greenhouse and Lever (`src/domain/application-autopilot-eligibility.ts`). RoleDawn imports the posting, writes documents, and the candidate submits ([playbook](../execution/application-playbook.md)).
-- Before an adapter: bind named GraphQL operations and payloads (including autosave and upload handles); observe button Yes/No controls and the location lookup; admit only passive reCAPTCHA frames; define the receipt from a real submission.
-- Copy gap: `src/app/(candidate)/apply-actions.ts` and `src/domain/application-presentation.ts` tell candidates RoleDawn "applies" on Ashby, which overstates preparation-only support.
+- **Delivery implemented; live acceptance unproven.** Hosted `jobs.ashbyhq.com/<org>/<uuid>` and its `/application` route resolve through the shared delivery registry and database predicate.
+- The same Browserbase session, candidate facts, remembered/standing answers, missing-question UI, immutable files and submit permission used by Greenhouse and Lever are reused.
+- The board's square-logo metadata can supply cached company branding; missing or changed metadata falls back to initials. It is not a paid lookup or guessed employer domain.
+- Required security-clearance questions, including TS/SCI, go to the candidate. They cannot be inferred from standing answers or unrelated profile facts.
+- Embedded/custom employer pages are not accepted as delivery destinations. Intake should resolve a concrete hosted application URL first.
 
 ## Agent guidance
 
 Do:
-- Prepare the documents and answers, then give the candidate the exact `/application` URL and say plainly that they submit on Ashby.
-- In any future adapter, allow GraphQL operations by name and bound payload, never by origin.
+- Use the existing named-job send intent and application delivery worker; never make a separate direct submission.
+- Check the actual terminal or needs-you state with `ops:status`. Count only an employer-evidenced receipt as Applied.
+- On a required question, show the candidate the exact question and retain approved answers across the existing recovery flow.
+- Treat drift in GraphQL documents, field identity, uploads or confirmation as a stopped or uncertain outcome under existing rules.
 
 Don't:
-- Open the Ashby form with candidate data or upload files today.
-- Call Ashby's authenticated API; it needs the employer's key.
-- Solve reCAPTCHA or retry to improve a score; retry after an application-limit block.
-- Mark an Ashby application "Applied" from anything RoleDawn did.
+- Use Ashby's employer-authenticated APIs or an employer's key.
+- Broadly allow GraphQL, arbitrary S3 destinations, resume autofill, surveys or legal notices.
+- Solve reCAPTCHA, retry to improve its score, or infer that an application-limit response authorizes another attempt.
+- Restore an earlier closed send intent automatically when a new adapter ships. A fresh candidate request is required; uncertain and attempted deliveries keep their own recovery controls.
 
 ## Sources
 
@@ -108,3 +116,5 @@ Don't:
 - https://docs.ashbyhq.com/email-template-creation-and-management, /data-privacy-and-compliance, /job-board-cookie-consent-settings — confirmation email, consent, cookies (Primary), accessed 2026-09-30
 - https://jobs.ashbyhq.com/Ashby/embed — embed script (Direct observation by research agent), accessed 2026-09-30
 - [ATS delivery expansion acceptance](../execution/ats-delivery-expansion-acceptance.md); [source register](../research/source-register.md) ATS-D05, ATS-D06; [decision log](../execution/decision-log.md) D-086; `tmp/form-audit/` (5 live forms, 2026-09-28, not committed)
+
+- [Hosted form protocol and branding](../research/source-register.md) AB-20260930-01 and AB-20260930-02 — public-client and DOM observation, accessed 2026-09-30; no live employer receipt implied.

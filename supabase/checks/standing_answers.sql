@@ -155,6 +155,11 @@ begin
     pg_temp.question('Please confirm that all information provided is true', 'BOOLEAN', '[]'),
     pg_temp.question('Are you bound by a non-compete?', 'BOOLEAN', '[]'),
     pg_temp.question('Do you identify as a person of color?', 'BOOLEAN', '[]'),
+    pg_temp.question('We would love to hear this in your own words, without using AI.', 'LONG_TEXT', '[]'),
+    pg_temp.question('Do not use artificial intelligence.', 'LONG_TEXT', '[]'),
+    pg_temp.question('Please don''t use AI.', 'LONG_TEXT', '[]'),
+    pg_temp.question('Please don’t use AI.', 'LONG_TEXT', '[]'),
+    pg_temp.question('No AI in this response.', 'LONG_TEXT', '[]'),
     pg_temp.question('Optional on-site question', 'BOOLEAN', '[]', false),
     pg_temp.question('Select an answer', 'SINGLE_SELECT', '[{"label":"Man","value":"s-0"},{"label":"Prefer not to disclose gender","value":"s-1"}]')
   )) loop
@@ -197,7 +202,8 @@ begin
     pg_temp.question('Do you accept binding arbitration?', 'BOOLEAN', '[]'),
     pg_temp.question('Please confirm that all information provided is true', 'BOOLEAN', '[]'),
     pg_temp.question('Are you bound by a non-compete?', 'BOOLEAN', '[]'),
-    pg_temp.question('Do you identify as a person of color?', 'BOOLEAN', '[]')
+    pg_temp.question('Do you identify as a person of color?', 'BOOLEAN', '[]'),
+    pg_temp.question('We would love to hear this in your own words, without using AI.', 'LONG_TEXT', '[]')
   )) loop
     perform pg_temp.answer_earlier(run,v_result,case when v_result->>'kind' = 'BOOLEAN' then 'true'::jsonb else '"s-0"'::jsonb end);
     execute 'set local role service_role';
@@ -259,6 +265,20 @@ begin
   exception when insufficient_privilege then null; end;
   execute 'reset role';
   insert into standing_answer_checks values('candidates_cannot_call_worker_functions', true);
+end $check$;
+
+do $check$
+declare who jsonb:=pg_temp.candidate(); run jsonb; q jsonb; result jsonb;
+begin
+  run:=pg_temp.running(who);
+  q:=pg_temp.question('Tell us in your own words, without using AI.', 'LONG_TEXT', '[]');
+  perform pg_temp.answer_earlier(run,q,'"Candidate-authored answer"'::jsonb);
+  execute 'set local role service_role';
+  result:=public.read_application_autopilot_answers((run->>'autopilot')::uuid,(run->>'lease')::uuid);
+  execute 'reset role';
+  if jsonb_array_length(result)<>1 or result->0->>'value'<>'Candidate-authored answer' then
+    raise exception 'CHECK_OWN_NO_AI_ANSWER_NOT_READ'; end if;
+  insert into standing_answer_checks values('same_application_candidate_no_ai_answer_remains_usable',true);
 end $check$;
 
 select check_name, passed from standing_answer_checks order by check_name;
