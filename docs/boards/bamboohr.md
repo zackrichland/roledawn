@@ -15,6 +15,8 @@ url_patterns:
 
 # BambooHR
 
+Compact agent context: `BOARD_CONTEXT.bamboohr` in [board-agent-context.ts](../../src/domain/board-agent-context.ts). Unverified, and never sent to a live prompt while this board is unsupported. Promotion rules: [README](README.md#how-to-add-a-lesson).
+
 Difficulty `easy` is provisional: no CAPTCHA, submit request or confirmation page has been observed yet.
 
 ## Recognize it

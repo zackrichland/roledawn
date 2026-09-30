@@ -1,5 +1,13 @@
+/* RoleDawn design tokens and base styles.
+
+   Look: quiet neutrals, hairline borders, layered soft shadows, one warm
+   accent (First Light), an SF-style grotesque, and short, springy motion.
+   Add tokens here; never rename or remove one, because CSS modules across the
+   app read them by name. */
+
 :root {
   color-scheme: light;
+
   /* RoleDawn brand */
   --midnight: #0b1020;
   --cloud: #f7f8fc;
@@ -10,16 +18,16 @@
   --slate: #667085;
   --rose: #e0526f;
 
-  /* Interface roles */
+  /* Interface roles. Text roles keep at least 4.5:1 on paper and canvas. */
   --ink: #0b1020;
-  --ink-soft: #2b3246;
-  --muted: #667085;
-  --faint: #98a2b3;
-  --line: #e7e9f0;
-  --line-strong: #d6dae4;
+  --ink-soft: #343a4b;
+  --muted: #5f6675;
+  --faint: #6b7280;
+  --line: rgb(11 16 32 / 8%);
+  --line-strong: rgb(11 16 32 / 17%);
   --paper: #ffffff;
-  --canvas: #f7f8fc;
-  --wash: #f1f3f8;
+  --canvas: #f5f5f7;
+  --wash: #efeff2;
   --coral-ink: #b83a30;
   --coral-wash: #fff1ef;
   --mint-ink: #147a5c;
@@ -29,16 +37,71 @@
   --rose-ink: #b3283f;
   --rose-wash: #fdeef1;
 
-  --radius-sm: 10px;
-  --radius: 14px;
-  --radius-lg: 22px;
-  --shadow-sm: 0 1px 2px rgb(11 16 32 / 5%);
-  --shadow: 0 1px 2px rgb(11 16 32 / 4%), 0 8px 24px rgb(11 16 32 / 6%);
-  --shadow-lg: 0 24px 60px rgb(11 16 32 / 12%);
+  /* Focus: a dark ring anywhere, plus a warm halo on text fields. */
+  --focus: #0b1020;
+  --focus-halo: rgb(255 209 102 / 42%);
 
-  --font-sans: var(--font-manrope), system-ui, sans-serif;
-  --font-serif: var(--font-source-serif), Georgia, serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  /* Radii: controls 10-12, cards 16, hero containers 20. Nest by subtracting
+     the padding so inner corners stay concentric. */
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* Spacing rhythm (4px base). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 56px;
+
+  /* Depth: hairline plus layered, low-opacity shadows. */
+  --shadow-xs: 0 1px 1px rgb(11 16 32 / 4%);
+  --shadow-sm: 0 1px 2px rgb(11 16 32 / 4%), 0 2px 8px -2px rgb(11 16 32 / 4%);
+  --shadow: 0 1px 2px rgb(11 16 32 / 4%), 0 6px 16px -4px rgb(11 16 32 / 6%), 0 16px 40px -12px rgb(11 16 32 / 8%);
+  --shadow-hover: 0 2px 4px rgb(11 16 32 / 5%), 0 10px 24px -8px rgb(11 16 32 / 10%), 0 24px 48px -16px rgb(11 16 32 / 10%);
+  --shadow-lg: 0 2px 4px rgb(11 16 32 / 4%), 0 12px 28px -8px rgb(11 16 32 / 12%), 0 32px 72px -20px rgb(11 16 32 / 18%);
+
+  /* Light gradients. Surfaces get a barely-there top-down sheen; heroes get a
+     faint warm tint; filled buttons get a soft top light. */
+  --surface-sheen: linear-gradient(180deg, #ffffff 0%, #fbfbfd 100%);
+  --hero-tint: radial-gradient(64% 340px at 50% -90px, rgb(255 209 102 / 14%), rgb(255 209 102 / 0%) 72%);
+  --gradient-ink: linear-gradient(180deg, #252a3b 0%, #0b1020 100%);
+  --gradient-ink-hover: linear-gradient(180deg, #30364a 0%, #131a2d 100%);
+  --gradient-light: linear-gradient(180deg, #ffdf8c 0%, #ffd166 100%);
+  --gradient-light-hover: linear-gradient(180deg, #ffe6a6 0%, #ffd975 100%);
+  --btn-ink-shadow: 0 1px 2px rgb(11 16 32 / 24%), inset 0 1px 0 rgb(255 255 255 / 12%);
+  --btn-ink-shadow-hover: 0 6px 14px -4px rgb(11 16 32 / 34%), inset 0 1px 0 rgb(255 255 255 / 14%);
+  --btn-light-shadow: 0 1px 2px rgb(138 90 0 / 24%), inset 0 1px 0 rgb(255 255 255 / 55%);
+  --btn-light-shadow-hover: 0 6px 14px -4px rgb(138 90 0 / 32%), inset 0 1px 0 rgb(255 255 255 / 60%);
+
+  /* Type. System-first: SF on Apple devices, Inter (variable, optical size)
+     everywhere else. The serif survives only in the document preview, where
+     the page has to match the PDF it previews. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--font-inter), system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-sans);
+  --font-serif: var(--font-display); /* Legacy name. The serif was retired from the interface; use --font-display. */
+  --font-document: var(--font-source-serif), "Iowan Old Style", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --tracking-body: -0.006em;
+  --tracking-heading: -0.022em;
+  --tracking-display: -0.03em;
+  --tracking-label: 0.01em;
+
+  /* Motion: 150-350 ms, opacity and transform only. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 150ms;
+  --dur-base: 240ms;
+  --dur-slow: 340ms;
+  --stagger: 40ms;
+  --rise: 8px;
 }
 
 * {
@@ -46,17 +109,44 @@
 }
 
 html {
+  accent-color: var(--midnight);
   background: var(--canvas);
   font-family: var(--font-sans);
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   text-rendering: optimizeLegibility;
 }
 
 body {
   background: var(--canvas);
   color: var(--ink);
+  font-kerning: normal;
   margin: 0;
   min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  text-wrap: balance;
+}
+
+p,
+li,
+dd,
+blockquote {
+  text-wrap: pretty;
+}
+
+/* Counts, dates and money line up. */
+time,
+.tnum {
+  font-variant-numeric: tabular-nums;
 }
 
 button,
@@ -66,26 +156,59 @@ select {
   font-family: inherit;
 }
 
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
-summary:focus-visible {
-  outline: 3px solid rgb(242 178 51 / 55%);
-  outline-offset: 2px;
+button {
+  touch-action: manipulation;
+}
+
+::placeholder {
+  color: var(--faint);
+  opacity: 1;
 }
 
 ::selection {
-  background: rgb(255 209 102 / 55%);
+  background: rgb(255 209 102 / 50%);
+  color: var(--ink);
 }
 
+/* Focus: visible everywhere, never colour alone. Fields also darken their
+   border and glow (see each field's :focus rule). */
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Disclosures open with a short fade and rise instead of snapping. */
+@media (prefers-reduced-motion: no-preference) {
+  details[open] > :not(summary) {
+    animation: disclose var(--dur-base) var(--ease-out) backwards;
+  }
+}
+
+@keyframes disclose {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --line: rgb(11 16 32 / 24%);
+    --line-strong: rgb(11 16 32 / 42%);
+  }
+}
+
+/* Reduced motion: nothing moves, nothing waits on a delay, nothing is left
+   hidden. This is the one place a blanket !important is the right tool. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
+    animation-delay: 0s !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-delay: 0s !important;
     transition-duration: 0.01ms !important;
   }
 }
@@ -102,12 +225,12 @@ summary:focus-visible {
 
 .brand {
   align-items: center;
-  color: #121a2a;
+  color: var(--ink);
   display: inline-flex;
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 600;
   gap: 10px;
-  letter-spacing: -.035em;
+  letter-spacing: var(--tracking-heading);
   text-decoration: none;
   width: fit-content;
 }
@@ -124,6 +247,7 @@ summary:focus-visible {
 
 .setup-page {
   align-items: center;
+  background: var(--hero-tint);
   display: flex;
   justify-content: center;
   min-height: 100vh;
@@ -131,28 +255,28 @@ summary:focus-visible {
 }
 
 .setup-card {
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
-  border-radius: 22px;
-  box-shadow: 0 24px 70px rgb(15 25 54 / 9%);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
   max-width: 520px;
   padding: 38px;
   width: 100%;
 }
 
 .setup-card__eyebrow {
-  color: #5e70bd;
-  font-family: var(--font-plex-mono), monospace;
-  font-size: 11px;
+  color: var(--muted);
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: .13em;
-  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
 }
 
 .setup-card h1 {
   font-size: 34px;
-  letter-spacing: -.045em;
-  margin: 14px 0 10px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
+  line-height: 1.1;
+  margin: 12px 0 10px;
 }
 
 .setup-card p {
@@ -163,7 +287,7 @@ summary:focus-visible {
 
 .mobile-preview-page {
   align-items: center;
-  background: #e9ecf3;
+  background: var(--hero-tint), var(--wash);
   display: grid;
   gap: 56px;
   grid-template-columns: minmax(280px, 460px) auto;
@@ -178,34 +302,37 @@ summary:focus-visible {
 
 .mobile-preview-copy h1 {
   font-size: 46px;
-  letter-spacing: -.05em;
-  line-height: 1;
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
+  line-height: 1.04;
   margin: 16px 0;
 }
 
 .mobile-preview-copy p {
   color: var(--muted);
-  line-height: 1.65;
+  line-height: 1.6;
 }
 
 .qa-badge {
-  background: #17213d;
+  background: var(--gradient-ink);
   border-radius: 99px;
+  box-shadow: var(--btn-ink-shadow);
   color: #fff;
   display: inline-flex;
   font-size: 12px;
-  font-weight: 750;
-  padding: 7px 11px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  padding: 6px 11px;
 }
 
 .mobile-preview-frame {
   background: #fff;
-  border: 9px solid #11182a;
-  border-radius: 42px;
-  box-shadow: 0 30px 80px rgb(14 23 50 / 25%);
+  border: 10px solid #0d0f16;
+  border-radius: 44px;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 8%) inset, var(--shadow-lg);
   height: 780px;
   overflow: hidden;
-  width: 408px;
+  width: 410px;
 }
 
 @media (max-width: 900px) {

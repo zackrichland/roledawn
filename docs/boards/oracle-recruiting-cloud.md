@@ -14,6 +14,8 @@ url_patterns:
 
 # Oracle Recruiting Cloud and Taleo
 
+Compact agent context: `BOARD_CONTEXT["oracle-recruiting-cloud"]` in [board-agent-context.ts](../../src/domain/board-agent-context.ts). Unverified, and never sent to a live prompt while this board is unsupported. Promotion rules: [README](README.md#how-to-add-a-lesson).
+
 Two Oracle products with different flows. **ORC** = Oracle Recruiting Cloud (Fusion HCM "Candidate Experience"): no password, emailed or texted codes. **Taleo** = legacy Taleo Enterprise career sections (username and password) and Taleo Business Edition (TBE). Detect which one before anything else.
 
 ## Recognize it

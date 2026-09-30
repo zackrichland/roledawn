@@ -15,6 +15,8 @@ url_patterns:
 
 # Lever
 
+Compact agent context: `BOARD_CONTEXT.lever` in [board-agent-context.ts](../../src/domain/board-agent-context.ts), sent to the form agent on every send (at most 10 bullets and 900 characters). Add lessons by the [README](README.md#how-to-add-a-lesson) rules.
+
 ## Recognize it
 
 - Hosted postings on `jobs.lever.co` (global) and `jobs.eu.lever.co` (EU); posting ids are UUIDs; the form is at `/apply` (`src/server/ingestion/job-reference.ts`, `src/domain/application-autopilot-eligibility.ts`).

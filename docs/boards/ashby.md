@@ -14,6 +14,8 @@ url_patterns:
 
 # Ashby
 
+Compact agent context: `BOARD_CONTEXT.ashby` in [board-agent-context.ts](../../src/domain/board-agent-context.ts), sent to the form agent on every send (at most 10 bullets and 900 characters). Add lessons by the [README](README.md#how-to-add-a-lesson) rules.
+
 ## Recognize it
 
 - Hosted board `jobs.ashbyhq.com/<org>`; postings `.../<job_uuid>`; the form is `.../<job_uuid>/application` (the `applyUrl` shape in Ashby's own feed). Ashby does not support custom domains; employers embed instead (vendor docs).

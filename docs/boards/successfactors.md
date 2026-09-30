@@ -15,6 +15,8 @@ url_patterns:
 
 # SAP SuccessFactors Recruiting
 
+Compact agent context: `BOARD_CONTEXT.successfactors` in [board-agent-context.ts](../../src/domain/board-agent-context.ts). Unverified, and never sent to a live prompt while this board is unsupported. Promotion rules: [README](README.md#how-to-add-a-lesson).
+
 "Direct observation" below is one read-only visit on 2026-09-30 to the University of Toronto's career site (Recruiting Marketing front end, `career17.sapsf.com` back end). Nothing was typed or submitted. Vendor help pages load with JavaScript and were mostly unreadable, so this template leans on employer guides.
 
 ## Recognize it

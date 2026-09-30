@@ -15,6 +15,8 @@ url_patterns:
 
 # Jobvite
 
+Compact agent context: `BOARD_CONTEXT.jobvite` in [board-agent-context.ts](../../src/domain/board-agent-context.ts). Unverified, and never sent to a live prompt while this board is unsupported. Promotion rules: [README](README.md#how-to-add-a-lesson).
+
 The thinnest template: the apply form after the consent gate renders client-side and was not observed. Difficulty `medium` is provisional.
 
 ## Recognize it

@@ -17,6 +17,8 @@ url_patterns:
 
 # Greenhouse
 
+Compact agent context: `BOARD_CONTEXT.greenhouse` in [board-agent-context.ts](../../src/domain/board-agent-context.ts), sent to the form agent on every send (at most 10 bullets and 900 characters). Add lessons by the [README](README.md#how-to-add-a-lesson) rules.
+
 ## Recognize it
 
 - Hosted boards: `job-boards.greenhouse.io/<board>` (current) and `boards.greenhouse.io/<board>` (legacy; one board observed to 301 to the new host), plus EU twins. RoleDawn parses all four hosts (`src/server/ingestion/job-reference.ts`).

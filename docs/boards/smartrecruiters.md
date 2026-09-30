@@ -15,6 +15,8 @@ url_patterns:
 
 # SmartRecruiters
 
+Compact agent context: `BOARD_CONTEXT.smartrecruiters` in [board-agent-context.ts](../../src/domain/board-agent-context.ts). Unverified, and never sent to a live prompt while this board is unsupported. Promotion rules: [README](README.md#how-to-add-a-lesson).
+
 ## Recognize it
 
 - Job ads live at `jobs.smartrecruiters.com/<CompanyIdentifier>/<postingId>-<slug>` (Direct observation, Bosch and SmartRecruiters postings). Page title `<Job> | SmartRecruiters`; the apply button reads **I'm interested** (shown twice); share links include LinkedIn and Xing.

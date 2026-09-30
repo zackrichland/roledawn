@@ -14,20 +14,18 @@
 
 .eyebrow {
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
 }
 
 .display {
   color: var(--ink);
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: clamp(30px, 4.4vw, 42px);
   font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.08;
+  letter-spacing: var(--tracking-display);
+  line-height: 1.06;
   margin: 0;
 }
 
@@ -50,8 +48,8 @@
 .sectionTitle h2 {
   color: var(--ink);
   font-size: 15px;
-  font-weight: 750;
-  letter-spacing: -0.005em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-heading);
   margin: 0;
 }
 
@@ -63,9 +61,10 @@
   cursor: pointer;
   font: inherit;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 0;
   text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .sectionTitle a:hover,
@@ -74,7 +73,7 @@
 }
 
 .card {
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -86,7 +85,7 @@
 }
 
 .list {
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -108,19 +107,25 @@
   display: inline-flex;
   font: inherit;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   gap: 8px;
   justify-content: center;
+  letter-spacing: -0.006em;
   line-height: 1;
   min-height: 42px;
   padding: 0 18px;
   text-decoration: none;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
   white-space: nowrap;
 }
 
 .button:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.98);
 }
 
 .button:disabled {
@@ -130,33 +135,40 @@
 
 .primary {
   composes: button;
-  background: var(--midnight);
+  background: var(--gradient-ink);
+  box-shadow: var(--btn-ink-shadow);
   color: #fff;
 }
 
 .primary:hover:not(:disabled) {
-  background: #1d2438;
+  background: var(--gradient-ink-hover);
+  box-shadow: var(--btn-ink-shadow-hover);
 }
 
 .cta {
   composes: button;
-  background: var(--first-light);
+  background: var(--gradient-light);
+  box-shadow: var(--btn-light-shadow);
   color: var(--midnight);
 }
 
 .cta:hover:not(:disabled) {
-  background: #ffc94a;
+  background: var(--gradient-light-hover);
+  box-shadow: var(--btn-light-shadow-hover);
 }
 
 .secondary {
   composes: button;
   background: var(--paper);
   border-color: var(--line-strong);
+  box-shadow: var(--shadow-xs);
   color: var(--ink);
 }
 
 .secondary:hover:not(:disabled) {
-  border-color: var(--ink-soft);
+  background: var(--canvas);
+  border-color: rgb(11 16 32 / 28%);
+  box-shadow: var(--shadow-sm);
 }
 
 .quiet {
@@ -168,7 +180,7 @@
 }
 
 .quiet:hover:not(:disabled) {
-  background: var(--wash);
+  background: rgb(11 16 32 / 5%);
   color: var(--ink);
 }
 
@@ -187,7 +199,7 @@
 .label {
   color: var(--ink-soft);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .hint {
@@ -201,14 +213,22 @@
 .select {
   background: var(--paper);
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   color: var(--ink);
   font: inherit;
   font-size: 15px;
   min-height: 44px;
   padding: 10px 13px;
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
   width: 100%;
+}
+
+.input:hover:not(:focus),
+.textarea:hover:not(:focus),
+.select:hover:not(:focus) {
+  border-color: rgb(11 16 32 / 28%);
 }
 
 .textarea {
@@ -221,7 +241,7 @@
 .textarea:focus,
 .select:focus {
   border-color: var(--ink-soft);
-  box-shadow: 0 0 0 4px rgb(255 209 102 / 38%);
+  box-shadow: 0 0 0 4px var(--focus-halo);
   outline: none;
 }
 
@@ -232,10 +252,11 @@
   color: var(--ink-soft);
   display: inline-flex;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 500;
   gap: 6px;
   line-height: 1;
   padding: 6px 10px;
+  transition: background-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
   white-space: nowrap;
 }
 
@@ -289,13 +310,14 @@
 
 .avatar {
   align-items: center;
-  background: var(--wash);
-  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, var(--wash) 100%);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px var(--line);
   color: var(--ink-soft);
   display: inline-flex;
   flex: none;
-  font-family: var(--font-serif);
-  font-size: 17px;
+  font-family: var(--font-display);
+  font-size: 16px;
   font-weight: 600;
   height: 40px;
   justify-content: center;
@@ -312,17 +334,17 @@
   height: 32px;
   padding: 3px;
   position: relative;
-  transition: background 200ms ease;
+  transition: background var(--dur-base) var(--ease-out);
   width: 56px;
 }
 
 .switch span {
   background: #fff;
   border-radius: 50%;
-  box-shadow: 0 1px 3px rgb(11 16 32 / 25%);
+  box-shadow: 0 1px 2px rgb(11 16 32 / 22%), 0 2px 6px rgb(11 16 32 / 12%);
   display: block;
   height: 26px;
-  transition: transform 220ms cubic-bezier(0.3, 0.7, 0.2, 1), background 200ms ease;
+  transition: transform var(--dur-base) var(--ease-spring), background var(--dur-base) var(--ease-out);
   width: 26px;
 }
 

@@ -18,15 +18,15 @@
 /* Header ------------------------------------------------------------------ */
 
 .top {
-  animation: rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
 }
 
 .top h1 {
   color: var(--ink);
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: clamp(28px, 3.6vw, 36px);
-  font-weight: 800;
-  letter-spacing: -0.035em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
   line-height: 1.1;
   margin: 0;
 }
@@ -39,28 +39,31 @@
 
 .top p strong {
   color: var(--coral-ink);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* Paste bar ----------------------------------------------------------------- */
 
 .paste {
   align-items: center;
-  animation: rise 480ms 60ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  background: var(--paper);
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
+  animation-delay: 60ms;
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line-strong);
-  border-radius: 18px;
-  box-shadow: 0 1px 2px rgb(11 16 32 / 4%), 0 12px 32px -12px rgb(11 16 32 / 14%);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
   display: flex;
   gap: 10px;
   margin-top: 26px;
   padding: 8px 8px 8px 18px;
-  transition: border-color 160ms ease, box-shadow 200ms ease;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
 }
 
 .paste:focus-within {
   border-color: var(--ink-soft);
-  box-shadow: 0 0 0 5px rgb(255 209 102 / 32%), 0 12px 32px -12px rgb(11 16 32 / 18%);
+  box-shadow: 0 0 0 4px var(--focus-halo), var(--shadow);
 }
 
 .pasteIcon {
@@ -86,25 +89,34 @@
 
 .pasteButton {
   align-items: center;
-  background: var(--midnight);
+  background: var(--gradient-ink);
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius);
+  box-shadow: var(--btn-ink-shadow);
   color: #fff;
   cursor: pointer;
   display: inline-flex;
   flex: none;
   font: inherit;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   gap: 8px;
   min-height: 48px;
   padding: 0 20px;
-  transition: transform 140ms ease, background 140ms ease, opacity 140ms ease;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
 }
 
 .pasteButton:hover:not(:disabled) {
-  background: #1b2238;
-  transform: translateY(-1px);
+  background: var(--gradient-ink-hover);
+  box-shadow: var(--btn-ink-shadow-hover);
+}
+
+.pasteButton:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .pasteButton:hover:not(:disabled) svg {
@@ -112,7 +124,7 @@
 }
 
 .pasteButton svg {
-  transition: transform 160ms ease;
+  transition: transform var(--dur-base) var(--ease-spring);
 }
 
 .pasteButton:disabled {
@@ -162,7 +174,7 @@
   display: inline-block;
   height: 18px;
   position: relative;
-  transition: background 180ms ease;
+  transition: background var(--dur-base) var(--ease-out);
   width: 30px;
 }
 
@@ -175,7 +187,7 @@
   left: 2px;
   position: absolute;
   top: 2px;
-  transition: transform 200ms cubic-bezier(0.3, 0.7, 0.2, 1);
+  transition: transform var(--dur-base) var(--ease-spring);
   width: 14px;
 }
 
@@ -188,7 +200,7 @@
 }
 
 .reviewToggle input:focus-visible + .miniSwitch {
-  outline: 3px solid var(--first-light);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -201,11 +213,12 @@
 /* Queue card ---------------------------------------------------------------- */
 
 .queue {
-  animation: rise 520ms 120ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  background: var(--paper);
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
+  animation-delay: 120ms;
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
-  border-radius: 24px;
-  box-shadow: 0 1px 2px rgb(11 16 32 / 3%), 0 24px 48px -28px rgb(11 16 32 / 18%);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
   margin-top: 30px;
   overflow: visible;
 }
@@ -217,7 +230,7 @@
 }
 
 .stat {
-  animation: rise 460ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
   animation-delay: calc(160ms + var(--i, 0) * 60ms);
   display: grid;
   gap: 8px;
@@ -234,7 +247,7 @@
   color: var(--muted);
   display: inline-flex;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   gap: 6px;
 }
 
@@ -242,8 +255,8 @@
   color: var(--ink);
   font-size: 30px;
   font-variant-numeric: tabular-nums;
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
   line-height: 1;
 }
 
@@ -255,11 +268,12 @@
 }
 
 .statusValue strong[data-state="on"] {
-  background: linear-gradient(90deg, var(--ink) 0%, #2d3a73 45%, var(--ink) 90%);
+  animation: sheen 3.6s linear infinite;
+  background: linear-gradient(90deg, var(--ink) 0%, #3a4a8f 50%, var(--ink) 100%);
   background-clip: text;
   background-size: 220% 100%;
   color: transparent;
-  animation: sheen 3.2s linear infinite;
+  -webkit-background-clip: text;
 }
 
 .switch {
@@ -270,17 +284,17 @@
   flex: none;
   height: 28px;
   padding: 3px;
-  transition: background 200ms ease;
+  transition: background var(--dur-base) var(--ease-out);
   width: 48px;
 }
 
 .switch span {
   background: #fff;
   border-radius: 50%;
-  box-shadow: 0 1px 3px rgb(11 16 32 / 25%);
+  box-shadow: 0 1px 2px rgb(11 16 32 / 22%), 0 2px 6px rgb(11 16 32 / 12%);
   display: block;
   height: 22px;
-  transition: transform 220ms cubic-bezier(0.3, 0.7, 0.2, 1), background 200ms ease;
+  transition: transform var(--dur-base) var(--ease-spring), background var(--dur-base) var(--ease-out);
   width: 22px;
 }
 
@@ -294,7 +308,7 @@
 }
 
 .switch:focus-visible {
-  outline: 3px solid var(--first-light);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -304,17 +318,18 @@
 }
 
 .confirm {
-  animation: pop 180ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  background: var(--paper);
+  animation: pop var(--dur-base) var(--ease-spring) backwards;
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: 0 24px 48px -16px rgb(11 16 32 / 28%);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   display: grid;
   gap: 12px;
   left: 16px;
   padding: 16px;
   position: absolute;
   top: calc(100% - 6px);
+  transform-origin: top left;
   width: min(340px, calc(100vw - 48px));
   z-index: 20;
 }
@@ -334,18 +349,34 @@
 .confirmPrimary,
 .confirmQuiet {
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font: inherit;
   font-size: 13.5px;
-  font-weight: 700;
+  font-weight: 600;
   min-height: 36px;
   padding: 0 14px;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+.confirmPrimary:active,
+.confirmQuiet:active {
+  transform: scale(0.98);
 }
 
 .confirmPrimary {
-  background: var(--midnight);
+  background: var(--gradient-ink);
+  box-shadow: var(--btn-ink-shadow);
   color: #fff;
+}
+
+.confirmPrimary:hover {
+  background: var(--gradient-ink-hover);
+  box-shadow: var(--btn-ink-shadow-hover);
 }
 
 .confirmQuiet {
@@ -354,7 +385,7 @@
 }
 
 .confirmQuiet:hover {
-  background: var(--wash);
+  background: rgb(11 16 32 / 5%);
   color: var(--ink);
 }
 
@@ -372,14 +403,14 @@
 .tableHead h2 {
   color: var(--ink);
   font-size: 17px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-heading);
   margin: 0;
 }
 
 .segmented {
   background: var(--wash);
-  border-radius: 12px;
+  border-radius: var(--radius);
   display: inline-flex;
   gap: 2px;
   padding: 3px;
@@ -395,28 +426,38 @@
   display: inline-flex;
   font: inherit;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   gap: 6px;
   min-height: 32px;
   padding: 0 12px;
-  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  transition:
+    background var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
 }
 
 .segmented button:hover {
   color: var(--ink);
 }
 
+.segmented button:active {
+  transform: scale(0.97);
+}
+
 .segmented button[aria-selected="true"] {
   background: var(--paper);
-  box-shadow: 0 1px 2px rgb(11 16 32 / 10%);
+  box-shadow: 0 1px 2px rgb(11 16 32 / 10%), 0 0 0 0.5px rgb(11 16 32 / 6%);
   color: var(--ink);
 }
 
 .count {
-  background: var(--coral);
+  background: var(--coral-ink);
   border-radius: 999px;
   color: #fff;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   line-height: 1;
   padding: 3px 6px;
 }
@@ -444,17 +485,16 @@
 .table thead th {
   border-bottom: 1px solid var(--line);
   color: var(--faint);
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
   padding: 10px 16px;
   text-align: left;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .row {
-  animation: rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: rise var(--dur-slow) var(--ease-out) backwards;
   animation-delay: calc(220ms + var(--i, 0) * 45ms);
   cursor: pointer;
 }
@@ -462,7 +502,7 @@
 .row td {
   border-bottom: 1px solid var(--line);
   padding: 14px 16px;
-  transition: background 160ms ease;
+  transition: background var(--dur-fast) var(--ease-out);
   vertical-align: middle;
 }
 
@@ -471,19 +511,19 @@
 }
 
 .row:hover td {
-  background: #f8f9fd;
+  background: rgb(11 16 32 / 3%);
 }
 
 .row td:first-child {
-  border-radius: 14px 0 0 14px;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
 }
 
 .row td:last-child {
-  border-radius: 0 14px 14px 0;
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 }
 
 .row[data-fresh="true"] td {
-  animation: flash 2.4s ease-out both;
+  animation: flash 2.4s ease-out backwards;
 }
 
 .company {
@@ -512,18 +552,20 @@
 .company strong {
   color: var(--ink);
   font-size: 14.5px;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: var(--tracking-body);
 }
 
 .logo {
   align-items: center;
   background: hsl(var(--h, 220) 70% 94%);
-  border-radius: 12px;
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px rgb(11 16 32 / 5%);
   color: hsl(var(--h, 220) 45% 32%);
   display: inline-flex;
   flex: none;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 600;
   height: 38px;
   justify-content: center;
   width: 38px;
@@ -531,15 +573,14 @@
 
 .auto {
   align-self: start;
-  background: #fff6dc;
+  background: var(--amber-wash);
   border-radius: 6px;
   color: var(--amber-ink);
-  font-size: 10.5px;
+  font-size: 11px;
   font-style: normal;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
   padding: 2px 6px;
-  text-transform: uppercase;
   width: fit-content;
 }
 
@@ -547,7 +588,7 @@
   color: var(--ink);
   display: block;
   font-size: 14.5px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.35;
   overflow: hidden;
   text-decoration: none;
@@ -557,6 +598,7 @@
 
 .role:hover {
   text-decoration: underline;
+  text-decoration-color: rgb(11 16 32 / 35%);
   text-underline-offset: 3px;
 }
 
@@ -578,9 +620,10 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   gap: 7px;
   padding: 5px 11px 5px 9px;
+  transition: background-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
   white-space: nowrap;
 }
 
@@ -589,6 +632,7 @@
   display: inline-block;
   height: 7px;
   position: relative;
+  transition: background-color var(--dur-base) var(--ease-out);
   width: 7px;
 }
 
@@ -616,6 +660,7 @@
 .when {
   color: var(--muted);
   font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -625,15 +670,19 @@
 
 .action {
   align-items: center;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   color: var(--ink-soft);
   display: inline-flex;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   gap: 4px;
   padding: 8px 10px;
   text-decoration: none;
-  transition: background 140ms ease, color 140ms ease;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
   white-space: nowrap;
 }
 
@@ -644,13 +693,17 @@ button.action {
   font-family: inherit;
 }
 
+.action:active {
+  transform: scale(0.97);
+}
+
 .action svg {
-  transition: transform 160ms ease;
+  transition: transform var(--dur-base) var(--ease-spring);
 }
 
 .row:hover .action {
   background: var(--paper);
-  box-shadow: 0 1px 2px rgb(11 16 32 / 8%);
+  box-shadow: 0 1px 2px rgb(11 16 32 / 8%), 0 0 0 0.5px rgb(11 16 32 / 6%);
   color: var(--ink);
 }
 
@@ -677,6 +730,8 @@ button.action {
 .empty strong {
   color: var(--ink);
   font-size: 16px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-body);
 }
 
 .empty span {
@@ -690,25 +745,33 @@ button.action {
   color: var(--ink);
   cursor: pointer;
   font: inherit;
-  font-weight: 700;
+  font-weight: 600;
   padding: 0;
   text-decoration: underline;
+  text-decoration-color: rgb(11 16 32 / 35%);
   text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-fast) var(--ease-out);
+}
+
+.empty a:hover,
+.link:hover {
+  text-decoration-color: currentColor;
 }
 
 /* Needs-you panel ----------------------------------------------------------- */
 
 .sheetBackdrop {
-  animation: fade 200ms ease both;
-  background: rgb(11 16 32 / 32%);
-  backdrop-filter: blur(2px);
+  animation: fade var(--dur-base) var(--ease-out) backwards;
+  background: rgb(11 16 32 / 28%);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+  backdrop-filter: blur(6px) saturate(140%);
   inset: 0;
   position: fixed;
   z-index: 40;
 }
 
 .sheet {
-  animation: slideIn 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: slideIn var(--dur-slow) var(--ease-spring) backwards;
   background: var(--canvas, var(--paper));
   border-left: 1px solid var(--line);
   bottom: 0;
@@ -737,7 +800,8 @@ button.action {
 .sheetHead h2 {
   color: var(--ink);
   font-size: 21px;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-heading);
   line-height: 1.25;
   margin: 2px 0 0;
 }
@@ -745,8 +809,8 @@ button.action {
 .sheetEyebrow {
   color: var(--muted);
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
   margin: 0;
 }
 
@@ -755,19 +819,26 @@ button.action {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 999px;
+  box-shadow: var(--shadow-xs);
   color: var(--ink);
   cursor: pointer;
   display: inline-flex;
   flex: none;
   height: 36px;
   justify-content: center;
-  transition: background 160ms ease, transform 160ms ease;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-base) var(--ease-spring);
   width: 36px;
 }
 
 .sheetClose:hover {
   background: var(--wash);
   transform: rotate(90deg);
+}
+
+.sheetClose:active {
+  transform: rotate(90deg) scale(0.94);
 }
 
 .sheetBody {
@@ -783,10 +854,10 @@ button.action {
 }
 
 .sheetSkeleton {
-  animation: sheen 1.4s linear infinite;
+  animation: sheen 1.6s linear infinite;
   background: linear-gradient(90deg, var(--wash) 0%, var(--paper) 40%, var(--wash) 80%);
   background-size: 220% 100%;
-  border-radius: var(--radius-lg, 18px);
+  border-radius: var(--radius-lg, 16px);
   height: 180px;
 }
 
@@ -795,7 +866,7 @@ button.action {
   color: var(--ink);
   display: inline-flex;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   gap: 6px;
   margin-top: auto;
   text-decoration: none;
@@ -803,32 +874,29 @@ button.action {
 
 .sheetLink:hover {
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* Motion -------------------------------------------------------------------- */
 
 @keyframes fade {
   from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 @keyframes slideIn {
   from { transform: translateX(104%); }
-  to { transform: none; }
 }
 
 @keyframes rise {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; transform: translateY(var(--rise, 8px)); }
 }
 
 @keyframes pop {
-  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
 }
 
 @keyframes flash {
-  0% { background: rgb(255 209 102 / 45%); }
+  0% { background: rgb(255 209 102 / 40%); }
   100% { background: transparent; }
 }
 

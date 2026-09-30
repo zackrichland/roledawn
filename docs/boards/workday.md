@@ -16,6 +16,8 @@ url_patterns:
 
 # Workday
 
+Compact agent context: `BOARD_CONTEXT.workday` in [board-agent-context.ts](../../src/domain/board-agent-context.ts). Unverified, and never sent to a live prompt while this board is unsupported. Promotion rules: [README](README.md#how-to-add-a-lesson).
+
 "Direct observation" below means read-only visits on 2026-09-30 to NVIDIA (`wd5`), Salesforce (`wd12`), Boeing (`wd1`) and Northrop Grumman (`wd1`). No account was created and nothing was typed. Community IDs come from open-source bots and drift by tenant and release.
 
 ## Recognize it

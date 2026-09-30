@@ -16,6 +16,8 @@ url_patterns:
 
 # Workable
 
+Compact agent context: `BOARD_CONTEXT.workable` in [board-agent-context.ts](../../src/domain/board-agent-context.ts). Unverified, and never sent to a live prompt while this board is unsupported. Promotion rules: [README](README.md#how-to-add-a-lesson).
+
 ## Recognize it
 
 - Careers page `apply.workable.com/<subdomain>/`; jobs at `.../j/<SHORTCODE>/` with the form at `.../apply/`; share link `apply.workable.com/j/<SHORTCODE>`. Sampled shortcodes were 10-character uppercase hex (Direct observation).

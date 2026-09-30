@@ -15,6 +15,8 @@ url_patterns:
 
 # iCIMS
 
+Compact agent context: `BOARD_CONTEXT.icims` in [board-agent-context.ts](../../src/domain/board-agent-context.ts). Unverified, and never sent to a live prompt while this board is unsupported. Promotion rules: [README](README.md#how-to-add-a-lesson).
+
 ## Recognize it
 
 - Portal hosts: `careers-<company>.icims.com`, `globalcareers-<company>.icims.com` and other prefixes before `.icims.com` (Community scrapers).

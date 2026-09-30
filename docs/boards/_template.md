@@ -9,6 +9,8 @@ url_patterns:
 
 # <Board name>
 
+Compact agent context: `BOARD_CONTEXT.<id>` in [board-agent-context.ts](../../src/domain/board-agent-context.ts). Add the board there (unverified until an adapter exists) in the same change as this file.
+
 <!--
 Rules for filling this template (from AGENTS.md):
 - Label anything not obvious as Verified, Inference, Recommendation, Hypothesis,
@@ -65,7 +67,7 @@ Rules for filling this template (from AGENTS.md):
 
 ## Known quirks
 
--
+- One dated line per lesson: `YYYY-MM-DD: <what the page did>; <what the agent should do> (evidence: ...)`. Promotion rules: [README](README.md#how-to-add-a-lesson).
 
 ## RoleDawn status and gaps
 
