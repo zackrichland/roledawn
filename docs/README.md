@@ -34,6 +34,7 @@ override accepted product or safety contracts.
 ### Engineering
 
 1. [AGENTS.md](../AGENTS.md): commands, repo map, invariants and gotchas
+1. [Review brief, 2026-09-28 to 2026-09-30](execution/review-brief-2026-09-30.md)
 1. [Founder directives](execution/founder-directives.md)
 1. [Application playbook](execution/application-playbook.md)
 1. [ATS board templates](boards/README.md)
