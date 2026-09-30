@@ -176,3 +176,40 @@ test("protocol drift reports a static stage without exposing an answer", () => {
     assert.equal(protocol.ready(), false);
   }
 });
+
+test("autosave schema diagnostics distinguish action and each field property without accepting drift", () => {
+  const cases: readonly [string, (value: ReturnType<typeof form>) => unknown][] = [
+    ["FORM_SCHEMA_ACTION_DRIFT", value => ({ ...value, formControls: [{ identifier: id(99), title: "Submit" }] })],
+    ["FORM_SCHEMA_SET_DRIFT", value => { value.sections[0].fieldEntries.pop(); return value; }],
+    ["FORM_SCHEMA_ORDER_DRIFT", value => { value.sections[0].fieldEntries.reverse(); return value; }],
+    ["FORM_SCHEMA_TYPE_DRIFT", value => { value.sections[0].fieldEntries[0].field.type = "Email"; return value; }],
+    ["FORM_SCHEMA_MULTI_DRIFT", value => { value.sections[0].fieldEntries[0].field.isMany = true; return value; }],
+    ["FORM_SCHEMA_OPTIONS_DRIFT", value => { Object.assign(value.sections[0].fieldEntries[0].field, { selectableValues: [{ label: "Synthetic", value: "synthetic" }] }); return value; }],
+    ["FORM_SCHEMA_REQUIRED_DRIFT", value => { value.sections[0].fieldEntries[0].isRequired = false; return value; }],
+    ["FORM_SCHEMA_HIDDEN_DRIFT", value => { value.sections[0].fieldEntries[0].isHidden = true; return value; }],
+  ];
+  for (const [reason, mutate] of cases) {
+    const protocol = initialized();
+    protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+    const request = save("_systemfield_name", "Alex Candidate");
+    protocol.authorize(request);
+    assert.throws(() => protocol.observe(request, { data: { setFormValue: mutate(form(2, { _systemfield_name: "Alex Candidate" })) } }),
+      { message: "DELIVERY_ASHBY_" + reason });
+    assert.equal(protocol.ready(), false);
+    assert.equal(protocol.authorize(submission(), undefined, true), null);
+  }
+});
+
+test("one bounded static diagnostic reports simultaneous schema changes", () => {
+  const protocol = initialized();
+  protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+  const request = save("_systemfield_name", "Alex Candidate"); protocol.authorize(request);
+  const response = form(2, { _systemfield_name: "Alex Candidate" });
+  response.formControls[0].identifier = id(99);
+  response.sections[0].fieldEntries[0].isRequired = false;
+  response.sections[0].fieldEntries[0].isHidden = true;
+  response.sections[0].fieldEntries.reverse();
+  assert.throws(() => protocol.observe(request, { data: { setFormValue: response } }),
+    { message: "DELIVERY_ASHBY_FORM_SCHEMA_ACTION_ORDER_REQUIRED_HIDDEN_DRIFT" });
+  assert.equal(protocol.ready(), false);
+});

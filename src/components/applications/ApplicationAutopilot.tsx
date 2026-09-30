@@ -92,6 +92,12 @@ function AutopilotForm({ applicationId, aggregateVersion, revisionId, packetHash
   }
   const controllable = view && ["QUEUED","RUNNING","WAITING_ANSWERS","PAUSED","FAILED_SAFE"].includes(view.status);
   const presentation = presentAutopilotStatus(view?.status, Boolean(view?.verification));
+  const failureCopy = view?.status === "FAILED_SAFE" && view.failureCode
+    ? NOT_ACCEPTED_COPY[view.failureCode] ?? FAILURE_COPY[view.failureCode]
+      ?? (view.failureCode.startsWith("DELIVERY_ASHBY_")
+        ? "RoleDawn couldn’t verify the employer’s form before final submission. You can try again or finish on the employer’s site using your documents."
+        : null)
+    : null;
   return <section className={styles.card} aria-labelledby="application-autopilot-heading">
     <h2 id="application-autopilot-heading">{presentation.heading}</h2>
     {view ? (view.verification ? null : <p role="status">{presentation.detail}</p>) : <>
@@ -101,8 +107,7 @@ function AutopilotForm({ applicationId, aggregateVersion, revisionId, packetHash
       </>}
       <button type="button" disabled={!canStart || Boolean(startBlockedReason) || pending || saved} aria-describedby={startBlockedReason ? "application-autopilot-unavailable" : undefined} onClick={delegate}>{pending ? "Starting…" : "Apply for me"}</button>
     </>}
-    {view?.status === "FAILED_SAFE" && view.failureCode && (NOT_ACCEPTED_COPY[view.failureCode] ?? FAILURE_COPY[view.failureCode])
-      ? <p>{NOT_ACCEPTED_COPY[view.failureCode] ?? FAILURE_COPY[view.failureCode]}</p> : null}
+    {failureCopy ? <p>{failureCopy}</p> : null}
     {view?.verification ? <form onSubmit={verify}>
       <p role="status">{view.verification.retry
         ? "That code didn’t work, so the employer sent a new one. Enter the newest code from your inbox."

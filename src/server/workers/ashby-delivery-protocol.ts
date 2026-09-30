@@ -65,7 +65,6 @@ function readForm(value: unknown): Form {
   }
   return { id: form.id, definition: form.sourceFormDefinitionId, action: String(object(form.formControls[0])!.identifier), fields };
 }
-function identity(form: Form) { return { id: form.id, definition: form.definition, action: form.action, fields: [...form.fields.values()].map((field) => ({ path: field.path, type: field.type, many: field.many, options: field.options, required: field.required, hidden: field.hidden })) }; }
 type FieldAction = { form: Form; field: Field; expected: unknown; admitted: boolean; acknowledged: boolean; approved: AgentFieldValue; match?: OptionMatch };
 type UploadAction = { form: Form; field: Field; artifact: MaterializedApplicationArtifact; handleRequested: boolean; handle?: string; url?: string; fields?: Record<string, string>; bytesAcknowledged: boolean; attachRequested: boolean; acknowledged: boolean };
 
@@ -88,7 +87,23 @@ export function createAshbyProtocol(board: string, jobId: string) {
     const next = readForm(raw);
     if (next.id !== expected.form.id) return fail("FORM_RENDER_ID_DRIFT");
     if (next.definition !== expected.form.definition) return fail("FORM_DEFINITION_ID_DRIFT");
-    if (!equal(identity(next), identity(expected.form))) return fail("FORM_SCHEMA_DRIFT");
+    const dimensions = new Set<string>();
+    if (next.action !== expected.form.action) dimensions.add("ACTION");
+    const previousPaths = [...expected.form.fields.keys()], nextPaths = [...next.fields.keys()];
+    if (previousPaths.length !== nextPaths.length || previousPaths.some(path => !next.fields.has(path))) dimensions.add("SET");
+    else if (!equal(previousPaths, nextPaths)) dimensions.add("ORDER");
+    for (const [path, prior] of expected.form.fields) {
+      const actual = next.fields.get(path);
+      if (!actual) continue;
+      if (actual.type !== prior.type) dimensions.add("TYPE");
+      if (actual.many !== prior.many) dimensions.add("MULTI");
+      if (!equal(actual.options, prior.options)) dimensions.add("OPTIONS");
+      if (actual.required !== prior.required) dimensions.add("REQUIRED");
+      if (actual.hidden !== prior.hidden) dimensions.add("HIDDEN");
+    }
+    // Bounded static dimensions reveal simultaneous schema changes without
+    // logging field paths, labels, answers, identifiers or response content.
+    if (dimensions.size) return fail("FORM_SCHEMA_" + ["ACTION", "SET", "ORDER", "TYPE", "MULTI", "OPTIONS", "REQUIRED", "HIDDEN"].filter(key => dimensions.has(key)).join("_") + "_DRIFT");
     for (const [path, prior] of expected.form.fields) {
       const actual = next.fields.get(path)!.value;
       if (path === expected.field.path) {
