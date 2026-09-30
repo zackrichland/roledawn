@@ -305,16 +305,17 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   const uploadChecks = new Map<string, Readonly<{ stepId: string; selector: string; filename: string }>>();
   const uploadedArtifacts = new Map<string, MaterializedApplicationArtifact>();
 
+  function isPassiveFrameUrl(value: string): boolean {
+    if (!policy.greenhouse && !ashby) return false;
+    // A DOM iframe.src can be known before Playwright's frame.url(). Evaluate
+    // that exact URL against the adapter's observed key, never a stale list.
+    let url: URL;
+    try { url = new URL(value); } catch { return false; }
+    return url.origin === "https://www.recaptcha.net" && ["/recaptcha/enterprise/anchor", ...(ashby ? ["/recaptcha/api2/anchor"] : [])].includes(url.pathname) &&
+      url.searchParams.get("size") === "invisible" && recaptchaKeys.has(url.searchParams.get("k") ?? "");
+  }
   function passiveFrameUrls(): string[] {
-    if (!policy.greenhouse && !ashby) return [];
-    return page.frames().map((frame) => frame.url()).filter((value) => {
-      // Playwright exposes an empty URL between frame attachment and navigation.
-      // That frame supplies no passive-CAPTCHA permission until its URL is known.
-      let url: URL;
-      try { url = new URL(value); } catch { return false; }
-      return url.origin === "https://www.recaptcha.net" && ["/recaptcha/enterprise/anchor", ...(ashby ? ["/recaptcha/api2/anchor"] : [])].includes(url.pathname) &&
-        url.searchParams.get("size") === "invisible" && recaptchaKeys.has(url.searchParams.get("k") ?? "");
-    });
+    return page.frames().map((frame) => frame.url()).filter(isPassiveFrameUrl);
   }
 
   function isPresign(request: Request): boolean {
@@ -581,7 +582,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       activeSearch = { query, signal };
       try { return await work(); } finally { activeSearch = null; }
     },
-    passiveFrameUrls,
+    passiveFrameUrls, isPassiveFrameUrl,
     async open(signal?: AbortSignal) {
       assertActive(signal);
       if (page.url() !== "about:blank" && canonical(page.url()) !== canonical(policy.startUrl) && !await currentStep()) throw new Error("DELIVERY_RESTORE_DESTINATION_INVALID");

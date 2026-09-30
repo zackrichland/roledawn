@@ -29,7 +29,10 @@ async function fixture(mode: AshbyFixtureMode, run: (data: {
   const runtime = await createApplicationDeliveryBrowser({ page, policy: server.policy, timeoutMs: 1500,
    hooks: { async begin() { assert.equal(server.requests.submits, 0); begins++; return { attemptId: "fixture-attempt", idempotencyKey: "once" }; } },
    requestTransport: async (route) => {
-    if (route.request().url() === "https://fixture-bucket.s3.amazonaws.com/") {
+    if (new URL(route.request().url()).origin === "https://www.recaptcha.net") {
+      // Synthetic provider document only; these tests never run a CAPTCHA SDK.
+      await route.fulfill({ status: 200, contentType: "text/html", headers: { "access-control-allow-origin": "*" }, body: "<!doctype html><html><body></body></html>" });
+    } else if (route.request().url() === "https://fixture-bucket.s3.amazonaws.com/") {
       if (route.request().method() === "POST") server.requests.uploadBytes.push(route.request().postDataBuffer()!);
       await route.fulfill({ status: 204, headers: { "access-control-allow-origin": new URL(server.policy.startUrl).origin, "access-control-allow-methods": "POST", "access-control-allow-headers": "*" } });
     } else await route.continue();
@@ -219,5 +222,36 @@ test("transient frames supply no controls and their later foreign origin blocks 
   assert.equal(data.requests.submits, 0);
   frameUrl = "invalid-url";
   assert.equal((await observer.inspect()).takeoverReason, "AGENTS_FILL_CROSS_ORIGIN_FRAME_TAKEOVER");
+ });
+});
+
+test("a late invisible anchor is checked against live adapter authority even before its frame URL exists", options, async () => {
+ await fixture("normal", async data => {
+  const key = "6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y";
+  const anchor = "https://www.recaptcha.net/recaptcha/api2/anchor?size=invisible&k=" + key;
+  const observer = createAgentBrowserTools(data.page, data.runtime.policy.startUrl, { ashbyLabels: true, isPermittedPassiveFrameUrl: data.runtime.isPassiveFrameUrl });
+  assert.equal(data.runtime.isPassiveFrameUrl(anchor), false, "an unseen key grants no permission");
+  assert.deepEqual(data.runtime.passiveFrameUrls(), []);
+  await data.page.evaluate(key => fetch("https://www.recaptcha.net/recaptcha/api.js?render=" + key), key);
+  await data.page.evaluate(src => { const iframe = document.createElement("iframe"); iframe.style.display = "none"; iframe.src = src; document.body.append(iframe); }, anchor);
+  assert.equal((await observer.inspect()).takeoverReason, null, "observer created before the anchor must use current authority");
+  const pendingFrame = { url: () => "", locator() { throw new Error("TRANSIENT_FRAME_MUST_NOT_SUPPLY_CONTROLS"); } };
+  const pendingPage = new Proxy(data.page, { get(target, property) {
+   if (property === "frames") return () => [target.mainFrame(), pendingFrame];
+   const value = Reflect.get(target, property); return typeof value === "function" ? value.bind(target) : value;
+  } });
+  const pendingObserver = createAgentBrowserTools(pendingPage, data.runtime.policy.startUrl, { ashbyLabels: true, isPermittedPassiveFrameUrl: data.runtime.isPassiveFrameUrl });
+  assert.equal((await pendingObserver.inspect()).takeoverReason, null, "DOM src supplies the same exact approved URL during frame navigation");
+  assert.equal(await pageShowsCaptchaChallenge(data.page, data.runtime.passiveFrameUrls()), false);
+  for (const src of [anchor.replace(key, "unreviewed-key"), anchor.replace("size=invisible", "size=normal"), anchor.replace("/anchor?", "/bframe?"), anchor.replace("www.recaptcha.net", "unreviewed.example")]) {
+   assert.equal(data.runtime.isPassiveFrameUrl(src), false);
+   await data.page.locator("iframe").evaluate((element, src) => { (element as HTMLIFrameElement).src = src; }, src);
+   assert.equal((await pendingObserver.inspect()).takeoverReason, "APPLICATION_FILL_CAPTCHA_TAKEOVER");
+  }
+  await data.page.locator("iframe").evaluate((element, src) => { (element as HTMLIFrameElement).src = src; (element as HTMLElement).style.cssText = "display:block;width:400px;height:400px"; }, anchor.replace("/anchor?", "/bframe?"));
+  assert.equal((await pendingObserver.inspect()).takeoverReason, "APPLICATION_FILL_CAPTCHA_TAKEOVER");
+  assert.equal(await pageShowsCaptchaChallenge(pendingPage, []), true, "a visible challenge remains a stop");
+  assert.equal(data.begins(), 0);
+  assert.equal(data.requests.submits, 0);
  });
 });

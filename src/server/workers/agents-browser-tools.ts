@@ -217,6 +217,8 @@ async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = fals
 /** Fixed browser operations only. No model-supplied script, selector, URL or click. */
 export function createAgentBrowserTools(page: Page, destinationUrl: string, options?: Readonly<{
   permittedPassiveFrameUrls?: readonly string[]; allowReactSelectDisplay?: boolean; leverLabels?: boolean; ashbyLabels?: boolean;
+  /** Delivery validates each current DOM/frame URL against its observed CAPTCHA key. */
+  isPermittedPassiveFrameUrl?: (url: string) => boolean;
   /** Only when the delivery policy permits the page's own search lookups. */
   remoteSearch?: boolean;
   /** The approved field semantic whose value this site's lookup may receive. */
@@ -237,6 +239,8 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   }
   const expectedOrigin = destination.origin;
   const ashbyLabels = options?.ashbyLabels === true;
+  const permitsPassiveFrame = (url: string) => options?.isPermittedPassiveFrameUrl
+    ? options.isPermittedPassiveFrameUrl(url) : options?.permittedPassiveFrameUrls?.includes(url) === true;
   // Reading a React Select menu means opening it: about a dozen browser round
   // trips per control, on every inspection. A closed menu whose visible state
   // and surrounding form are unchanged keeps its last verified read. Any
@@ -273,7 +277,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
         continue;
       }
       if (frameUrl !== "about:blank" && frameOrigin !== expectedOrigin) {
-        if (options?.permittedPassiveFrameUrls?.includes(frameUrl)) continue;
+        if (permitsPassiveFrame(frameUrl)) continue;
         // hCaptcha's own documents are judged by their iframe's visibility below.
         if (options?.invisibleHcaptcha && isHcaptchaFrameUrl(frameUrl)) continue;
         if (/captcha|turnstile/iu.test(frameUrl)) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
@@ -286,9 +290,12 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
             ? !/^https:\/\/newassets\.hcaptcha\.com\/captcha\/v1\/[A-Za-z0-9._-]{1,80}\/static\/hcaptcha\.html(?:[?#]|$)/u.test(element.src)
             : element.classList.contains("g-recaptcha") || element.classList.contains("cf-turnstile")));
         if (foreignCaptcha || await frameShowsCaptchaChallenge(frame)) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
-      } else if (await frame.locator('iframe[src*="captcha"], iframe[src*="turnstile"], [data-sitekey]').evaluateAll((elements, permitted) =>
-        elements.some((element) => !(element instanceof HTMLIFrameElement) || !permitted.includes(element.src)), [...options?.permittedPassiveFrameUrls ?? []])) {
-        takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
+      } else {
+        // Validate URLs from this DOM snapshot even if their Playwright frames
+        // have not navigated yet. A widget or any unapproved URL still stops.
+        const captchaUrls = await frame.locator('iframe[src*="captcha"], iframe[src*="turnstile"], [data-sitekey]').evaluateAll((elements) =>
+          elements.map((element) => element instanceof HTMLIFrameElement ? element.src : null));
+        if (captchaUrls.some(url => url === null || !permitsPassiveFrame(url))) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
       }
       navigationRequired ||= await frame.locator("button, input[type=button], a[role=button]").evaluateAll((elements) =>
         elements.some((element) => {
