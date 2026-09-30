@@ -36,15 +36,25 @@ const MAX_DETAIL_BYTES = 3_500;
 export function errorDetail(error: unknown): Record<string, string> {
   if (!(error instanceof Error)) return { error: typeof error };
   const status = (error as { status?: unknown }).status;
+  // Domain errors keep a stable code beside a friendly message.
+  const code = (error as { code?: unknown }).code;
   const firstLine = error.message.split("\n")[0]!.trim();
   const timeout = /^((?:page|locator|frame|browserContext|browser|elementHandle)\.[A-Za-z]+): (Timeout \d+ms exceeded)/u.exec(firstLine);
   const network = /\bnet::ERR_[A-Z_]+/u.exec(firstLine);
   const safe = /^[A-Z][A-Z0-9_]{2,119}$/u.test(firstLine) ? firstLine : timeout ? `${timeout[1]}: ${timeout[2]}` : network ? network[0] : null;
   return {
     error: (error.name || "Error").slice(0, 60),
+    ...(typeof code === "string" && CODE.test(code) ? { code } : {}),
     ...(safe ? { message: safe } : { messageSha256: createHash("sha256").update(error.message).digest("hex").slice(0, 12), messageLength: String(error.message.length) }),
     ...(typeof status === "number" ? { status: String(status) } : {}),
   };
+}
+
+/** The error's stable code (its `code`, or a code-like message), else the fallback. */
+export function errorCode(error: unknown, fallback: string): string {
+  const code = error instanceof Error ? (error as { code?: unknown }).code : undefined;
+  if (typeof code === "string" && CODE.test(code)) return code;
+  return error instanceof Error && CODE.test(error.message) ? error.message : fallback;
 }
 
 export async function recordWorkerEvent(database: EventDatabase, event: WorkerEvent): Promise<void> {

@@ -1,4 +1,4 @@
--- Local PGlite check for 20260930050000_standing_answers.sql.
+-- Local PGlite check for 20260930050000_standing_answers.sql and 20260930060000_standing_answers_recheck.sql.
 --   node scripts/migration-harness.mjs supabase/checks/standing_answers.sql
 -- Synthetic rows only; everything is rolled back. Worker calls run as service_role.
 begin;
@@ -74,7 +74,7 @@ begin
 end $$;
 
 do $check$
-declare who jsonb:=pg_temp.candidate(); stranger jsonb:=pg_temp.candidate(); run jsonb; later jsonb; v_gpa uuid; v_onsite uuid; v_other uuid; v_result jsonb; v_count integer;
+declare who jsonb:=pg_temp.candidate(); stranger jsonb:=pg_temp.candidate(); run jsonb; later jsonb; other jsonb; v_gpa uuid; v_onsite uuid; v_other uuid; v_result jsonb; v_count integer;
   gpa jsonb:=pg_temp.question('What were your undergrad and grad school (if applicable) GPAs?','MULTI_SELECT','[{"label":"3.4 - 3.59","value":"g-0"},{"label":"3.6 - 3.79","value":"g-1"}]');
   onsite jsonb:=pg_temp.question('Are you able to work 5 days on-site in Tempe, Arizona?','SINGLE_SELECT','[{"label":"Yes","value":"o-0"},{"label":"No","value":"o-1"}]');
   sensitive jsonb:=pg_temp.question('Gender','SINGLE_SELECT','[{"label":"Man","value":"s-0"},{"label":"Decline","value":"s-1"}]')||'{"reasonCode":"SENSITIVE_REQUIRES_CANDIDATE"}';
@@ -113,11 +113,12 @@ begin
   if (select status from public.application_autopilots where id=(run->>'autopilot')::uuid)<>'RUNNING' then raise exception 'CHECK_STATUS_CHANGED'; end if;
   insert into standing_answer_checks values('worker_records_labeled_answers_without_changing_status', true);
 
-  -- Refused: a sensitive question, an option not on the form, another candidate's answer as basis, no basis.
+  -- Refused: a sensitive question resting on a non-authorization fact, an option not on the form,
+  -- another candidate's answer as basis, no basis.
   execute 'set local role service_role';
   begin
     perform public.record_application_autopilot_standing_answers((run->>'autopilot')::uuid,(run->>'lease')::uuid,
-      jsonb_build_array(jsonb_build_object('descriptor',sensitive,'value','"s-1"'::jsonb,'basis',jsonb_build_array(v_gpa))));
+      jsonb_build_array(jsonb_build_object('descriptor',sensitive,'value','"s-1"'::jsonb,'basis',jsonb_build_array('fact:location.city'))));
     raise exception 'CHECK_SENSITIVE_ACCEPTED';
   exception when invalid_parameter_value then null; end;
   begin
@@ -151,6 +152,50 @@ begin
   execute 'reset role';
   if jsonb_array_length(v_result)<>0 then raise exception 'CHECK_STANDING_ANSWER_REMEMBERED %', v_result; end if;
   insert into standing_answer_checks values('standing_answers_are_not_remembered', true);
+
+  -- A sensitive work-authorization question may rest on the work-authorization fact or the candidate's own standing answer.
+  later:=pg_temp.running(who);
+  execute 'set local role service_role';
+  v_result:=public.record_application_autopilot_standing_answers((later->>'autopilot')::uuid,(later->>'lease')::uuid, jsonb_build_array(
+    jsonb_build_object('descriptor',pg_temp.question('Will you require sponsorship?','SINGLE_SELECT','[{"label":"Yes","value":"y"},{"label":"No","value":"n"}]')||'{"reasonCode":"SENSITIVE_REQUIRES_CANDIDATE"}',
+      'value','"n"'::jsonb,'basis',jsonb_build_array('fact:work_authorization.us.sponsorship_required')),
+    jsonb_build_object('descriptor',pg_temp.question('Are you at least 18 years of age?','SINGLE_SELECT','[{"label":"Yes","value":"y"},{"label":"No","value":"n"}]')||'{"reasonCode":"SENSITIVE_REQUIRES_CANDIDATE"}',
+      'value','"y"'::jsonb,'basis',jsonb_build_array(v_onsite))));
+  execute 'reset role';
+  if jsonb_array_length(v_result)<>2 then raise exception 'CHECK_SENSITIVE_WITH_BASIS_REFUSED %', v_result; end if;
+  insert into standing_answer_checks values('sensitive_questions_accept_authorization_facts_and_own_standing_answers', true);
+
+  -- A question this send already asked, still open, is answered when a standing answer now covers it.
+  execute 'set local role service_role';
+  perform public.request_application_autopilot_questions((later->>'autopilot')::uuid,(later->>'lease')::uuid,jsonb_build_array(onsite));
+  execute 'reset role';
+  if (select status from public.application_autopilots where id=(later->>'autopilot')::uuid)<>'WAITING_ANSWERS' then raise exception 'CHECK_NOT_WAITING'; end if;
+  update public.application_autopilots set status='RUNNING',lease_token=(later->>'lease')::uuid,lease_owner='standing-check',lease_expires_at=now()+interval '5 minutes' where id=(later->>'autopilot')::uuid;
+  execute 'set local role service_role';
+  v_result:=public.record_application_autopilot_standing_answers((later->>'autopilot')::uuid,(later->>'lease')::uuid,
+    jsonb_build_array(jsonb_build_object('descriptor',onsite,'value','"o-0"'::jsonb,'basis',jsonb_build_array(v_onsite))));
+  execute 'reset role';
+  if jsonb_array_length(v_result)<>1 or (select status from public.application_autopilot_questions where autopilot_id=(later->>'autopilot')::uuid and fingerprint=onsite->>'fingerprint')<>'ANSWERED' then
+    raise exception 'CHECK_OPEN_QUESTION_NOT_ANSWERED %', v_result; end if;
+  insert into standing_answer_checks values('open_questions_are_answered_when_covered', true);
+
+  -- Saving a standing answer puts sends that wait on questions back in the queue; other candidates' sends are untouched.
+  run:=pg_temp.running(who);
+  execute 'set local role service_role';
+  perform public.request_application_autopilot_questions((run->>'autopilot')::uuid,(run->>'lease')::uuid,
+    jsonb_build_array(pg_temp.question('Do you have a valid driver''s license?','SINGLE_SELECT','[{"label":"Yes","value":"d-0"},{"label":"No","value":"d-1"}]')));
+  execute 'reset role';
+  other:=pg_temp.running(stranger);
+  execute 'set local role service_role';
+  perform public.request_application_autopilot_questions((other->>'autopilot')::uuid,(other->>'lease')::uuid,
+    jsonb_build_array(pg_temp.question('Do you have a valid driver''s license?','SINGLE_SELECT','[{"label":"Yes","value":"d-0"},{"label":"No","value":"d-1"}]')));
+  execute 'reset role';
+  perform pg_temp.as_candidate(who);
+  perform public.save_candidate_standing_answer('Valid driver''s license', 'Yes');
+  execute 'reset role';
+  if (select status from public.application_autopilots where id=(run->>'autopilot')::uuid)<>'QUEUED' then raise exception 'CHECK_WAITING_SEND_NOT_REQUEUED'; end if;
+  if (select status from public.application_autopilots where id=(other->>'autopilot')::uuid)<>'WAITING_ANSWERS' then raise exception 'CHECK_OTHER_CANDIDATE_REQUEUED'; end if;
+  insert into standing_answer_checks values('saving_an_answer_requeues_only_the_candidates_waiting_sends', true);
 
   -- Candidates cannot call the worker functions.
   perform pg_temp.as_candidate(who);

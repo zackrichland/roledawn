@@ -168,3 +168,30 @@ test("standing answers are recorded and returned once; a failed lookup asks the 
   assert.equal(reads, 1, "standing answers are read once per run");
   assert.deepEqual(events.filter((event) => event.stage === "standing_answers").map((event) => event.outcome), ["OK", "FAILED"]);
 });
+
+test("a refused standing answer never costs the others: the batch falls back to one answer at a time", async () => {
+  const f = fixture();
+  const good: AgentQuestionDescriptor = { fieldId: "field_4", fingerprint: "c".repeat(64), label: "Previously employed here?", kind: "SINGLE_SELECT", required: true,
+    options: [{ value: "no", label: "No" }, { value: "yes", label: "Yes" }], reasonCode: "MISSING_EXACT_ANSWER" };
+  const bad: AgentQuestionDescriptor = { ...good, fieldId: "field_5", fingerprint: "d".repeat(64), label: "Will you require sponsorship?", reasonCode: "SENSITIVE_REQUIRES_CANDIDATE" };
+  const events: { stage: string; outcome: string; code?: string | null }[] = [];
+  const refusal = Object.assign(new Error("This application could not be updated. Reload to check its status."), { code: "APPLICATION_AUTOPILOT_STANDING_ANSWERS_INVALID" });
+  const repository = { ...f.repository,
+    async readStandingAnswers() { return { answers: [{ id: ID, topic: "Previously employed", answer: "No" }], job: null }; },
+    async recordStandingAnswers(_lease: unknown, proposals: readonly { descriptor: AgentQuestionDescriptor }[]) {
+      if (proposals.some((item) => item.descriptor.fieldId === "field_5")) throw refusal;
+      return proposals.map((item) => ({ answerId: ID, fieldId: item.descriptor.fieldId, fingerprint: item.descriptor.fingerprint, value: "no" }));
+    },
+    async recordEvent(_claim: unknown, event: { stage: string; outcome: string; code?: string | null }) { events.push(event); },
+  };
+  const standingAnswers = { async resolve({ questions }: { questions: readonly AgentQuestionDescriptor[] }) {
+    return questions.map((question) => ({ descriptor: question, value: "no", basis: [ID] }));
+  } };
+  let resolved: unknown;
+  await coordinateApplicationAutopilot({ ...f, repository, claim, standingAnswers, async drive(task) {
+    resolved = await task.questions.resolveSavedAnswers!({ binding: task.executionPackage.binding, questions: [good, bad] });
+    return { kind: "FAILED_SAFE", reasonCode: "TEST_STOP" };
+  } });
+  assert.deepEqual(resolved, [{ answerId: ID, fieldId: "field_4", fingerprint: "c".repeat(64), value: "no" }]);
+  assert.deepEqual(events.filter((event) => event.stage === "standing_answers").map((event) => [event.outcome, event.code]), [["OK", "APPLICATION_AUTOPILOT_STANDING_ANSWERS_INVALID"]]);
+});

@@ -7,7 +7,7 @@ import { eraseApplicationFillExecutionPackage, type ApplicationFillExecutionMate
 import type { ApplicationDeliveryRuntime, ApplicationDeliveryRuntimeAdapter } from "./application-delivery-runtime.ts";
 import type { Page } from "playwright-core";
 import type { StandingAnswerResolver } from "./standing-answers.ts";
-import { errorDetail } from "./worker-events.ts";
+import { errorCode, errorDetail } from "./worker-events.ts";
 
 export type DeliveryWorkerReceipt = Readonly<{
   url: string; observedAt: string; bodyHash: string; requestFingerprint: string; attemptId: string;
@@ -149,16 +149,29 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
         try {
           standing ??= repository.readStandingAnswers(claim);
           const proposals = await input.standingAnswers.resolve({ questions: pending, context: await standing, facts: execution.facts, signal });
-          const recorded = proposals.length ? await repository.recordStandingAnswers(claim, proposals) : [];
+          let recorded: readonly AgentQuestionAnswer[] = [];
+          let refused: string | null = null;
+          if (proposals.length) {
+            try { recorded = await repository.recordStandingAnswers(claim, proposals); }
+            catch (error) {
+              // One refused answer never costs the others: record them one at a time.
+              refused = errorCode(error, "APPLICATION_DELIVERY_FAILED");
+              const kept: AgentQuestionAnswer[] = [];
+              for (const proposal of proposals) {
+                try { kept.push(...await repository.recordStandingAnswers(claim, [proposal])); } catch { /* left for the candidate */ }
+              }
+              recorded = kept;
+            }
+          }
           answers.push(...recorded);
-          await repository.recordEvent?.(claim, { stage: "standing_answers", outcome: recorded.length ? "OK" : "SKIPPED",
-            detail: { questions: String(pending.length), answered: String(recorded.length) }, durationMs: Date.now() - started });
+          await repository.recordEvent?.(claim, { stage: "standing_answers", outcome: recorded.length ? "OK" : "SKIPPED", code: refused,
+            detail: { questions: String(pending.length), proposed: String(proposals.length), answered: String(recorded.length) }, durationMs: Date.now() - started });
           return recorded;
         } catch (error) {
           // A failed lookup never fails the send: the questions go to the candidate.
           standing = null;
           if (signal.aborted) throw error;
-          await repository.recordEvent?.(claim, { stage: "standing_answers", outcome: "FAILED", code: safeCode(error), detail: errorDetail(error), durationMs: Date.now() - started });
+          await repository.recordEvent?.(claim, { stage: "standing_answers", outcome: "FAILED", code: errorCode(error, "APPLICATION_DELIVERY_FAILED"), detail: errorDetail(error), durationMs: Date.now() - started });
           return [];
         }
       },

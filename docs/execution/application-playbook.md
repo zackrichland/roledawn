@@ -58,7 +58,7 @@ The diagram is a summary; the table below is authoritative.
 
 | Site | Today | Evidence |
 |---|---|---|
-| Greenhouse | Fills, submits, and confirms | **Verified** end to end twice on 2026-09-30: Carvana Specialist, Inventory Quality (code read from Gmail 7 s after the request), and Carvana Strategy Analyst with a required GPA multi-select (code read in 6 s; final pass 262 s). See the [Greenhouse template](../boards/greenhouse.md). |
+| Greenhouse | Fills, submits, and confirms | **Verified** end to end twice on 2026-09-30: Carvana Specialist, Inventory Quality (code read from Gmail 7 s after the request), and Carvana Strategy Analyst with a required GPA multi-select (code read in 6 s; final pass 262 s). The required "Location (City)" typeahead is filled from your city, confirmed by region and country (D-118). See the [Greenhouse template](../boards/greenhouse.md). |
 | Lever | Fills and submits | Fixture tests only; **not yet proven live**. Passive hCaptcha is allowed; a visible challenge stops for you. |
 | Ashby | Prepares documents | You submit on the employer's site. |
 | Workday, iCIMS, SmartRecruiters, others | Not supported | Per-board templates for the agent: [docs/boards/](../boards/README.md). See [Next: any site](#next-any-site-including-workday). |

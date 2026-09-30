@@ -74,7 +74,7 @@ Words: **auto-apply** chooses jobs; **autopilot** delivers one named application
 
 ## Where form answers come from
 
-In order: (1) profile facts through anchored label rules (`application-field-facts.ts`); (2) remembered answers, the candidate's earlier answer to the same wording (D-112, D-115); (3) standing answers, the candidate's saved answers to routine questions, which one model call maps to new wordings (`standing-answers.ts`, table `candidate_standing_answers`, D-117); (4) the candidate, through "Answer N questions" on Home. Every stored answer is labeled `CANDIDATE`, `REMEMBERED` or `STANDING`, with its basis.
+In order: (1) profile facts through anchored label rules (`application-field-facts.ts`); (2) remembered answers, the candidate's earlier answer to the same wording (D-112, D-115); (3) standing answers, the candidate's saved answers to routine questions, which one model call maps to new wordings (`standing-answers.ts`, table `candidate_standing_answers`, D-117); (4) the candidate, through "Answer N questions" on Home. Every stored answer is labeled `CANDIDATE`, `REMEMBERED` or `STANDING`, with its basis. Saving a standing answer (`save_candidate_standing_answer`) re-queues the candidate's sends that wait on questions. The worker and the database apply the same rule for which questions a standing answer may take; change them together.
 
 ## Invariants
 
