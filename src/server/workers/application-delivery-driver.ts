@@ -361,10 +361,15 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
                   const sourceIds = args.sourceIds as string[];
                   if (!sources.length || sourceIds.some((id) => !sources!.some((source) => source.sourceId === id))) throw new Error("DELIVERY_EVIDENCE_NOT_AUTHORIZED");
                   narrativeAttempts.add(field.fieldId);
-                  if (!await dependencies.evidence.validate({ question: field.label, text: args.text as string, sourceIds, sources, signal: signal ?? input.signal })) throw new Error("DELIVERY_NARRATIVE_NOT_SUPPORTED");
+                  // Native text inputs strip line breaks. Format narrative
+                  // paragraphs first, then validate, fill and seal that exact
+                  // text. Textareas preserve the model's paragraph structure.
+                  const text = field.kind === "TEXT" && field.inputType === "text"
+                    ? (args.text as string).replace(/\r\n?|\n/gu, " ").trim() : args.text as string;
+                  if (!await dependencies.evidence.validate({ question: field.label, text, sourceIds, sources, signal: signal ?? input.signal })) throw new Error("DELIVERY_NARRATIVE_NOT_SUPPORTED");
                   await active(signal);
-                  await runtime.withField(field, args.text as string, () => browser.fillValue(field.fieldId, args.text as string, signal ?? input.signal), signal ?? input.signal);
-                  writes.push({ fieldId: field.fieldId, fingerprint: field.fingerprint, sourceIds, valueHash: hash(args.text) });
+                  await runtime.withField(field, text, () => browser.fillValue(field.fieldId, text, signal ?? input.signal), signal ?? input.signal);
+                  writes.push({ fieldId: field.fieldId, fingerprint: field.fingerprint, sourceIds, valueHash: hash(text) });
                 }
                 return { ok: true };
               } catch (error) {

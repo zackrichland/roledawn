@@ -21,6 +21,35 @@ const sponsorship = question("Will you require visa sponsorship in the future?",
 const basis = new Map([["s1", GPA_ID], ["s2", ONSITE_ID], ["f:work_authorization.us.sponsorship_required", "fact:work_authorization.us.sponsorship_required"], ["f:location.city", "fact:location.city"]]);
 const draft = (choices: string[], ids: string[], text = "") => ({ questionId: "q1", decision: "ANSWER", choices, text, basis: ids });
 
+test("an exact saved text question retains every location component without model rewriting", async () => {
+  const descriptor = question("Which city and country do you intend to work from?", "TEXT");
+  const value = "Springfield, Illinois, United States";
+  const resolver = createStandingAnswerResolver({ client: { responses: { async create() {
+    throw new Error("EXACT_TEXT_MUST_NOT_REACH_MODEL");
+  } } } as never });
+  const result = await resolver.resolve({ questions: [descriptor], context: { answers: [{ id: ONSITE_ID,
+    topic: "  WHICH CITY AND COUNTRY DO YOU INTEND TO WORK FROM?  ", answer: value }], job: null }, facts: [] });
+  assert.deepEqual(result.map(({ value, basis }) => ({ value, basis })), [{ value, basis: [ONSITE_ID] }]);
+});
+
+test("exact text reuse keeps protected-question exclusions and ambiguity checks", async () => {
+  const resolver = createStandingAnswerResolver({ client: { responses: { async create() {
+    return { status: "completed", output_text: '{"answers":[]}' };
+  } } } as never });
+  for (const descriptor of [question("Legal signature", "TEXT"), question("Medical history", "LONG_TEXT"),
+    question("City", "TEXT", [], { required: false }), question("Active TS/SCI with FSP or CI", "TEXT")]) {
+    assert.deepEqual(await resolver.resolve({ questions: [descriptor], context: { answers: [
+      { id: ONSITE_ID, topic: descriptor.label, answer: "Saved text" }], job: null }, facts: [] }), [], descriptor.label);
+  }
+  const descriptor = question("Intended city", "TEXT");
+  for (const answers of [
+    [{ id: ONSITE_ID, topic: "Current city", answer: "Springfield, Illinois, United States" }],
+    [{ id: ONSITE_ID, topic: descriptor.label, answer: "Springfield" }, { id: GPA_ID, topic: descriptor.label, answer: "Chicago" }],
+    [{ id: ONSITE_ID, topic: descriptor.label, answer: "x".repeat(1001) }],
+    [{ id: ONSITE_ID, topic: descriptor.label, answer: "bad\u0000text" }],
+  ]) assert.deepEqual(await resolver.resolve({ questions: [descriptor], context: { answers, job: null }, facts: [] }), []);
+});
+
 test("generic model inference excludes demographic, legal, consent and optional questions", () => {
   assert.equal(standingAnswerEligible(gpa), true);
   assert.equal(standingAnswerEligible(onsite), true);

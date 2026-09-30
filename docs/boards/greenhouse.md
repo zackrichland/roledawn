@@ -129,3 +129,5 @@ Don't:
 - https://github.com/yash10019coder/JOB-BORG/issues/79, https://github.com/CryptoJones/OSApplyTrack/pull/170 — security-code email sender and subject (Community), accessed 2026-09-30
 - https://boards.greenhouse.io/embed/job_board/js?for=carvana — embed script (Direct observation), accessed 2026-09-30
 - [Application playbook](../execution/application-playbook.md); [decision log](../execution/decision-log.md) D-095, D-102 to D-113; `tmp/form-audit/` (read-only audit, 2026-09-28, not committed) — RoleDawn evidence
+
+- 2026-09-30 (D-142): a narrative prompt can use a native single-line text input. Format paragraph breaks into spaces before evidence validation, then fill and seal that exact text. Textareas retain paragraphs; no readback comparison is relaxed.

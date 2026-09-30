@@ -304,6 +304,36 @@ test("required narrative answers reach the agent with evidence before any candid
   });
 });
 
+test("narrative paragraphs fit native single-line fields before validation and exact readback", browserOptions, async () => {
+  await fixture(async ({ page, policy, requests }) => {
+    await page.addInitScript(() => document.addEventListener("DOMContentLoaded", () => {
+      document.querySelector("#first")?.insertAdjacentHTML("beforeend", '<label>Describe a project you built.<input name="project_story" type="text" required></label>');
+    }));
+    const authority = hooks(requests);
+    const text = "I mapped the workflow.\n\nI built and shipped the platform.";
+    const canonical = "I mapped the workflow.  I built and shipped the platform.";
+    let validated = "";
+    const questions: ApplicationAgentQuestionRepository = {
+      async loadAnswers({ questions }) { return questions.filter(item => item.kind === "BOOLEAN").map(item => ({ answerId: "saved-consent", fieldId: item.fieldId, fingerprint: item.fingerprint, value: true })); },
+      async requestQuestions({ questions }) { return questions.map(item => ({ ...item, id: "question", status: "OPEN" })); },
+    };
+    const harness: AgentFormHarness = { async run(input) {
+      const field = (input.input.form as { fields: AgentBrowserField[] }).fields.find(item => item.name === "project_story");
+      if (!field) return;
+      assert.deepEqual(await input.executeTool("fill_supported_text", { fieldId: field.fieldId, text, sourceIds: ["resume:0"] }), { ok: true });
+      assert.equal(await page.locator('[name="project_story"]').inputValue(), canonical);
+      await input.executeTool("complete_review", {});
+    } };
+    const driver = createApplicationDeliveryDriver({ harness, questions, resolvePage: () => page, sitePolicy: policy, submissionHooks: authority.value, browserTimeoutMs: 600,
+      evidence: { async load() { return [{ sourceId: "resume:0", text: "Mapped the workflow. Built and shipped the platform." }]; }, async validate(input) { validated = input.text; return true; } },
+    });
+    const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: policy.startUrl, executionPackage: packet(policy.startUrl) });
+    assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+    assert.equal(validated, canonical);
+    assert.equal(authority.begins(), 1); assert.equal(requests.submits, 1);
+  });
+});
+
 test("optional contact defaults and exact fact mappings require matching provenance; conflicting email is preserved", browserOptions, async () => {
   for (const matches of [true, false]) await fixture(async ({ page, policy, requests }) => {
     const approvedEmail = "alex@example.test";
