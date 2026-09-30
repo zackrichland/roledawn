@@ -8,128 +8,110 @@ scope: current repository capability, recorded production evidence, and remainin
 
 # Current state
 
-RoleDawn can prepare and deliver a named Greenhouse application for the
-founder's private account. Three employer-confirmed applications across two employers were verified in a
-read-only hosted check on 2026-09-30 UTC; the [review brief](review-brief-2026-09-30.md)
-records the earlier two. That is evidence for this bounded
-path, not every Greenhouse form or every ATS.
+RoleDawn supports the founder's private application workflow. Greenhouse has
+three employer-confirmed applications across two employers, verified by hosted
+readback on 2026-09-30 UTC. Lever and Ashby have delivery adapters; live employer
+acceptance remains unproven for both. Keep the product scoped to personal use.
 
-The review started at `7408a7c` and was initially local only. This snapshot now
-includes the authorized rollout's verified hosted metadata, three applied
-migrations, and approved private profile update. Backend commit `30e7a19` is
-published in verified Netlify deployment `6abc7f1ecfcaeba896cb4c16`. The first review kept the interface unchanged. The founder then requested Ashby
-delivery, faster intake, company logos, and removal of redundant send approval.
-The follow-up adapter and intent changes are published, and migration
-`20260930100000` is applied and verified. Live Ashby diagnosis is recorded below;
-no Ashby employer confirmation has been established.
-The earlier dated observations are preserved in
-[state history](state-history-through-2026-09-30.md); they are not current
-operating instructions.
+**Published release:** `b4ae35b`, Netlify deployment
+`6abca481cfba66dce4ca9bd1`. Authenticated worker health verified that exact release
+at 05:56:59 UTC; the private gate returns 404 without access, all 14 checked page
+assets return 200 and the approved private profile/story content remains
+visible. The sole new Ashby submission occurred on `b103640`. Final readback
+still shows one attempt, zero confirmed attempts/receipts, and
+`RECONCILING`/`UNCERTAIN` with `DELIVERY_RECEIPT_RECONCILIATION_REQUIRED`.
+The retained evidence establishes neither acceptance nor rejection; do not resend.
+A deployment or mocked submission is not an employer receipt.
 
-## What exists
+The initial [review and rollout](codex-review-2026-09-30.md),
+[handoff brief](review-brief-2026-09-30.md) and
+[state history](state-history-through-2026-09-30.md) preserve earlier evidence.
+They do not override this snapshot or the [application playbook](application-playbook.md).
 
-| Area | Current capability | Evidence and boundary |
+## Product capability
+
+| Area | Current behavior | Boundary |
 |---|---|---|
-| Home | Paste a supported posting, follow preparation and sending, answer questions, enter an emailed code, and retry eligible stops. | Code and [application playbook](application-playbook.md). Home reports the stored workflow state. |
-| Jobs | Ranked catalog search, saved jobs, and named-job application intake. | Code; source inventory changes over time. Old catalog counts are historical, not current availability. |
-| Profile | Résumé upload/review, structured experience, stories/interview, routine profile answers, preferences, and a read-only Gmail connection. | Code. Candidate facts and approved evidence remain private database records. |
-| Writing | Frozen candidate inputs, owned writing policies, research, source-linked drafting/verification, and five rendered files. | Code and [writing policies](../../policies/application-writing/README.md). |
-| Delivery | Browserbase plus the form agent, exact-fact filling, acknowledged uploads, a single-use submit permission, and employer-evidenced receipts. | Code; Greenhouse acceptance below. Uncertain outcomes require reconciliation. |
-| Routine questions | Profile facts, candidate answers remembered by question wording, standing answers, then the candidate. | D-112, D-115 and D-117 in the [decision log](decision-log.md). Sensitive exclusions are enforced in the worker and database. |
-| Operations | Scheduled background lanes, bounded retry/recovery, sanitized send timings and worker events, read-only `ops:status`. | Code and D-114/D-116. Live health must be checked separately. |
-| Access | Private access key required for new single-account sessions. | D-109; ordinary Supabase sessions and ownership checks remain in use. |
+| Home and application detail | Paste a supported posting, follow preparation/sending, answer questions, enter an emailed code, and retry eligible stops. An existing send intent shows Queued to apply or Applying without a second approval. | Stored workflow state is authoritative; uncertain outcomes require reconciliation. |
+| Jobs | Ranked catalog search, saved jobs and named-job application intake. | Source inventory changes; old catalog counts are historical. |
+| Profile | Résumé review, structured experience, approved stories, routine answers, preferences and read-only Gmail connection. | Exact private content stays in owned database records. |
+| Writing | Frozen candidate inputs, source-linked drafting and verification, owned writing policies and five rendered files. | See [writing policies](../../policies/application-writing/README.md). |
+| Delivery | Browserbase form agent, approved facts/files, acknowledged writes, sealed single-use submit permission and employer-evidenced receipts. | Visible challenges and unknown contracts stop the send. |
+| Answers | Profile facts, same-context remembered candidate answers, saved standing answers, then the candidate. | Sensitive exclusions remain in worker and SQL; D-125 permits only exact explicitly saved clearance reuse. |
+| Branding | Employer logos from exact Ashby theme, Greenhouse configuration or Lever header, with bounded thumbnails and caching. Cached-logo rendering is browser-verified. | Missing branding retains initials; no guessed domains, platform logos or banners. |
+| Operations and access | Private access-key sessions, ownership checks, database leases, immediate lane wakeups, scheduled recovery and sanitized worker events. | Local web development still relies on the hosted scheduler for its initial tick. |
 
-## ATS coverage
+## ATS evidence
 
 | Site | Supported path | Proof |
 |---|---|---|
-| Greenhouse | Prepare, fill, submit, handle the employer's emailed code, and confirm. | **Verified hosted readback:** three confirmed applications across two employers on 2026-09-30 UTC; all three record mailbox-supplied codes. No new submission was made during this rollout. |
+| Greenhouse | Prepare, fill, submit, handle emailed code and confirm. | Three earlier confirmed applications across two employers; all three record mailbox-supplied codes. The live location probe (D-118) is field-interaction evidence, not another application. |
 | Lever | Delivery adapter and fixture coverage. | No recorded live employer confirmation. |
-| Ashby | Hosted-form delivery adapter: schema-bound drafts, attachments, single/multiple-form submission, and employer receipts. | Synthetic browser coverage and public form inspection; no live employer confirmation yet. |
-| Other boards | Research templates only. | No delivery adapter proof; see [board templates](../boards/README.md). |
+| Ashby | Exact-schema drafts, attachments, single/multiple-form submission and receipt handling. | Two real-client replays pass with the actual pre-dispatch checks. The live run reached a response on one submission attempt, but has no employer receipt and remains unknown. |
+| Other boards | Research templates only. | No delivery proof; see [board templates](../boards/README.md). |
 
-The Greenhouse location lookup was checked on a live form without submitting
-(D-118). This proves that field interaction, not a further confirmed application.
+Ashby diagnosis found action-ID rotation after acknowledged saves, widget
+refetches, transient frame URLs, late passive CAPTCHA badges, and the provider's
+bare Location label plus asynchronous selection readback. The published fixes
+keep exact operation, field/value, origin and submit-permission checks. The
+prior run resolved its questions and completed review, then Ashby disabled
+inputs on the final click. The pre-dispatch reader omitted those controls and
+falsely reported field drift at 05:32:53 UTC; no final authority or request
+followed. The published correction reads those exact values without making
+disabled controls writable. Details and reversal triggers
+are in D-123 and D-126–D-130 of the
+[decision log](decision-log.md). A stopped Ashby run can leave an employer draft
+containing approved candidate data.
 
-## Recorded deployment boundary
+For the latest attempt, `SUBMIT_RESPONSE_OBSERVED` records HTTP 200 and a body
+hash, but `ashbyAccepted=false` and no observed receipt. That flag means the
+acceptance predicate did not establish success; it is not proof of rejection.
+The browser runtime is released with no reference, and the raw response was
+not retained. New diagnostics cannot recover that response. Bounded static
+response categories/counts are now published and verified for future attempts.
+They use fixed enums, counts capped at 1,000
+and a 2 MB parse limit, without raw response or candidate content. Acceptance,
+retry and runtime-retention rules are unchanged (D-131). No new live application
+is planned, and this unknown application will not be retried.
 
-The [review brief](review-brief-2026-09-30.md) records all 20 migrations from
-2026-09-28 through 2026-09-30 as applied and recorded in production. It records
-deployment through `fa27648`; `e6e8b36` adds `fillMs` timing and had not been
-deployed. `7408a7c` adds the brief. Those are the handoff's historical release
-boundaries. The three review migrations are now applied and verified as detailed
-below. Backend commit `30e7a19` was built and published as Netlify deployment
-`6abc7f1ecfcaeba896cb4c16` on 2026-09-30 at 03:17 UTC. Its authenticated worker
-health endpoint confirms that exact enabled deployment; all 14 checked page
-assets return 200, private access is enforced, and the saved private profile
-and story appear on their authenticated pages.
+## Verified review changes
 
-The earlier no-build asset failure and open single-account sign-in were
-recorded as fixed in `6abc4897`. Their descriptions in the history are incident
-records, not current behavior. Use `deploy --build` and the private access-key
-flow described in the playbook.
+The initial review preserved the interface at the founder's request. Later
+explicitly authorized changes added truthful send/error copy, removed duplicate
+send approval, accelerated lane handoffs and supplied employer logos. The
+layout remains unchanged. The approved private career entry and responsibility-only
+story were saved through owning RPCs, preserving earlier records and evidence
+bindings, and verified on their authenticated pages.
 
-## Reviewed rollout
-
-The founder authorized implementation, then requested no UI changes. Interface
-edits from the review are deferred outside Git. Backend schema readback passes;
-the built deployment and its private pages, assets and worker health are verified.
-
-| Change | Rollout boundary |
+| Change | Current evidence |
 |---|---|
-| Reviewed worker and SQL policy use matching standing-answer eligibility, fact allowlists, and protected-question exclusions. | Migration `20260930070000` is applied and read back; matching worker code is deployed in `30e7a19`. |
-| Publishing career, voice or story changes invalidates older application inputs and pauses auto-apply. | D-121 is applied and read back; the private profile publication verified the input-version increase. |
-| Remembered answers require current candidate inputs and the same frozen job. Explicit GPA/degree questions may cross jobs within that input version. Only original candidate answers establish recall authority. | D-122 migration `20260930090000` is applied and read back. |
-| A verification resend with an unrecognized response remains uncertain; the city lookup admits only approved query text and exact reviewed parameters. | Deployed in `30e7a19`; the next named application remains the live delivery check for this release. |
+| Matching worker/SQL standing-answer eligibility, fact-key allowlists and protected-question exclusions. | D-119; migration `20260930070000` applied, recorded and read back. |
+| Unknown verification responses remain uncertain; Greenhouse city lookups require approved text and exact reviewed constants. | D-120; deployed with focused regressions. No new Greenhouse receipt is claimed for this review. |
+| Published career, voice and story changes invalidate older inputs and pause auto-apply. | D-121; migration `20260930080000` applied/read back, including the bounded first-derived-profile exemption. Private profile publication verified the version increase. |
+| Remembered answers require current candidate inputs and the same frozen job; only explicit GPA/education questions can cross jobs. | D-122; migration `20260930090000` applied/read back. Original candidate responses establish recall authority. |
+| Ashby delivery and truthful send-intent replay/retry. | D-123/D-124; migration `20260930100000` applied/read back; historical uncertain attempts remain blocked. |
+| Exact explicitly saved clearance reuse, without model inference or packet-version changes. | D-125; migration `20260930110000` and matching worker active, with owned basis/value checks. |
+| Ashby city binding and independent answer-batch progress; residence-country authorization instructions. | D-129; only the reviewed provider/system control gets city semantics. Residence wording requires its matching country-scoped fact; location selects jurisdiction, not the sensitive basis. No SQL gate was widened. |
 
-The approved private career entry and responsibility-only story were saved
-through the owning RPCs and verified by readback. Existing career entries and
-evidence bindings were preserved; exact private content stays outside this
-public repository. At that profile-update boundary, no open send intents or enabled account
-auto-apply settings existed. A later founder-pasted Ashby application prepared
-successfully but its old send intent closed as `NOT_DELIVERABLE`, with no
-submission attempt. The follow-up adapter was published before its SQL gate was applied. A fresh
-authenticated retry recovered that named request without reopening historical
-uncertain attempts.
+All five review/follow-up migrations have verified function bodies, security
+modes and grants. Regenerated public types are unchanged. All 15 SQL check files
+pass across 94 migrations. The security advisor reported no error or finding
+on the changed follow-up functions; existing authenticated-RPC and password-policy
+warnings remain.
 
-## Ashby and intake follow-up
+For `b4ae35b`, all **805 tests** pass in 88.6 seconds, with zero failures or skips.
+Typecheck, lint and documentation links also pass. The latest production dependency audit reported no known
+vulnerabilities. The city-settle replay waits only for the exact chosen label
+after one click; it neither retries the write nor bypasses the server's saved-value
+proof. Final disabled-control verification passed 80 focused tests and two
+real-client replays using the actual pre-dispatch checks, upload proof, required
+field checks, sealed readback hash and saved-value proof hash. Changed disabled
+values and labels received zero authorizations and zero submissions. These
+checks establish mechanics, not live Ashby employer acceptance.
 
-- Ashby uses the existing browser, approved facts, sealed submission permission,
-  durable attempts and receipt rules. Exact public GraphQL operations bind every
-  autosave to the approved field/value; uploads require acknowledged exact bytes.
-  A visible CAPTCHA still stops the run. Security clearance and explicit
-  no-AI response instructions require candidate answers. An explicitly approved
-  exact-scope clearance answer is now saved privately and read back without
-  changing the packet input version; D-125 adds deterministic reuse.
-- An existing open send request means **Queued to apply**, then **Applying**.
-  It no longer asks the candidate to approve the same send again. A closed
-  unsupported request remains **Send stopped** until a fresh retry; an uncertain
-  result never becomes an automatic retry. Cancellation reports success only
-  when the database actually cancels the request.
-- Production intake and successful lane completion wake the next due lanes.
-  Database leases and the scheduled dispatcher remain authoritative. Local web
-  development still relies on the hosted scheduler for the initial tick.
-- Company icons come from the exact employer's published Ashby theme,
-  Greenhouse board configuration, or Lever header. No API subscription or
-  guessed domain is needed. Bounded fetching, thumbnails and caching retain
-  initials when employer branding is unavailable. Platform logos and banners
-  are excluded; these sources do not guarantee every employer has a logo.
-
-Local verification: all 780 tests, typecheck, lint and documentation links pass;
-all 15 SQL check files pass across 94 migrations. Migration `20260930100000`
-is applied, recorded, and read back with matching function bodies and grants.
-Migration `20260930110000` adds the exact-scope saved-answer check; its bodies,
-security modes and grants also match readback. Regenerated public types are
-unchanged. The security advisor reports no errors or finding on either changed
-function; existing authenticated-RPC and password-policy warnings remain.
-The built follow-up deployments pass authenticated worker health and all 14
-checked page assets.
-
-The first live Ashby draft saves stopped before a submission attempt. Narrowed
-diagnostics verified that the server changed only the submit-action identifier
-after saving a field; form identity and field metadata were unchanged. This
-exposed a contract detail absent from the original fixtures. A stopped draft
-can already contain approved candidate data; it is not an employer receipt.
+The published D-131 diagnostics pass 70 focused tests and independent
+privacy/acceptance-parity checks across 24,307 payload cases plus three byte
+cases. The final full suite and exact published-deployment readback also pass.
 
 ## Remaining limits
 
@@ -138,26 +120,21 @@ can already contain approved candidate data; it is not an employer receipt.
 | Standing answers have no editor; automatic answers are not listed on the application page. | Their source and basis are persisted, but correction and inspection still need operator access. |
 | Private agent replay records can retain extracted document text after provider cleanup. | No public disclosure was found; retention cleanup must preserve active and uncertain-session recovery. |
 | Required consent, privacy and attestation fields need candidate input. | A send may pause on a valid form. O-013 remains open; automation must not invent consent. |
-| Two historical archived attempts remain uncertain, with no lease and reconciliation exhausted. | Keep their existing retry blocks; profile changes do not resolve employer outcomes. |
+| Two historical archived attempts remain uncertain, with no lease and reconciliation exhausted. | Preserve their retry blocks; profile changes and a different application's result do not resolve them. |
+| One additional Ashby attempt has an observed response but no receipt, raw response or retained browser. | Acceptance and rejection are both unproven. Future diagnostics cannot resolve this older attempt; preserve its resend block. |
 | Archive has no candidate button; candidate export and account deletion are incomplete. | Operator work remains; this is not a broader-user release. |
 | No notification channel outside the app. | Check Home while sends run; Gmail disconnection or a new question may need attention. |
-| Only one delivery runs at once. | Suitable for bounded personal use; throughput and multi-user operation are unproven. |
-| Wider Gmail consent verification and account-based ATS flows are incomplete. | Keep the private-account scope; Workday and similar sites are not supported delivery paths. |
-| Résumé parsing has no malware quarantine or OCR. | Sources are truthfully marked `NOT_SCANNED`; scanned files need a text-based replacement. |
+| Only one delivery runs at once. | Bounded personal use; throughput and multi-user operation are unproven. |
+| Wider Gmail consent verification and account-based ATS flows are incomplete. | Keep the private-account scope; Workday and similar sites are unsupported delivery paths. |
+| Résumé parsing has no malware quarantine or OCR. | Sources are truthfully marked NOT_SCANNED; scanned files need a text-based replacement. |
 
-## Next checks
+## Operating boundary
 
-1. Review the completed [rollout record](codex-review-2026-09-30.md). The source,
-   schema, private profile and published deployment are verified.
-2. Inspect newly prepared documents from the updated private profile before the
-   next authorized application. Existing confirmed applications remain history;
-   no current unsent packet requires regeneration.
-3. Complete live Ashby verification after correcting the observed action-ID
-   rotation. Observe a terminal or needs-you state; only an employer receipt
-   establishes live acceptance. Keep historical uncertain attempts blocked
-   until their own outcomes are reconciled.
+This review is complete without a confirmed Ashby receipt. The current Ashby
+attempt needs new employer-side evidence to resolve its outcome; no new
+submission or retry is planned. Keep it and the two historical uncertain
+attempts blocked until their own outcomes are established. Greenhouse remains
+the only ATS with verified live acceptance for this account.
 
 The [application playbook](application-playbook.md) owns operating instructions;
-the [decision log](decision-log.md) owns decisions and reversal triggers;
-[state history](state-history-through-2026-09-30.md) and the
-[changelog](../../CHANGELOG.md) preserve older evidence.
+the [decision log](decision-log.md) owns decisions and reversal triggers.

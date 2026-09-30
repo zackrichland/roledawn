@@ -1,6 +1,6 @@
 ---
 title: Independent local review of main
-status: backend deployed and verified; private profile updated; no UI changes
+status: historical review and initial rollout evidence
 owner: engineering
 last_updated: 2026-09-30
 scope: review of main at 7408a7c, local fixes and cleanup, and private single-candidate readiness
@@ -8,13 +8,19 @@ scope: review of main at 7408a7c, local fixes and cleanup, and private single-ca
 
 # Independent local review
 
+**Historical scope:** this report preserves the initial review and rollout.
+Its Ashby preparation-only limit, unchanged UI and no-open-intent observations
+describe that earlier stage. Later authorized delivery, interface and live-run
+work is recorded in [current state](current-state.md), which owns the current
+release and readiness assessment.
+
 The checkout and fetched `origin/main` both started at `7408a7c`, with a clean
 working tree. This review follows the [review brief](review-brief-2026-09-30.md).
 It inspected submission authority and retries, question sources, candidate
 input freshness, network policy, mailbox access, event/replay storage, app
 structure, active UI components, and operating documentation.
 
-**Current stage:** the authorized rollout has applied and verified all three
+**Stage at the initial rollout:** the authorized rollout has applied and verified all three
 reviewed migrations and saved the approved private career/profile content.
 Backend commit `30e7a19` is published in Netlify deployment
 `6abc7f1ecfcaeba896cb4c16`. Private access, page assets, updated private profile

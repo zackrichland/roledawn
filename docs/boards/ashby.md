@@ -54,6 +54,7 @@ Single page.
 - Yes/No questions render as pressed-button pairs. The Ashby observer reads the parent question and required marker, offers explicit Yes/No values, clicks one observed choice, and reads back `aria-pressed` (2026-09-30).
 - Multi-selects render as checkbox groups; single choices as radio groups.
 - Location: "Start typing…" typeahead backed by `ApiAutocompleteGeoLocation`. The driver selects one result confirmed by the approved city, region and country. The request guard separately requires that exact server-returned location and provider ID.
+- A bare **Location** label gets city semantics only with trusted Ashby adapter metadata, exact `_systemfield_location` name/id and the reviewed text-input single-select shape. Generic location questions remain unclassified (D-129).
 - Salary expectations may be split into begin/end fields with format rules (1Password: base and OTE ranges).
 - EEOC survey covers gender, race and veteran status; disability is asked, if at all, in an optional diversity survey. Survey answers are anonymous by default and kept out of the application payload (vendor docs).
 - Example diversity survey (1Password): gender radios, a 12-option race/ethnicity checkbox group, a veteran radio and several "No / Yes / Prefer not to say" radios.
@@ -82,16 +83,21 @@ Single page.
 - One shared GraphQL URL handles both reads and writes. Never allow it by origin or operation name alone; query documents, variables and the current action must agree.
 - The reviewed public client refetches organization metadata with optional `searchContext` omitted, `null` or `JobPosting`, and issues a constant empty City lookup on mount and around uploads. Those exact reads are admitted; empty-search responses never supply candidate location choices. Every nonempty lookup still requires an active approved-city search. Rejections report a static operation/rule code without request values.
 - **Verified, 2026-09-30:** a draft-save response rotates the server-issued action identifier while the form, definition and field metadata stay fixed. RoleDawn accepts that rotation only after the approved value echoes exactly and every other value remains unchanged. The final review seals the latest identifier; an older identifier cannot consume submit permission. The observed run stopped before final submission, so this is protocol evidence, not a receipt.
-- `aria-selected` on a location option marks keyboard focus, not a saved choice. The selected label and acknowledged draft value establish readback.
+- `aria-selected` on a location option marks keyboard focus, not a saved choice. After one selection click, read-only checks wait at most two seconds for the exact chosen label to render; they never click again. The selected label and acknowledged draft value establish readback (D-129).
+- Playwright briefly reports `""` as a newly attached frame's URL. That URL supplies no controls or trust. The current DOM iframe source and eventual frame URL are checked independently against the reviewed CAPTCHA origin, anchor path, observed key and invisible mode; a late approved badge is not a challenge. Visible challenges and unapproved foreign frames still stop final readback before submit permission is consumed (D-127/D-128).
 - The form has no native `<form>` element. Ashby labels, field paths and form identifiers supply the control identity.
+- **Verified by reproduction, 2026-09-30:** the final submit click disables inputs before its request dispatches. Final readback retains and compares their identity, current values and files; ordinary filling still refuses disabled controls. Two real-client replays exercised the actual pre-dispatch guard, while changed disabled values/labels received no authorization or submission (D-130; published in `b103640`).
 - A changed public operation document fails closed until reviewed. Defaults, hidden values, legal-processing notices and unrecognized widgets can still require candidate help; support does not promise every employer-specific form.
 
 ## RoleDawn status and gaps
 
 - **Delivery implemented; live acceptance unproven.** Hosted `jobs.ashbyhq.com/<org>/<uuid>` and its `/application` route resolve through the shared delivery registry and database predicate.
+- The latest live attempt observed an HTTP 200 response and body hash, but the acceptance predicate found no receipt. The released browser and unretained response body prevent retrospective diagnosis. This remains an unknown outcome, not acceptance or rejection; do not resend it (D-131).
+- Release `b4ae35b` adds only fixed response-shape categories and capped counts for future diagnostics. It preserves acceptance/retry rules and cannot recover the earlier response; no new live submission was made for this diagnostic release (D-131).
 - The same Browserbase session, candidate facts, remembered/standing answers, missing-question UI, immutable files and submit permission used by Greenhouse and Lever are reused.
 - The board's square-logo metadata can supply cached company branding; missing or changed metadata falls back to initials. It is not a paid lookup or guessed employer domain.
-- Required security-clearance questions, including TS/SCI, go to the candidate. They cannot be inferred from standing answers or unrelated profile facts.
+- Required security-clearance questions, including TS/SCI, go to the candidate. They cannot be inferred from standing answers or unrelated profile facts. D-125 permits deterministic reuse of an explicitly saved answer only for the exact reviewed clearance scope; worker and SQL validate the same owned basis and value, without model inference.
+- Residence-worded authorization/sponsorship questions require the structured residence country and its matching country-scoped fact. Standing-answer instructions distinguish residence from job country and cite only the authorization/sponsorship fact as the sensitive basis; no SQL policy was widened (D-129).
 - Embedded/custom employer pages are not accepted as delivery destinations. Intake should resolve a concrete hosted application URL first.
 
 ## Agent guidance
