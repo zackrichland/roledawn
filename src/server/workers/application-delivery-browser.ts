@@ -8,7 +8,7 @@ import { APPLICATION_FILL_CAPTCHA_TAKEOVER, pageShowsCaptchaChallenge } from "./
 import type { MaterializedApplicationArtifact } from "./application-fill-materializer.ts";
 
 import type { OptionMatch } from "./agents-option-match.ts";
-import { ashbySubmissionAccepted, createAshbyProtocol, inspectAshbyEnvelope, type AshbyEnvelope } from "./ashby-delivery-protocol.ts";
+import { ashbySubmissionAccepted, createAshbyProtocol, inspectAshbyEnvelope, inspectAshbySubmissionResponse, type AshbyEnvelope, type AshbySubmissionDiagnostics } from "./ashby-delivery-protocol.ts";
 
 export const DELIVERY_BROWSER_RELEASE = "application-delivery-browser/1";
 export type DeliveryRequestRule = Readonly<{ method: "GET" | "POST" | "PUT"; url: string }>;
@@ -73,7 +73,7 @@ export type DeliverySitePolicy = Readonly<{
   ashby?: Readonly<{ board: string; jobId: string }>;
 }>;
 export type DeliverySubmissionLease = Readonly<{ attemptId: string; idempotencyKey: string; sealHash?: string }>;
-export type DeliveryResponseEvidence = Readonly<{ url: string; status: number; bodyHash: string | null; redirectUrl?: string; ashbyAccepted?: boolean }>;
+export type DeliveryResponseEvidence = Readonly<{ url: string; status: number; bodyHash: string | null; redirectUrl?: string; ashbyAccepted?: boolean; ashbyDiagnostic?: AshbySubmissionDiagnostics }>;
 export type DeliveryPriorSubmission = DeliverySubmissionLease & Readonly<{
   reviewHash: string; requestFingerprint: string; response?: DeliveryResponseEvidence;
 }>;
@@ -399,7 +399,8 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       current.response = { url: canonical(response.url()), status: response.status(), bodyHash: body ? hash(body) : null, ...(location ? { redirectUrl: canonical(new URL(location, response.url()).href) } : {}) };
       if (ashby && current.kind === "UPLOAD" && current.requestObject === response.request() && response.ok()) ashby.acknowledgeBytes();
       if (ashbyEnvelope?.operation.startsWith("ApiSubmit")) current.response = { ...current.response,
-        ashbyAccepted: Boolean(body && ashbySubmissionAccepted(ashbyEnvelope.operation, jsonObject(body), ashby?.surveyCount())) };
+        ashbyAccepted: Boolean(body && ashbySubmissionAccepted(ashbyEnvelope.operation, jsonObject(body), ashby?.surveyCount())),
+        ashbyDiagnostic: inspectAshbySubmissionResponse(ashbyEnvelope.operation, body, ashby?.surveyCount()) };
       // Greenhouse answers 428 {code: "captcha-failed", security_code_recipient}
       // when it wants the applicant to confirm by email instead.
       if (policy.greenhouse && current.kind === "SUBMIT" && response.status() === 428 && body && body.length <= 64_000) {

@@ -19,15 +19,17 @@ async function fixture(mode: AshbyFixtureMode, run: (data: {
  runtime: Awaited<ReturnType<typeof createApplicationDeliveryBrowser>>;
  browserTools: ReturnType<typeof createAgentBrowserTools>;
  requests: Awaited<ReturnType<typeof startSyntheticAshby>>["requests"];
+ checkpoints: Readonly<Record<string, unknown>>[];
  begins: () => number;
 }) => Promise<void>) {
  const server = await startSyntheticAshby(mode);
  const browser = await chromium.launch({ executablePath: chrome, headless: true });
  let begins = 0;
+ const checkpoints: Readonly<Record<string, unknown>>[] = [];
  try {
   const page = await browser.newPage({ serviceWorkers: "block" });
   const runtime = await createApplicationDeliveryBrowser({ page, policy: server.policy, timeoutMs: 1500,
-   hooks: { async begin() { assert.equal(server.requests.submits, 0); begins++; return { attemptId: "fixture-attempt", idempotencyKey: "once" }; } },
+   hooks: { async begin() { assert.equal(server.requests.submits, 0); begins++; return { attemptId: "fixture-attempt", idempotencyKey: "once" }; }, async checkpoint(state) { checkpoints.push(state); } },
    requestTransport: async (route) => {
     if (new URL(route.request().url()).origin === "https://www.recaptcha.net") {
       // Synthetic provider document only; these tests never run a CAPTCHA SDK.
@@ -40,7 +42,7 @@ async function fixture(mode: AshbyFixtureMode, run: (data: {
   });
   await runtime.open();
   const browserTools = createAgentBrowserTools(page, server.policy.startUrl, { ashbyLabels: true });
-  await run({ page, runtime, browserTools, requests: server.requests, begins: () => begins });
+  await run({ page, runtime, browserTools, requests: server.requests, checkpoints, begins: () => begins });
   await runtime.dispose();
  } finally { await browser.close(); await server.close(); }
 }
@@ -62,12 +64,34 @@ for (const mode of ["normal", "multiple"] as const) test("Ashby " + mode + " sav
   const review = { savedFields: data.runtime.savedFieldProofs(), uploads: data.runtime.uploadProofs() };
   const result = await data.runtime.submit("a".repeat(64), review);
   assert.equal(result.kind, "CONFIRMED");
+  if (result.kind === "CONFIRMED") assert.equal(result.receipt.response.ashbyDiagnostic?.classification, "ACCEPTED");
   assert.equal(data.begins(), 1);
   assert.equal(data.requests.submits, 1);
   assert.equal((await data.runtime.submit("a".repeat(64), review)).kind, "UNCERTAIN");
   assert.equal(data.requests.submits, 1);
  });
 });
+for (const [mode, classification] of [["submit-graphql-error", "GRAPHQL_ERRORS"], ["submit-invalid-json", "JSON_INVALID"]] as const) {
+ test("Ashby " + mode + " persists only bounded response diagnostics and remains uncertain without a retry", options, async () => {
+  await fixture(mode, async data => {
+   await fill(data);
+   const result = await data.runtime.submit("a".repeat(64), {});
+   assert.equal(result.kind, "UNCERTAIN");
+   if (result.kind !== "UNCERTAIN") return;
+   const response = result.submission?.response;
+   assert.equal(response?.status, 200);
+   assert.equal(response?.ashbyAccepted, false);
+   assert.equal(response?.ashbyDiagnostic?.classification, classification);
+   const observed = data.checkpoints.find(state => state.phase === "SUBMIT_RESPONSE_OBSERVED");
+   assert.ok(observed);
+   assert.deepEqual((observed.submission as { response: unknown }).response, response);
+   assert.equal(JSON.stringify(data.checkpoints).includes("synthetic-private-response-content"), false);
+   assert.equal((await data.runtime.submit("a".repeat(64), {})).kind, "UNCERTAIN");
+   assert.equal(data.begins(), 1);
+   assert.equal(data.requests.submits, 1);
+  });
+ });
+}
 test("Ashby wrong-query final envelope cannot fall through generic submit guard", options, async () => {
  await fixture("bad-submit", async data => {
   await fill(data);

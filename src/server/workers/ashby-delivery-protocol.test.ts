@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { ASHBY_QUERY_HASHES, createAshbyProtocol, inspectAshbyEnvelope, parseAshbyEnvelope, ashbySubmissionAccepted, type AshbyEnvelope, type AshbyOperation } from "./ashby-delivery-protocol.ts";
+import { ASHBY_QUERY_HASHES, createAshbyProtocol, inspectAshbyEnvelope, inspectAshbySubmissionResponse, parseAshbyEnvelope, ashbySubmissionAccepted, type AshbyEnvelope, type AshbyOperation, type AshbySubmissionDiagnostics } from "./ashby-delivery-protocol.ts";
 import type { AgentBrowserField } from "./agents-browser-tools.ts";
 
 const queries: Record<string, string> = JSON.parse(readFileSync(new URL("./fixtures/ashby-operations.json", import.meta.url), "utf8"));
@@ -161,6 +161,52 @@ test("only an employer application FormSubmitSuccess, without errors or a block,
   }
   assert.equal(ashbySubmissionAccepted("ApiSubmitMultipleFormsAction", { data: { submitMultipleFormsAction: { ...success, surveyFormResults: [] } } }, 1), false);
   assert.equal(ashbySubmissionAccepted("ApiSubmitMultipleFormsAction", { data: { submitMultipleFormsAction: success } }, 2), false);
+});
+
+test("submission diagnostics distinguish bounded structural causes without changing acceptance", () => {
+  const success = { applicationFormResult: { __typename: "FormSubmitSuccess" }, surveyFormResults: [{ __typename: "FormSubmitSuccess" }] };
+  const body = (response: unknown) => ({ data: { submitMultipleFormsAction: response } });
+  const cases: [unknown, AshbySubmissionDiagnostics["classification"], number?][] = [
+    [null, "ENVELOPE_INVALID"], [{}, "ENVELOPE_INVALID"], [{ data: {} }, "ENVELOPE_INVALID"],
+    [{ errors: [{ message: "private error" }], data: null }, "GRAPHQL_ERRORS"],
+    [{ ...body(success), errors: [] }, "GRAPHQL_ERRORS"],
+    [body({ ...success, applicationFormResult: { __typename: "FormRender", fields: "private form data" } }), "MAIN_FORM_RENDER"],
+    [body({ ...success, applicationFormResult: { __typename: "private foreign type" } }), "MAIN_RESULT_INVALID"],
+    [body({ ...success, messages: { blockMessageForCandidateHtml: "private message" } }), "BLOCK_MESSAGE"],
+    [body({ ...success, surveyFormResults: null }), "SURVEY_RESULTS_INVALID"],
+    [body({ ...success, surveyFormResults: [] }), "SURVEY_COUNT_MISMATCH"],
+    [body(success), "SURVEY_COUNT_MISMATCH", 0], [body(success), "SURVEY_COUNT_MISMATCH", 2],
+    [body({ ...success, surveyFormResults: [{ __typename: "FormRender", fields: "private survey data" }] }), "SURVEY_RESULT_FAILURE"],
+    [body({ ...success, surveyFormResults: [{ __typename: "private foreign type" }] }), "SURVEY_RESULT_FAILURE"],
+    [body(success), "ACCEPTED"],
+  ];
+  for (const [payload, classification, expectedCount = 1] of cases) {
+    const diagnostics = inspectAshbySubmissionResponse("ApiSubmitMultipleFormsAction", Buffer.from(JSON.stringify(payload)), expectedCount);
+    assert.equal(diagnostics.classification, classification);
+    assert.equal(diagnostics.classification === "ACCEPTED", ashbySubmissionAccepted("ApiSubmitMultipleFormsAction", payload, expectedCount));
+    assert.equal(JSON.stringify(diagnostics).includes("private"), false);
+  }
+  assert.equal(inspectAshbySubmissionResponse("ApiSubmitMultipleFormsAction", null, 1).classification, "BODY_UNAVAILABLE");
+  assert.equal(inspectAshbySubmissionResponse("ApiSubmitMultipleFormsAction", Buffer.from("not JSON: private"), 1).classification, "JSON_INVALID");
+  assert.equal(inspectAshbySubmissionResponse("ApiSubmitMultipleFormsAction", Buffer.alloc(2_000_001), 1).classification, "BODY_TOO_LARGE");
+  const single = { data: { submitApplicationFormAction: success } };
+  assert.equal(inspectAshbySubmissionResponse("ApiSubmitSingleApplicationFormAction", Buffer.from(JSON.stringify(single))).classification, "ACCEPTED");
+  assert.equal(ashbySubmissionAccepted("ApiSubmitSingleApplicationFormAction", single), true);
+});
+
+test("submission diagnostics emit only fixed categories and capped counts, never private nested strings", () => {
+  const secret = "synthetic-private-answer-token@example.invalid";
+  const payload = { data: { submitMultipleFormsAction: {
+    applicationFormResult: { __typename: secret, errorMessages: [secret], formErrors: [{ message: secret, fieldEntryId: secret }], sections: [secret] },
+    surveyFormResults: [{ __typename: "FormSubmitSuccess", value: secret }, { __typename: "FormRender", sections: [secret] }, ...Array(1_001).fill({ __typename: secret })],
+    messages: { blockMessageForCandidateHtml: secret, __typename: secret }, __typename: secret,
+  } }, errors: Array(1_001).fill({ message: secret, path: [secret], extensions: { code: secret } }), extensions: { secret } };
+  const diagnostics = inspectAshbySubmissionResponse("ApiSubmitMultipleFormsAction", Buffer.from(JSON.stringify(payload)), 100_000);
+  assert.deepEqual(diagnostics, { classification: "GRAPHQL_ERRORS", mainResult: "OTHER", surveyResults: "ARRAY", expectedSurveyCount: 1_000,
+    surveyResultCount: 1_000, surveySuccessCount: 1, surveyFormRenderCount: 1, surveyOtherCount: 1_000,
+    graphqlErrors: "ARRAY", graphqlErrorCount: 1_000, blockMessage: "PRESENT" });
+  assert.equal(JSON.stringify(diagnostics).includes(secret), false);
+  assert.equal(ashbySubmissionAccepted("ApiSubmitMultipleFormsAction", payload, 100_000), false);
 });
 
 test("protocol drift reports a static stage without exposing an answer", () => {

@@ -10,7 +10,7 @@ const actionId = "44444444-4444-4444-8444-444444444444";
 export const ASHBY_FIXTURE_FINAL_ACTION = "88888888-8888-4888-8888-888888888888";
 const surveyId = "55555555-5555-4555-8555-555555555555";
 const field = (path: string, type: string) => ({ id: formId + "_" + path, field: { path, type, isMany: false, selectableValues: null }, fieldValue: null as unknown, isRequired: true, isHidden: false });
-export type AshbyFixtureMode = "normal" | "multiple" | "bad-submit" | "wrong-value" | "fake-receipt" | "survey-missing" | "upload-corrupt" | "rotating-action" | "stale-action" | "wrong-handle-length" | "late-field-save" | "public-refetches" | "submit-disabled" | "submit-disabled-value" | "submit-disabled-label" | "submit-disabled-removed" | "submit-disabled-foreign";
+export type AshbyFixtureMode = "normal" | "multiple" | "bad-submit" | "wrong-value" | "fake-receipt" | "survey-missing" | "upload-corrupt" | "rotating-action" | "stale-action" | "wrong-handle-length" | "late-field-save" | "public-refetches" | "submit-disabled" | "submit-disabled-value" | "submit-disabled-label" | "submit-disabled-removed" | "submit-disabled-foreign" | "submit-graphql-error" | "submit-invalid-json";
 export async function startSyntheticAshby(mode: AshbyFixtureMode = "normal") {
   const application = { id: formId, sourceFormDefinitionId: definition, formControls: [{ identifier: actionId, title: "Submit" }], sections: [{ isHidden: false, fieldEntries: [field("_systemfield_name", "String"), field("_systemfield_resume", "File")] }] };
   const survey = { id: surveyId, sourceFormDefinitionId: definition, formControls: [{ identifier: actionId, title: "Submit" }], sections: [] };
@@ -38,7 +38,10 @@ export async function startSyntheticAshby(mode: AshbyFixtureMode = "normal") {
     else if (op === "ApiSetFormValueToFile") { requests.mutations.push(v); application.sections[0].fieldEntries[1].fieldValue = { __typename: "File", id: "66666666-6666-4666-8666-666666666666", filename: "Fixture-Resume.pdf" }; if (rotating) application.formControls[0].identifier = ASHBY_FIXTURE_FINAL_ACTION; data = { setFormValueToFile: application }; }
     else if (op.startsWith("ApiSubmit")) { requests.submits += 1; requests.submittedActions.push(v.applicationFormActionIdentifier ?? v.actionIdentifier); data = { [multiple ? "submitMultipleFormsAction" : "submitApplicationFormAction"]: { applicationFormResult: { __typename: mode === "fake-receipt" ? "FormSubmitFailure" : "FormSubmitSuccess" }, ...(multiple ? { surveyFormResults: mode === "survey-missing" ? [] : [{ __typename: "FormSubmitSuccess" }] } : {}), messages: null } }; }
     else { res.statusCode = 400; data = null; }
-    res.end(JSON.stringify({ data }));
+    if (op.startsWith("ApiSubmit") && mode === "submit-graphql-error") {
+      res.end(JSON.stringify({ data: null, errors: [{ message: "synthetic-private-response-content", extensions: { code: "synthetic-private-response-content" } }] }));
+    } else if (op.startsWith("ApiSubmit") && mode === "submit-invalid-json") res.end("invalid JSON: synthetic-private-response-content");
+    else res.end(JSON.stringify({ data }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address(); if (!address || typeof address === "string") throw new Error("FIXTURE_SERVER_UNAVAILABLE");

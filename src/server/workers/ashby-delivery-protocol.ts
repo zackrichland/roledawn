@@ -315,3 +315,64 @@ export function ashbySubmissionAccepted(operation: AshbyOperation, payload: unkn
   if (!result || object(result.applicationFormResult)?.__typename !== "FormSubmitSuccess" || object(result.messages)?.blockMessageForCandidateHtml) return false;
   return !multiple || surveyCount > 0 && Array.isArray(result.surveyFormResults) && result.surveyFormResults.length === surveyCount && result.surveyFormResults.every((value) => object(value)?.__typename === "FormSubmitSuccess");
 }
+
+export type AshbySubmissionDiagnostics = Readonly<{
+  classification: "BODY_UNAVAILABLE" | "BODY_TOO_LARGE" | "JSON_INVALID" | "ENVELOPE_INVALID" | "GRAPHQL_ERRORS" |
+    "MAIN_FORM_RENDER" | "MAIN_RESULT_INVALID" | "BLOCK_MESSAGE" | "SURVEY_RESULTS_INVALID" |
+    "SURVEY_COUNT_MISMATCH" | "SURVEY_RESULT_FAILURE" | "ACCEPTED";
+  mainResult: "SUCCESS" | "FORM_RENDER" | "OTHER" | "MISSING";
+  surveyResults: "ARRAY" | "OTHER" | "MISSING";
+  expectedSurveyCount: number;
+  surveyResultCount: number;
+  surveySuccessCount: number;
+  surveyFormRenderCount: number;
+  surveyOtherCount: number;
+  graphqlErrors: "ABSENT" | "ARRAY" | "OTHER";
+  graphqlErrorCount: number;
+  blockMessage: "ABSENT" | "PRESENT";
+}>;
+
+/** Static categories and capped counts only. This is diagnostic evidence, not
+ * submission authority or a substitute for the unchanged acceptance predicate.
+ * Never retain raw types, GraphQL messages, form fields or candidate content. */
+export function inspectAshbySubmissionResponse(operation: AshbyOperation, bytes: Buffer | null, surveyCount = 0): AshbySubmissionDiagnostics {
+  const count = (value: number) => Number.isFinite(value) ? Math.min(1_000, Math.max(0, Math.floor(value))) : 0;
+  const diagnostic: AshbySubmissionDiagnostics = {
+    classification: "BODY_UNAVAILABLE", mainResult: "MISSING", surveyResults: "MISSING", expectedSurveyCount: count(surveyCount),
+    surveyResultCount: 0, surveySuccessCount: 0, surveyFormRenderCount: 0, surveyOtherCount: 0,
+    graphqlErrors: "ABSENT", graphqlErrorCount: 0, blockMessage: "ABSENT",
+  };
+  const result = (classification: AshbySubmissionDiagnostics["classification"], dimensions: Partial<AshbySubmissionDiagnostics> = {}): AshbySubmissionDiagnostics =>
+    ({ ...diagnostic, ...dimensions, classification });
+  if (!bytes) return diagnostic;
+  if (bytes.length > 2_000_000) return result("BODY_TOO_LARGE");
+  let payload: unknown;
+  try { payload = JSON.parse(bytes.toString("utf8")); } catch { return result("JSON_INVALID"); }
+  const body = object(payload), data = object(body?.data);
+  const multiple = operation === "ApiSubmitMultipleFormsAction";
+  if (!body || !multiple && operation !== "ApiSubmitSingleApplicationFormAction") return result("ENVELOPE_INVALID");
+  const response = object(data?.[multiple ? "submitMultipleFormsAction" : "submitApplicationFormAction"]);
+  const main = response?.applicationFormResult;
+  const category = (value: unknown): AshbySubmissionDiagnostics["mainResult"] => value == null ? "MISSING"
+    : object(value)?.__typename === "FormSubmitSuccess" ? "SUCCESS" : object(value)?.__typename === "FormRender" ? "FORM_RENDER" : "OTHER";
+  const surveys = response?.surveyFormResults;
+  const dimensions: Partial<AshbySubmissionDiagnostics> = {
+    mainResult: category(main),
+    surveyResults: Array.isArray(surveys) ? "ARRAY" : surveys == null ? "MISSING" : "OTHER",
+    surveyResultCount: Array.isArray(surveys) ? count(surveys.length) : 0,
+    surveySuccessCount: Array.isArray(surveys) ? count(surveys.filter(value => category(value) === "SUCCESS").length) : 0,
+    surveyFormRenderCount: Array.isArray(surveys) ? count(surveys.filter(value => category(value) === "FORM_RENDER").length) : 0,
+    surveyOtherCount: Array.isArray(surveys) ? count(surveys.filter(value => !["SUCCESS", "FORM_RENDER"].includes(category(value))).length) : 0,
+    graphqlErrors: body.errors == null ? "ABSENT" : Array.isArray(body.errors) ? "ARRAY" : "OTHER",
+    graphqlErrorCount: Array.isArray(body.errors) ? count(body.errors.length) : 0,
+    blockMessage: object(response?.messages)?.blockMessageForCandidateHtml ? "PRESENT" : "ABSENT",
+  };
+  if (body.errors != null) return result("GRAPHQL_ERRORS", dimensions);
+  if (!data || !response) return result("ENVELOPE_INVALID", dimensions);
+  if (dimensions.mainResult !== "SUCCESS") return result(dimensions.mainResult === "FORM_RENDER" ? "MAIN_FORM_RENDER" : "MAIN_RESULT_INVALID", dimensions);
+  if (dimensions.blockMessage === "PRESENT") return result("BLOCK_MESSAGE", dimensions);
+  if (multiple && !Array.isArray(surveys)) return result("SURVEY_RESULTS_INVALID", dimensions);
+  if (multiple && (surveyCount <= 0 || (surveys as unknown[]).length !== surveyCount)) return result("SURVEY_COUNT_MISMATCH", dimensions);
+  if (multiple && (surveys as unknown[]).some(value => category(value) !== "SUCCESS")) return result("SURVEY_RESULT_FAILURE", dimensions);
+  return result("ACCEPTED", dimensions);
+}
