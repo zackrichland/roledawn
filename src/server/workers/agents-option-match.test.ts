@@ -7,6 +7,18 @@ const COUNTRY = { semantic: "COUNTRY" } as const;
 const REGION = { semantic: "REGION" } as const;
 const options = (...labels: string[]) => labels.map((label, index) => ({ value: `v${index}`, label }));
 
+test("explicit city answers accept only reviewed region/country aliases and unique results", () => {
+  const city = { semantic: "CITY", source: "ANSWER" } as const;
+  const results = ["Washington, District of Columbia, United States", "Washington, Pennsylvania, United States"];
+  assert.equal(chooseSearchResult(results, "Washington, D.C., USA", city), results[0]);
+  assert.equal(chooseSearchResult(results, "Washington, DC, US", city), results[0]);
+  assert.equal(chooseSearchResult(results, "Washington, PA, USA", city), results[1]);
+  assert.equal(chooseSearchResult(results, "Washington, DC, Canada", city), null);
+  assert.equal(chooseSearchResult(results, "Washingt, DC, USA", city), null);
+  assert.equal(chooseSearchResult(results, "Washington, DC, USA", { source: "ANSWER" }), null);
+  assert.equal(chooseSearchResult([...results, results[0]], "Washington, DC, USA", city), null);
+});
+
 test("normalization ignores case, diacritics, abbreviation periods and separators but keeps meaning-bearing symbols", () => {
   assert.equal(normalizeOptionText("  U.S.A. "), "usa");
   assert.equal(normalizeOptionText("Washington, D.C."), "washington dc");

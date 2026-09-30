@@ -243,5 +243,26 @@ begin
   insert into remembered_answer_checks values('corrected_current_input_education_and_gpa_still_cross_jobs',true);
 end $context$;
 
+do $obsolete$
+declare run jsonb := pg_temp.running(pg_temp.candidate()); old_id uuid := gen_random_uuid();
+  old_question jsonb := pg_temp.question('Current company', 'TEXT', '[]', false);
+  kept_question jsonb := pg_temp.question('An answered factual question', 'TEXT', '[]');
+begin
+  insert into public.application_autopilot_questions(id,autopilot_id,fingerprint,descriptor,status)
+    values(old_id,(run->>'autopilot')::uuid,old_question->>'fingerprint',old_question,'OPEN');
+  perform pg_temp.answer_earlier(run,kept_question,'"An explicit candidate answer"');
+  perform pg_temp.as_worker_request(run,'[]');
+  if (select status from public.application_autopilot_questions where id=old_id)<>'SUPERSEDED'
+    or (select status from public.application_autopilot_questions where autopilot_id=(run->>'autopilot')::uuid and fingerprint=kept_question->>'fingerprint')<>'ANSWERED'
+    or not exists(select 1 from public.application_autopilots where id=(run->>'autopilot')::uuid and status='RUNNING' and lease_token=(run->>'lease')::uuid)
+    or exists(select 1 from public.application_attempts where application_id=(run->>'application')::uuid) then
+    raise exception 'CHECK_OBSOLETE_QUESTION_OR_AUTHORITY_CHANGED';
+  end if;
+  execute 'set local role service_role';
+  perform public.seal_application_autopilot((run->>'autopilot')::uuid,(run->>'lease')::uuid,'{"current_readback":"complete"}',repeat('a',64),repeat('b',64),'https://job-boards.greenhouse.io/roledawncheck/jobs/1');
+  execute 'reset role';
+  insert into remembered_answer_checks values('completed_readback_supersedes_obsolete_questions_preserving_answers_and_lease',true);
+end $obsolete$;
+
 select check_name, passed from remembered_answer_checks order by check_name;
 rollback;

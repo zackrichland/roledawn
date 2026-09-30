@@ -13,9 +13,9 @@ three employer-confirmed applications across two employers, verified by hosted
 readback on 2026-09-30 UTC. Lever and Ashby have delivery adapters; live employer
 acceptance remains unproven for both. Keep the product scoped to personal use.
 
-**Published release:** `8914db5` (includes Claude main `0364902`), Netlify deployment
-`6abd6e09a26825e9a0a454c5`. Authenticated worker health verified that exact release
-at 20:17:45 UTC; the private gate returns 404 without access, all 14 checked page
+**Published release:** `d3e6b9f` (includes Claude main `0364902`), Netlify deployment
+`6abd78178489833e010d33a8`. Authenticated worker health verified that exact release
+at 21:00:37 UTC; the private gate returns 404 without access, all 14 checked page
 assets return 200 and the approved private profile/story content remains
 visible. The sole new Ashby submission occurred on `b103640`. Final readback
 still shows one attempt, zero confirmed attempts/receipts, and
@@ -157,3 +157,5 @@ D-136 adds explicit saved acknowledgement delegation with worker/database rule p
 **Verified D-138 rollout:** all 886 tests pass; typecheck, lint, docs links and full production build pass. Deploy `6abd6e09a26825e9a0a454c5` serves the enabled workers, private gate, approved career/story and all 14 checked page assets. Real public Lever client replay with mocked parsing reproduced loss of the last focused approved field before the change and preserved it afterwards; no employer upload or submission occurred in either probe.
 
 **Further live diagnosis:** the next zero-attempt Ashby send stopped on an idle hidden reCAPTCHA Enterprise challenge document; the hosted Linux before/after probe reproduces the old stop and corrected inspection with exact key/origin/path checks (D-139). The next Lever send stopped on upload acknowledgement, while a synthetic PDF parser probe shows successful markers and filename DOM text differing from uppercase innerText. D-139 corrects that comparison without changing filename identity or submission proof. No additional confirmed application is claimed.
+
+**Verified D-139 rollout:** all 889 tests pass; typecheck, lint, docs links and the full production build pass. GitHub CI passed on rerun after a Chrome startup timeout. Both repaired live sends reached their forms: Ashby asked five required questions, Greenhouse retained four missing facts and Lever asked two optional parser-filled fields. None of these three sends had created an attempt. D-140 repairs the optional parser stop and the Home question reader, which wrongly hid existing questions when new-send execution was disabled. The signed-in local Answer panel now shows the actual text/select controls. Approved narrative evidence is provided before the model turn, with an attempted, independently validated draft required before asking for new facts. Stored factual replies supplied by the candidate remain private.

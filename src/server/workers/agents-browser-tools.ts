@@ -261,6 +261,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   const readsBack = (actual: AgentFieldValue, expected: AgentFieldValue, phone: boolean) => hash(actual) === hash(expected) ||
     phone && typeof actual === "string" && typeof expected === "string" && samePhoneNumber(actual, expected);
   let initialValues: Map<string, string> | null = null;
+  let initiallyEmpty: Map<string, string> | null = null;
 
   function assertOrigin() {
     if (new URL(page.url()).origin !== expectedOrigin) throw new Error("AGENTS_FILL_ORIGIN_MISMATCH");
@@ -449,6 +450,8 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     latest = next;
     initialValues ??= new Map([...next].filter(([, item]) => item.field.hasValue)
       .map(([id, item]) => [id, hash({ value: item.value, files: item.files })]));
+    initiallyEmpty ??= new Map([...next].filter(([, item]) => !item.field.hasValue)
+      .map(([id, item]) => [id, item.field.fingerprint]));
     return Object.freeze({ origin: expectedOrigin, pageUrl: page.url(), fields: [...next.values()].map((item) => item.field), takeoverReason, navigationRequired });
   }
 
@@ -550,6 +553,29 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     await verifyWrites(signal);
   }
 
+  /** Omit unapproved parser output only from Lever's two optional system slots.
+   * Initial values, approved writes, required questions and other slots remain protected. */
+  async function clearOptionalParserValue(fieldId: string, signal?: AbortSignal): Promise<boolean> {
+    if (!options?.leverLabels) return false;
+    const before = latest.get(fieldId);
+    if (!before || initiallyEmpty?.get(fieldId) !== before.field.fingerprint || writes.has(fieldId)) return false;
+    const snapshot = await inspect(signal);
+    if (snapshot.takeoverReason) throw new Error(snapshot.takeoverReason);
+    const current = latest.get(fieldId);
+    if (!current || current.field.fingerprint !== before.field.fingerprint) throw new Error("AGENTS_FILL_FIELD_DRIFT");
+    const field = current.field;
+    const label = field.label.trim().toLowerCase();
+    if (field.kind !== "TEXT" || field.inputType !== "text" || field.required || field.readOnly || field.candidateOnly || !field.hasValue ||
+      !(field.name === "org" && label === "current company" || field.name === "location" && label === "current location")) return false;
+    if (signal?.aborted) throw new Error("AGENTS_FILL_CANCELLED");
+    const control = current.frame.locator(CONTROL_SELECTOR).nth(current.indexes[0]);
+    await control.fill("", { timeout: 5_000 });
+    await control.blur({ timeout: 5_000 });
+    writes.set(fieldId, { value: "" });
+    await verifyWrites(signal);
+    return true;
+  }
+
   async function verifyWrites(signal?: AbortSignal, includeDisabledForReview = false): Promise<AgentBrowserSnapshot> {
     const snapshot = await inspect(signal, includeDisabledForReview);
     for (const [id, priorHash] of initialValues ?? []) {
@@ -580,7 +606,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   }
 
   return Object.freeze({
-    inspect: (signal?: AbortSignal) => inspect(signal), fillValue, upload,
+    inspect: (signal?: AbortSignal) => inspect(signal), fillValue, upload, clearOptionalParserValue,
     verifyWrites: (signal?: AbortSignal) => verifyWrites(signal),
     // Ashby disables its controls after the click, before its final request is
     // intercepted. Read their exact values/schema here without enabling writes.

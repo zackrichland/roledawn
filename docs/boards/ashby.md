@@ -136,3 +136,5 @@ Don't:
 - 2026-09-30 (D-138): a Location widget can request the exact `Country, Region, City` list, including an empty mount read. Bind nonempty lookups to the observed widget types; only approved-text, server-returned City results can become saved location values.
 
 - 2026-09-30 (D-139): the Enterprise SDK mounts an idle hidden `bframe` before a challenge. Trust only the exact reviewed origin/path and observed key; check iframe visibility independently on every inspection and final readback. The hosted Linux probe stops before this correction and continues afterwards, without candidate fields or submit.
+
+- 2026-09-30 (D-140): the reviewed system location slot may ask which city and country the candidate intends to work from. That wording needs the candidate's explicit answer, not a residence default; city/region/country lookup matching accepts only fixed jurisdiction aliases and a unique exact result.

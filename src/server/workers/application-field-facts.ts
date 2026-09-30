@@ -312,6 +312,11 @@ export function optionMatchForField(field: FieldFactDescriptor, factKey: string 
   const classified = classifyFieldFact(field);
   const key = factKey === null ? classified : classified === factKey ? factKey : null;
   const approved = (name: string) => facts.find((fact) => fact.factKey === name)?.value ?? null;
-  return { semantic: key ? OPTION_SEMANTICS[key] ?? null : null, source: factKey === null ? "ANSWER" : "FACT",
+  // Intended work location is a candidate choice, not current residence.
+  // Only an exact saved answer gets city lookup semantics in this reviewed slot.
+  const intendedCityAnswer = factKey === null && field.provider === "ASHBY" && field.domId === "_systemfield_location" &&
+    field.name === "_systemfield_location" && field.kind === "SINGLE_SELECT" && field.inputType === "text" &&
+    normalizeFieldLabel(field.label) === "which city and country do you intend to work from";
+  return { semantic: intendedCityAnswer ? "CITY" : key ? OPTION_SEMANTICS[key] ?? null : null, source: factKey === null ? "ANSWER" : "FACT",
     hints: { region: approved("location.region"), country: approved("location.country_code") } };
 }

@@ -121,3 +121,5 @@ Don't:
 - 2026-09-30 (D-138): the public résumé parser tracks native change/paste events. Complete approved text edits with blur before upload; otherwise the last focused field can be overwritten. Real public-client replay with a mocked parser response preserves exact values after the correction; this is field-mechanics proof, not employer acceptance.
 
 - 2026-09-30 (D-139): the upload button uppercases its displayed filename through CSS. Check its exact DOM text, while retaining visible-marker, response, byte and final readback requirements. A real synthetic PDF parsed successfully but old innerText comparison falsely stopped; a different underlying filename remains rejected.
+
+- 2026-09-30 (D-140): optional native `org`/Current company and `location`/Current location fields can be populated by parsing. After approved uploads, omit unverified values only when the exact slot was initially empty; preserve initial values, approved writes and required questions. Reintroduced values fail final readback.

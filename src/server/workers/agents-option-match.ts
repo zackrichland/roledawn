@@ -169,7 +169,14 @@ export function chooseSearchResult(labels: readonly string[], query: string, mat
     const parts = segments(label);
     if (parts.length < wanted.length) return false;
     const head = parts.slice(0, wanted.length);
-    const headMatches = leading && wanted.length === 1 ? leading.has(head[0]) : head.every((part, index) => part === wanted[index]);
+    const headMatches = leading && wanted.length === 1 ? leading.has(head[0]) : head.every((part, index) => {
+      if (part === wanted[index]) return true;
+      // Explicit city/region/country answers can use reviewed jurisdiction
+      // aliases. City text stays exact; multiple results remain ambiguous.
+      if (semantic !== "CITY" || index === 0) return false;
+      return (index === 1 && optionAliases(wanted[index], "REGION").has(part)) ||
+        (index === wanted.length - 1 && optionAliases(wanted[index], "COUNTRY").has(part));
+    });
     if (!headMatches) return false;
     const rest = parts.slice(wanted.length);
     if (match?.source === "ANSWER") return true;

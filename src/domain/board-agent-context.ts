@@ -61,7 +61,7 @@ export const BOARD_CONTEXT: Readonly<Record<BoardId, BoardContext>> = Object.fre
     "Submit happens server-side; Greenhouse usually answers HTTP 428 plus an emailed code, which is neither a form error nor a receipt.",
   ]),
   lever: board("lever", "Lever", "fills-only", "repo", [
-    "The resume upload runs Lever's parser, which may fill or change other fields (current location too). Parsed values are not approved: re-check every field afterwards.",
+    "After upload the server omits unapproved parser values only from initially empty optional system company/location slots; initial, required and approved values stay protected.",
     "Fill approved facts before uploading, complete edits with blur, then verify all values again.",
     "Question text sits in each card's label; judge sensitivity from the question, never the option.",
     "The required marker, not a native required attribute, signals a required field (the file input may lack it).",

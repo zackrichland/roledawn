@@ -271,6 +271,39 @@ test("employer-prechecked legal consent requires candidate authority and explici
   }, mode);
 });
 
+test("required narrative answers reach the agent with evidence before any candidate question", browserOptions, async () => {
+  for (const supported of [true, false]) await fixture(async ({ page, policy, requests }) => {
+    await page.addInitScript(() => document.addEventListener("DOMContentLoaded", () => {
+      document.querySelector("#first")?.insertAdjacentHTML("beforeend", '<label>Describe a project you built.<textarea name="project_story" required></textarea></label>');
+    }));
+    const authority = hooks(requests);
+    let validated = 0;
+    const questions: ApplicationAgentQuestionRepository = {
+      async loadAnswers({ questions }) { return questions.filter(item => item.kind === "BOOLEAN").map(item => ({ answerId: "saved-consent", fieldId: item.fieldId, fingerprint: item.fingerprint, value: true })); },
+      async requestQuestions({ questions }) { return questions.map(item => ({ ...item, id: "question", status: "OPEN" })); },
+    };
+    const harness: AgentFormHarness = { async run(input) {
+      const field = (input.input.form as { fields: AgentBrowserField[] }).fields.find(item => item.name === "project_story");
+      if (!field) return;
+      assert.deepEqual(input.input.narrativeFieldIds, [field.fieldId]);
+      assert.deepEqual(input.input.evidenceSources, [{ sourceId: "resume:0", text: "Built and shipped a staffing platform." }]);
+      const premature = await input.executeTool("request_questions", { fieldIds: [field.fieldId] }) as { errorCode: string };
+      assert.equal(premature.errorCode, "DELIVERY_NARRATIVE_DRAFT_REQUIRED");
+      const proposed = await input.executeTool("fill_supported_text", { fieldId: field.fieldId, text: "I built and shipped a staffing platform.", sourceIds: ["resume:0"] }) as { ok: boolean };
+      assert.equal(proposed.ok, supported);
+      await input.executeTool("complete_review", {});
+    } };
+    const driver = createApplicationDeliveryDriver({ harness, questions, resolvePage: () => page, sitePolicy: policy, submissionHooks: authority.value, browserTimeoutMs: 600,
+      evidence: { async load() { return [{ sourceId: "resume:0", text: "Built and shipped a staffing platform." }]; }, async validate(input) { validated++; assert.deepEqual(input.sourceIds, ["resume:0"]); return supported; } },
+    });
+    const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: policy.startUrl, executionPackage: packet(policy.startUrl) });
+    assert.equal(validated, 1);
+    assert.equal(result.kind, supported ? "CONFIRMED" : "QUESTIONS_REQUIRED", JSON.stringify(result));
+    assert.equal(requests.submits, supported ? 1 : 0);
+    assert.equal(authority.begins(), supported ? 1 : 0);
+  });
+});
+
 test("optional contact defaults and exact fact mappings require matching provenance; conflicting email is preserved", browserOptions, async () => {
   for (const matches of [true, false]) await fixture(async ({ page, policy, requests }) => {
     const approvedEmail = "alex@example.test";

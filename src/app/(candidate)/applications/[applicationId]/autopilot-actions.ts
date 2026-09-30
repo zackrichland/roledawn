@@ -9,8 +9,8 @@ import { getOptionalActor } from "@/server/auth/session";
 import { requestHostedWorkerWakeup } from "@/server/workers/hosted-worker-wakeup";
 
 type Result = Readonly<{ ok: true }> | Readonly<{ ok: false; message: string }>;
-async function execute(action: (client: Awaited<ReturnType<typeof createSupabaseServerClient>>) => Promise<unknown>, wakeAutopilot = false): Promise<Result> {
-  if (process.env.ROLEDAWN_AUTOPILOT_ENABLED !== "true") return { ok: false, message: "Apply for me is not available yet." };
+async function execute(action: (client: Awaited<ReturnType<typeof createSupabaseServerClient>>) => Promise<unknown>, wakeAutopilot = false, newSend = false): Promise<Result> {
+  if (newSend && process.env.ROLEDAWN_AUTOPILOT_ENABLED !== "true") return { ok: false, message: "Apply for me is not available yet." };
   if (!await getOptionalActor()) return { ok: false, message: "Sign in again to continue." };
   try {
     await action(await createSupabaseServerClient());
@@ -24,7 +24,7 @@ async function execute(action: (client: Awaited<ReturnType<typeof createSupabase
   }
 }
 export async function delegateApplicationAutopilotAction(command: DelegateApplicationAutopilotCommand): Promise<Result> {
-  return execute(client => delegateApplicationAutopilot(client, command), true);
+  return execute(client => delegateApplicationAutopilot(client, command), true, true);
 }
 export async function saveApplicationAutopilotAnswersAction(command: SaveAutopilotAnswersCommand): Promise<Result> {
   return execute(client => saveApplicationAutopilotAnswers(client, command), true);

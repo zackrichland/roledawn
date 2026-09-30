@@ -579,3 +579,13 @@ test("only the reviewed Ashby system Location control receives city semantics", 
   }
   assert.equal(classifyFieldFact(browserField("Location", "SINGLE_SELECT", "select-one", { options: [{ label: "United States", value: "US" }] })), null);
 });
+
+test("Ashby intended work city uses an exact candidate answer without defaulting to residence", () => {
+  const field = browserField("Which city and country do you intend to work from?", "SINGLE_SELECT", "text", { provider: "ASHBY", domId: "_systemfield_location", name: "_systemfield_location", searchable: true });
+  assert.equal(classifyFieldFact(field), null);
+  assert.equal(optionMatchForField(field, null, []).semantic, "CITY");
+  assert.equal(optionMatchForField(field, "location.city", []).semantic, null);
+  for (const change of [{ provider: undefined }, { domId: "other" }, { name: "other" }, { kind: "TEXT" }, { label: "Which country do you intend to work from?" }]) {
+    assert.equal(optionMatchForField({ ...field, ...change } as AgentBrowserField, null, []).semantic, null);
+  }
+});

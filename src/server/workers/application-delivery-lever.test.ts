@@ -64,10 +64,32 @@ test("Lever refuses failed uploads, extra upload fields and changed final artifa
   }
 });
 
-test("Lever parser cannot add unapproved optional company answers", options, async () => {
+test("Lever omits unapproved parser values from initially empty optional system slots", options, async () => {
   const { result, observed, state } = await run("parser-autofill");
-  assert.equal(result.kind, "QUESTIONS_REQUIRED", JSON.stringify(result));
-  if (result.kind === "QUESTIONS_REQUIRED") assert.ok(result.questions.some((question) => /company/iu.test(question.label)));
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+  assert.equal(observed.submissions[0].includes("Unverified employer"), false);
+  assert.equal(observed.submissions[0].includes("Unverified city"), false);
+  assert.match(observed.submissions[0].toString(), /name="org"\r\n\r\n\r\n/u);
+  assert.match(observed.submissions[0].toString(), /name="location"\r\n\r\n\r\n/u);
+});
+
+test("Lever never clears initial values, required answers or unreviewed parser slots", options, async () => {
+  for (const mode of ["parser-prefilled", "parser-required", "parser-other-slot"] as const) {
+    await run(mode, async (result, fixture, state, page) => {
+      assert.equal(result.kind, "QUESTIONS_REQUIRED", JSON.stringify(result));
+      assert.equal(fixture.observed.submits, 0);
+      assert.equal(state.begins, 0);
+      const selector = mode === "parser-other-slot" ? '[name="otherOrg"]' : '[name="org"]';
+      assert.equal(await page.locator(selector).inputValue(), mode === "parser-prefilled" ? "Existing company" : "Unverified employer");
+    });
+  }
+});
+
+test("Lever blocks a parser value reintroduced after the sealed empty readback", options, async () => {
+  const { result, observed, state } = await run("parser-repopulate");
+  assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
   assert.equal(observed.submits, 0);
   assert.equal(state.begins, 0);
 });
