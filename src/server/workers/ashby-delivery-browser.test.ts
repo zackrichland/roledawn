@@ -68,6 +68,7 @@ test("Ashby wrong-query final envelope cannot fall through generic submit guard"
   await fill(data);
   const result = await data.runtime.submit("b".repeat(64), {});
   assert.equal(result.kind, "TAKEOVER");
+  if (result.kind === "TAKEOVER") assert.equal(result.reasonCode, "DELIVERY_ASHBY_REQUEST_SUBMIT_SINGLE_ENVELOPE_QUERY_DOCUMENT");
   assert.equal(data.begins(), 0);
   assert.equal(data.requests.submits, 0);
  });
@@ -75,7 +76,7 @@ test("Ashby wrong-query final envelope cannot fall through generic submit guard"
 test("Ashby form script cannot autosave a different approved-field value", options, async () => {
  await fixture("wrong-value", async data => {
   const field = (await data.browserTools.inspect()).fields.find(field => field.domId === "_systemfield_name")!;
-  await assert.rejects(data.runtime.withField(field, "Alex Fixture", () => data.browserTools.fillValue(field.fieldId, "Alex Fixture")), /NOT_ACKNOWLEDGED/u);
+  await assert.rejects(data.runtime.withField(field, "Alex Fixture", () => data.browserTools.fillValue(field.fieldId, "Alex Fixture")), { message: "DELIVERY_ASHBY_REQUEST_FIELD_VALUE" });
   assert.equal(data.requests.mutations.length, 0);
   assert.equal(data.begins(), 0);
  });
@@ -98,7 +99,7 @@ for (const mode of ["fake-receipt", "survey-missing"] as const) test("Ashby " + 
  });
 });
 
-for (const mode of ["multiple", "rotating-action"] as const) test("Ashby delivery driver seals " + mode + " autosave readbacks with the exact approved package", options, async () => {
+for (const mode of ["multiple", "rotating-action", "public-refetches"] as const) test("Ashby delivery driver seals " + mode + " autosave readbacks with the exact approved package", options, async () => {
  const server = await startSyntheticAshby(mode);
  const browser = await chromium.launch({ executablePath: chrome, headless: true });
  try {
@@ -128,6 +129,10 @@ for (const mode of ["multiple", "rotating-action"] as const) test("Ashby deliver
   assert.equal(sealed, true);
   assert.equal(server.requests.submits, 1);
   if (mode === "rotating-action") assert.deepEqual(server.requests.submittedActions, [ASHBY_FIXTURE_FINAL_ACTION]);
+  if (mode === "public-refetches") {
+   assert.equal(server.requests.operations.filter(op => op === "ApiOrganizationFromHostedJobsPageName").length, 4);
+   assert.equal(server.requests.operations.filter(op => op === "ApiAutocompleteGeoLocation").length, 3);
+  }
  } finally { await browser.close(); await server.close(); }
 });
 
@@ -153,3 +158,21 @@ test("Ashby cancellation revokes pending autosave authority before dispatch", op
   assert.equal(data.requests.mutations.length, 0);
  });
 });
+
+for (const [mode, reason] of [["wrong-handle-length", "DELIVERY_ASHBY_REQUEST_HANDLE_BYTE_LENGTH"], ["late-field-save", "DELIVERY_ASHBY_REQUEST_FIELD_NO_ACTION"]] as const) {
+ test("Ashby " + mode + " retains the precise first rejection through later chained upload requests", options, async () => {
+  await fixture(mode, async data => {
+   const fields = (await data.browserTools.inspect()).fields;
+   const name = fields.find(field => field.domId === "_systemfield_name")!;
+   await data.runtime.withField(name, "Alex Fixture", () => data.browserTools.fillValue(name.fieldId, "Alex Fixture"));
+   await assert.rejects(data.runtime.upload(fields.find(field => field.kind === "FILE")!, artifact), { message: reason });
+   assert.equal(data.requests.operations.includes("ApiCreateFileUploadHandle"), false);
+   assert.equal(data.requests.operations.includes("ApiSetFormValueToFile"), false);
+   assert.equal(data.requests.mutations.length, 1);
+   assert.equal(data.requests.uploadBytes.length, 0);
+   assert.equal(data.requests.submits, 0);
+   assert.equal(data.begins(), 0);
+   await assert.rejects(data.runtime.currentStep(), { message: reason });
+  });
+ });
+}

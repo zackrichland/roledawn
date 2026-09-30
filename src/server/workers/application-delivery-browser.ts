@@ -8,7 +8,7 @@ import { APPLICATION_FILL_CAPTCHA_TAKEOVER, pageShowsCaptchaChallenge } from "./
 import type { MaterializedApplicationArtifact } from "./application-fill-materializer.ts";
 
 import type { OptionMatch } from "./agents-option-match.ts";
-import { ashbySubmissionAccepted, createAshbyProtocol, parseAshbyEnvelope, type AshbyEnvelope } from "./ashby-delivery-protocol.ts";
+import { ashbySubmissionAccepted, createAshbyProtocol, inspectAshbyEnvelope, type AshbyEnvelope } from "./ashby-delivery-protocol.ts";
 
 export const DELIVERY_BROWSER_RELEASE = "application-delivery-browser/1";
 export type DeliveryRequestRule = Readonly<{ method: "GET" | "POST" | "PUT"; url: string }>;
@@ -401,7 +401,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     }
   }
   const responseListener = (response: Response) => {
-    const operation = onResponse(response).catch((error) => { if (ashby) ashbyError = safeError(error); if (action) action.error = safeError(error); });
+    const operation = onResponse(response).catch((error) => { if (ashby) ashbyError ??= safeError(error); if (action) action.error ??= safeError(error); });
     pending.add(operation); void operation.finally(() => pending.delete(operation));
   };
   page.on("response", responseListener);
@@ -424,12 +424,13 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       // server-side readback before admitting the browser's next chained step.
       if (ashby) await drain();
       const url = new URL(request.url());
-      const ashbyEnvelope = ashby ? parseAshbyEnvelope(request.url(), request.method(), request.postDataBuffer(), new URL(policy.startUrl).origin) : null;
-      if (ashby && url.origin === new URL(policy.startUrl).origin && url.pathname === "/api/non-user-graphql" && !ashbyEnvelope) throw new Error("DELIVERY_ASHBY_REQUEST_NOT_AUTHORIZED");
+      const ashbyInspection = ashby ? inspectAshbyEnvelope(request.url(), request.method(), request.postDataBuffer(), new URL(policy.startUrl).origin) : null;
+      const ashbyEnvelope = ashbyInspection?.envelope;
+      if (ashby && url.origin === new URL(policy.startUrl).origin && url.pathname === "/api/non-user-graphql" && !ashbyEnvelope) throw new Error(ashbyInspection?.rejection || "DELIVERY_ASHBY_REQUEST_ENVELOPE_INVALID");
       if (ashbyEnvelope && ashby) {
-        if (ashbyError || ashbyFieldSignal?.aborted || current?.error || current?.signal?.aborted) throw new Error(ashbyError || "DELIVERY_CANCELED");
+        if (ashbyError || ashbyFieldSignal?.aborted || current?.error || current?.signal?.aborted) throw new Error(ashbyError || current?.error || "DELIVERY_CANCELED");
         const permission = ashby.authorize(ashbyEnvelope, activeSearch && !activeSearch.signal?.aborted ? activeSearch.query : undefined, current?.kind === "SUBMIT" && !current.admitted && !submitConsumed);
-        if (!permission) throw new Error("DELIVERY_ASHBY_REQUEST_NOT_AUTHORIZED");
+        if (!permission) throw new Error(ashby.authorizationFailure() || "DELIVERY_ASHBY_REQUEST_PERMISSION_INVALID");
         ashbyRequests.set(request, ashbyEnvelope);
         if (permission !== "SUBMIT") { await dispatch(route); return; }
       }
@@ -487,7 +488,11 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         submittedRequests += 1;
       }
       await dispatch(route); } catch (error) {
-      if (current) current.error = safeError(error);
+      const reason = safeError(error);
+      // Keep the first protocol rejection even when it arrives between action
+      // windows, or a later chained request fails because that rejection stopped us.
+      if (ashby && reason.startsWith("DELIVERY_ASHBY_")) ashbyError ??= reason;
+      if (current) current.error ??= reason;
       blockedRequests += 1;
       await route.abort("blockedbyclient").catch(() => undefined);
     }
@@ -514,7 +519,8 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     if (matches.length > 1) throw new Error("DELIVERY_STEP_AMBIGUOUS");
     const step = matches[0];
     if (!step || !ashby) return step ?? null;
-    if (!ashby.ready() || ashbyError) return null;
+    if (ashbyError) throw new Error(ashbyError);
+    if (!ashby.ready()) return null;
     return { ...step, uploads: ashby.fileFields().map(({ formId, path }) => ({ fieldId: path, fieldName: path,
       selector: `[data-field-entry-id="${formId}_${path}"] input[type="file"]`,
       acknowledgementSelector: `[data-field-entry-id="${formId}_${path}"] .ashby-application-form-input-file-item-name` })),

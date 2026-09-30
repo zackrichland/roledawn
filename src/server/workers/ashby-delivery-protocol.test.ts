@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { ASHBY_QUERY_HASHES, createAshbyProtocol, parseAshbyEnvelope, ashbySubmissionAccepted, type AshbyEnvelope, type AshbyOperation } from "./ashby-delivery-protocol.ts";
+import { ASHBY_QUERY_HASHES, createAshbyProtocol, inspectAshbyEnvelope, parseAshbyEnvelope, ashbySubmissionAccepted, type AshbyEnvelope, type AshbyOperation } from "./ashby-delivery-protocol.ts";
 import type { AgentBrowserField } from "./agents-browser-tools.ts";
 
 const queries: Record<string, string> = JSON.parse(readFileSync(new URL("./fixtures/ashby-operations.json", import.meta.url), "utf8"));
@@ -252,4 +252,118 @@ test("one bounded static diagnostic reports simultaneous schema changes", () => 
   assert.throws(() => protocol.observe(request, { data: { setFormValue: response } }),
     { message: "DELIVERY_ASHBY_FORM_SCHEMA_ACTION_ORDER_REQUIRED_HIDDEN_DRIFT" });
   assert.equal(protocol.ready(), false);
+});
+
+test("envelope diagnostics distinguish format, reviewed operation and query failures without payload text", () => {
+  const operation = "ApiCreateFileUploadHandle";
+  const url = origin + "/api/non-user-graphql?op=" + operation;
+  const valid = { operationName: operation, variables: {}, query: queries[operation] };
+  const bytes = (value: unknown) => Buffer.from(JSON.stringify(value));
+  const cases: [string, string, Buffer | null, string][] = [
+    ["invalid-url", "POST", bytes(valid), "ENVELOPE_URL_INVALID"],
+    [url, "GET", bytes(valid), "ENVELOPE_METHOD"],
+    [url + "&unreviewed=private", "POST", bytes(valid), "ENVELOPE_QUERY_PARAMETERS"],
+    [origin + "/api/non-user-graphql?op=PrivateUnreviewedOperation", "POST", bytes(valid), "ENVELOPE_OPERATION_UNKNOWN"],
+    [url, "POST", null, "HANDLE_ENVELOPE_BODY_SIZE"],
+    [url, "POST", Buffer.from("private invalid JSON"), "HANDLE_ENVELOPE_JSON_INVALID"],
+    [url, "POST", bytes({ ...valid, extra: "private value" }), "HANDLE_ENVELOPE_KEYS"],
+    [url, "POST", bytes({ ...valid, operationName: "private value" }), "HANDLE_ENVELOPE_OPERATION_MISMATCH"],
+    [url, "POST", bytes({ ...valid, variables: "private value" }), "HANDLE_ENVELOPE_VARIABLES_TYPE"],
+    [url, "POST", bytes({ ...valid, query: "private query text" }), "HANDLE_ENVELOPE_QUERY_DOCUMENT"],
+  ];
+  for (const [target, method, body, reason] of cases) {
+    const result = inspectAshbyEnvelope(target, method, body, origin);
+    assert.equal(result.envelope, null);
+    assert.equal(result.rejection, "DELIVERY_ASHBY_REQUEST_" + reason);
+    assert.match(result.rejection!, /^[A-Z_]{1,119}$/u);
+    assert.doesNotMatch(result.rejection!, /private/iu);
+  }
+});
+
+test("request diagnostics cover read, search, field, upload and final authority independently", () => {
+  const protocol = initialized();
+  const denied = (request: AshbyEnvelope, reason: string, search?: string, submitting = false) => {
+    assert.equal(protocol.authorize(request, search, submitting), null);
+    assert.equal(protocol.authorizationFailure(), "DELIVERY_ASHBY_REQUEST_" + reason);
+  };
+  denied(postingRequest, "POSTING_ALREADY_LOADED");
+  denied(envelope("ApiOrganizationFromHostedJobsPageName", { organizationHostedJobsPageName: board, searchContext: "private" }), "ORGANIZATION_CONTEXT");
+  denied(envelope("ApiAutocompleteGeoLocation", { text: "private", locationTypes: ["City"] }), "SEARCH_NO_FIELD_ACTION");
+  denied(save("_systemfield_name", "Alex Candidate"), "FIELD_NO_ACTION");
+  protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+  for (const [overrides, reason] of [
+    [{ extra: "private" }, "VARIABLE_KEYS"], [{ organizationHostedJobsPageName: "private" }, "BOARD"],
+    [{ formRenderIdentifier: id(90) }, "FORM"], [{ formDefinitionIdentifier: id(90) }, "DEFINITION"],
+    [{ path: "private" }, "PATH"], [{ value: "private" }, "VALUE"],
+  ] as const) denied(save("_systemfield_name", "Alex Candidate", overrides), "FIELD_" + reason);
+  const request = save("_systemfield_name", "Alex Candidate");
+  assert.equal(protocol.authorize(request), "FIELD");
+  assert.equal(protocol.authorizationFailure(), null);
+  denied(request, "FIELD_DUPLICATE_PENDING");
+  protocol.observe(request, { data: { setFormValue: form(2, { _systemfield_name: "Alex Candidate" }) } });
+  denied(request, "FIELD_DUPLICATE_ACKNOWLEDGED");
+  protocol.endField();
+  const bytes = Buffer.from("synthetic-file");
+  const artifact = { artifactVersionId: id(50), variant: "RESUME_PDF" as const, filename: "resume.pdf", mediaType: "application/pdf", byteSize: bytes.length, bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
+  const handle = envelope("ApiCreateFileUploadHandle", { organizationHostedJobsPageName: board, fileUploadContext: "NonUserFormEngine", filename: artifact.filename, contentType: artifact.mediaType, contentLength: artifact.byteSize });
+  denied(handle, "HANDLE_NO_ACTION");
+  protocol.beginUpload(field("_systemfield_resume", "FILE"), artifact);
+  for (const [override, reason] of [
+    [{ extra: "private" }, "VARIABLE_KEYS"], [{ organizationHostedJobsPageName: "private" }, "BOARD"],
+    [{ fileUploadContext: "private" }, "CONTEXT"], [{ filename: "private" }, "FILENAME"],
+    [{ contentType: "private" }, "MEDIA_TYPE"], [{ contentLength: 0 }, "BYTE_LENGTH"],
+  ] as const) denied({ ...handle, variables: { ...handle.variables, ...override } }, "HANDLE_" + reason);
+  const attach = envelope("ApiSetFormValueToFile", { organizationHostedJobsPageName: board, formRenderIdentifier: id(2), formDefinitionIdentifier: id(3), path: "_systemfield_resume", fileHandle: "synthetic-handle" });
+  denied(attach, "ATTACH_BYTES_NOT_ACKNOWLEDGED");
+  assert.equal(protocol.authorize(handle), "HANDLE");
+  denied(handle, "HANDLE_DUPLICATE");
+  protocol.observe(handle, { data: { fileUploadHandle: { handle: "synthetic-handle", url: "https://fixture.s3.amazonaws.com/", fields: { key: "synthetic-file" } } } });
+  protocol.acknowledgeBytes();
+  denied({ ...attach, variables: { ...attach.variables, fileHandle: "private" } }, "ATTACH_HANDLE");
+  denied({ ...attach, variables: { ...attach.variables, path: "private" } }, "ATTACH_PATH");
+  assert.equal(protocol.authorize(attach), "ATTACH");
+  denied(attach, "ATTACH_DUPLICATE_PENDING");
+  protocol.endUpload();
+  denied(attach, "ATTACH_NO_ACTION");
+  denied(submission(), "SUBMIT_SINGLE_NO_SUBMIT_ACTION");
+  for (const [override, reason] of [
+    [{ extra: "private" }, "VARIABLE_KEYS"], [{ organizationHostedJobsPageName: "private" }, "BOARD"],
+    [{ jobPostingId: id(90) }, "JOB"], [{ formRenderIdentifier: id(90) }, "FORM"],
+    [{ formDefinitionIdentifier: id(90) }, "DEFINITION"], [{ actionIdentifier: id(90) }, "ACTION"],
+    [{ sourceAttributionCode: "private" }, "SOURCE_ATTRIBUTION"], [{ viewedAutomatedProcessingLegalNoticeRuleId: "private" }, "LEGAL_NOTICE"],
+    [{ applicationRequestId: "private" }, "APPLICATION_REQUEST"], [{ recaptchaToken: "private spaces" }, "RECAPTCHA_TOKEN"],
+    [{ deviceFingerprint: "private" }, "DEVICE_FINGERPRINT"],
+  ] as const) denied(submission(false, override), "SUBMIT_SINGLE_" + reason, undefined, true);
+  assert.equal(protocol.authorize(submission(), undefined, true), "SUBMIT");
+  assert.equal(protocol.authorizationFailure(), null);
+});
+
+test("public organization refetch may omit optional context but cannot carry another value or key", () => {
+  const protocol = initialized();
+  for (const variables of [{ organizationHostedJobsPageName: board }, { organizationHostedJobsPageName: board, searchContext: null }, { organizationHostedJobsPageName: board, searchContext: "JobPosting" }]) {
+    assert.equal(protocol.authorize(envelope("ApiOrganizationFromHostedJobsPageName", variables)), "READ");
+  }
+  for (const variables of [{ organizationHostedJobsPageName: "other" }, { organizationHostedJobsPageName: board, searchContext: "private" }, { organizationHostedJobsPageName: board, unreviewed: "private" }]) {
+    assert.equal(protocol.authorize(envelope("ApiOrganizationFromHostedJobsPageName", variables)), null);
+  }
+});
+
+test("constant empty City lookup is harmless outside a field and its response never authorizes a choice", () => {
+  const protocol = initialized();
+  const empty = envelope("ApiAutocompleteGeoLocation", { text: "", locationTypes: ["City"] });
+  assert.equal(protocol.authorize(empty), "READ");
+  for (const variables of [{ text: "private", locationTypes: ["City"] }, { text: "", locationTypes: ["Country"] }, { text: "", locationTypes: ["City"], extra: "private" }]) {
+    assert.equal(protocol.authorize(envelope("ApiAutocompleteGeoLocation", variables)), null);
+  }
+  protocol.beginField(field("_systemfield_location", "SINGLE_SELECT"), "Springfield", { semantic: "CITY", source: "FACT", hints: { region: "IL", country: "US" } });
+  assert.equal(protocol.authorize(empty), "READ");
+  protocol.observe(empty, { data: { result: { suggestions: [{ name: "Springfield, Illinois, United States", geoLocationPath: [{ type: "City", providerLocationId: "unexpected-city" }] }] } } });
+  assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "unexpected-city" })), null);
+  assert.equal(protocol.authorizationFailure(), "DELIVERY_ASHBY_REQUEST_FIELD_LOCATION_NO_CONFIRMED_RESULT");
+  const search = envelope("ApiAutocompleteGeoLocation", { text: "Springfield", locationTypes: ["City"] });
+  assert.equal(protocol.authorize(search, "Springfield"), "SEARCH");
+  protocol.observe(search, { data: { result: { suggestions: [{ name: "Springfield, Illinois, United States", geoLocationPath: [{ type: "City", providerLocationId: "approved-city" }] }] } } });
+  protocol.observe(empty, { data: { result: { suggestions: [{ name: "Springfield, Illinois, United States", geoLocationPath: [{ type: "City", providerLocationId: "unexpected-city" }] }] } } });
+  assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "unexpected-city" })), null);
+  assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "approved-city" })), "FIELD");
 });

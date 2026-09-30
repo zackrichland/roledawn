@@ -16,18 +16,28 @@ window.send = async (op, variables, query) => {
  return response;
 };
 const base = () => ({organizationHostedJobsPageName:'fixture',formRenderIdentifier:formId,formDefinitionIdentifier:definition});
-window.ready = send('ApiJobPosting',{organizationHostedJobsPageName:'fixture',jobPostingId:jobId}).then(() => document.querySelector('button').disabled = false);
+const refetch = () => mode === 'public-refetches' ? Promise.all([
+ send('ApiOrganizationFromHostedJobsPageName',{organizationHostedJobsPageName:'fixture'}),
+ send('ApiAutocompleteGeoLocation',{text:'',locationTypes:['City']})
+]) : Promise.resolve();
+window.ready = send('ApiJobPosting',{organizationHostedJobsPageName:'fixture',jobPostingId:jobId}).then(async () => {
+ if (mode === 'public-refetches') await send('ApiOrganizationFromHostedJobsPageName',{organizationHostedJobsPageName:'fixture',searchContext:'JobPosting'});
+ await refetch(); document.querySelector('button').disabled = false;
+});
 document.querySelector('#_systemfield_name').oninput = () => {
  send('ApiSetFormValue',{...base(),path:'_systemfield_name',value:mode === 'wrong-value' ? 'Unapproved Other Person' : document.querySelector('#_systemfield_name').value}).catch(()=>{});
 };
 document.querySelector('#_systemfield_resume').onchange = async (e) => { try {
  const file = e.target.files[0];
- const h = (await send('ApiCreateFileUploadHandle',{organizationHostedJobsPageName:'fixture',fileUploadContext:'NonUserFormEngine',filename:file.name,contentType:file.type,contentLength:file.size})).data.fileUploadHandle;
+ if (mode === 'late-field-save') await send('ApiSetFormValue',{...base(),path:'_systemfield_name',value:document.querySelector('#_systemfield_name').value}).catch(()=>{});
+ const [handle] = await Promise.all([send('ApiCreateFileUploadHandle',{organizationHostedJobsPageName:'fixture',fileUploadContext:'NonUserFormEngine',filename:file.name,contentType:file.type,contentLength:mode === 'wrong-handle-length' ? file.size + 1 : file.size}), refetch()]);
+ const h = handle.data.fileUploadHandle;
  const data = new FormData(); data.append('Content-Type',file.type);
  Object.entries(h.fields).forEach(([k,v])=>data.append(k,v));
  data.append('file',mode === 'upload-corrupt' ? new File(['different bytes'],file.name,{type:file.type}) : file);
  const uploaded = await fetch(h.url,{method:'POST',body:data}); if (!uploaded.ok) return;
  await send('ApiSetFormValueToFile',{...base(),path:'_systemfield_resume',fileHandle:h.handle});
+ await refetch();
  document.querySelector('.ashby-application-form-input-file-item-name').textContent = file.name;
 } catch {} };
 document.querySelector('button').onclick = async () => { try {

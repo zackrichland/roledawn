@@ -26,18 +26,39 @@ const uuid = (value: unknown): value is string => typeof value === "string" && /
 const keys = (value: Obj, required: string[], optional: string[] = []) => required.every((key) => Object.hasOwn(value, key)) && Object.keys(value).every((key) => required.includes(key) || optional.includes(key));
 const fail = (reason = "CONTRACT_DRIFT"): never => { throw new Error(`DELIVERY_ASHBY_${reason}`); };
 export type AshbyEnvelope = Readonly<{ operation: AshbyOperation; variables: Obj }>;
-export function parseAshbyEnvelope(url: string, method: string, body: Buffer | null, origin: string): AshbyEnvelope | null {
-  const parsed = new URL(url);
-  if (method !== "POST" || parsed.origin !== origin || parsed.pathname !== "/api/non-user-graphql" || parsed.username || parsed.password || parsed.hash || [...parsed.searchParams.keys()].length !== 1) return null;
+export type AshbyEnvelopeInspection = Readonly<{ envelope: AshbyEnvelope | null; rejection: string | null }>;
+const OPERATION_STAGE: Record<AshbyOperation, string> = {
+  ApiJobPosting: "POSTING", ApiOrganizationFromHostedJobsPageName: "ORGANIZATION",
+  ApiAutocompleteGeoLocation: "SEARCH", ApiSetFormValue: "FIELD",
+  ApiCreateFileUploadHandle: "HANDLE", ApiSetFormValueToFile: "ATTACH",
+  ApiSubmitSingleApplicationFormAction: "SUBMIT_SINGLE", ApiSubmitMultipleFormsAction: "SUBMIT_MULTIPLE",
+};
+/** Diagnostics contain only internal literals, never request text or variables. */
+export function inspectAshbyEnvelope(url: string, method: string, body: Buffer | null, origin: string): AshbyEnvelopeInspection {
+  let stage = "ENVELOPE";
+  const reject = (reason: string): AshbyEnvelopeInspection => ({ envelope: null, rejection: "DELIVERY_ASHBY_REQUEST_" + stage + "_" + reason });
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return reject("URL_INVALID"); }
+  if (method !== "POST") return reject("METHOD");
+  if (parsed.origin !== origin || parsed.pathname !== "/api/non-user-graphql" || parsed.username || parsed.password || parsed.hash) return reject("DESTINATION");
+  if ([...parsed.searchParams.keys()].length !== 1) return reject("QUERY_PARAMETERS");
   const operation = parsed.searchParams.get("op") as AshbyOperation;
-  if (!Object.hasOwn(ASHBY_QUERY_HASHES, operation) || !body || body.length > 100_000) return null;
-  try {
-    const data = object(JSON.parse(body.toString("utf8")));
-    if (!data || !keys(data, ["operationName", "variables", "query"]) || data.operationName !== operation || typeof data.query !== "string" || !object(data.variables)) return null;
-    if (digest(data.query.replace(/[\s,]+/gu, "")) !== ASHBY_QUERY_HASHES[operation]) return null;
-    return { operation, variables: data.variables as Obj };
-  } catch { return null; }
+  if (!Object.hasOwn(ASHBY_QUERY_HASHES, operation)) return reject("OPERATION_UNKNOWN");
+  stage = OPERATION_STAGE[operation] + "_ENVELOPE";
+  if (!body || body.length > 100_000) return reject("BODY_SIZE");
+  let data: Obj | null;
+  try { data = object(JSON.parse(body.toString("utf8"))); } catch { return reject("JSON_INVALID"); }
+  if (!data || !keys(data, ["operationName", "variables", "query"])) return reject("KEYS");
+  if (data.operationName !== operation) return reject("OPERATION_MISMATCH");
+  if (typeof data.query !== "string") return reject("QUERY_TYPE");
+  if (!object(data.variables)) return reject("VARIABLES_TYPE");
+  if (digest(data.query.replace(/[\s,]+/gu, "")) !== ASHBY_QUERY_HASHES[operation]) return reject("QUERY_DOCUMENT");
+  return { envelope: { operation, variables: data.variables as Obj }, rejection: null };
 }
+export function parseAshbyEnvelope(url: string, method: string, body: Buffer | null, origin: string): AshbyEnvelope | null {
+  return inspectAshbyEnvelope(url, method, body, origin).envelope;
+}
+
 type Field = { path: string; type: string; many: boolean; options: { label: string; value: unknown }[]; value: unknown; required: boolean; hidden: boolean };
 type Form = { id: string; definition: string; action: string; fields: Map<string, Field> };
 function readForm(value: unknown): Form {
@@ -74,6 +95,7 @@ export function createAshbyProtocol(board: string, jobId: string) {
   let uploadAction: UploadAction | null = null;
   const locations = new Map<string, unknown>();
   let broken = false;
+  let authorizationFailure: string | null = null;
   const endpoint = (operation: AshbyOperation, origin: string) => `${origin}/api/non-user-graphql?op=${operation}`;
   const assertReady = () => { if (broken || !forms.length) fail("FORM_NOT_READY"); };
   const matchField = (field: AgentBrowserField): { form: Form; field: Field } => {
@@ -82,7 +104,9 @@ export function createAshbyProtocol(board: string, jobId: string) {
     if (matches.length !== 1 || matches[0].field.hidden) return fail("FIELD_BINDING_DRIFT");
     return matches[0];
   };
-  const bound = (v: Obj, form: Form, field: Field) => v.organizationHostedJobsPageName === board && v.formRenderIdentifier === form.id && v.formDefinitionIdentifier === form.definition && v.path === field.path;
+  const bindingFailure = (v: Obj, form: Form, field: Field) =>
+    v.organizationHostedJobsPageName !== board ? "BOARD" : v.formRenderIdentifier !== form.id ? "FORM" :
+    v.formDefinitionIdentifier !== form.definition ? "DEFINITION" : v.path !== field.path ? "PATH" : null;
   function updateForm(raw: unknown, expected: FieldAction | UploadAction, file: boolean) {
     const next = readForm(raw);
     if (next.id !== expected.form.id) return fail("FORM_RENDER_ID_DRIFT");
@@ -157,44 +181,93 @@ export function createAshbyProtocol(board: string, jobId: string) {
     upload: () => uploadAction,
     endUpload() { uploadAction = null; },
     acknowledgeBytes() { if (!uploadAction?.url) return fail(); uploadAction.bytesAcknowledged = true; },
+    authorizationFailure: () => authorizationFailure,
     /** Called before dispatch, so duplicate mutations cannot race the response. */
     authorize(envelope: AshbyEnvelope, search?: string, submitting = false): "READ" | "SEARCH" | "FIELD" | "HANDLE" | "ATTACH" | "SUBMIT" | null {
-      if (broken) return null;
+      authorizationFailure = null;
       const { operation: op, variables: v } = envelope;
-      if (op === "ApiJobPosting") return !forms.length && keys(v, ["organizationHostedJobsPageName", "jobPostingId"]) && v.organizationHostedJobsPageName === board && v.jobPostingId === jobId ? "READ" : null;
-      if (op === "ApiOrganizationFromHostedJobsPageName") return keys(v, ["organizationHostedJobsPageName", "searchContext"]) && v.organizationHostedJobsPageName === board && [null, "JobPosting"].includes(v.searchContext as null | string) ? "READ" : null;
-      if (op === "ApiAutocompleteGeoLocation") return fieldAction?.field.type === "Location" && search && keys(v, ["text", "locationTypes"]) && typeof v.text === "string" && v.text.length > 0 && search.startsWith(v.text) && equal(v.locationTypes, ["City"]) ? "SEARCH" : null;
+      const reject = (reason: string): null => { authorizationFailure = "DELIVERY_ASHBY_REQUEST_" + OPERATION_STAGE[op] + "_" + reason; return null; };
+      if (broken) return reject("PROTOCOL_BROKEN");
+      if (op === "ApiJobPosting") {
+        if (forms.length) return reject("ALREADY_LOADED");
+        if (!keys(v, ["organizationHostedJobsPageName", "jobPostingId"])) return reject("VARIABLE_KEYS");
+        if (v.organizationHostedJobsPageName !== board) return reject("BOARD");
+        if (v.jobPostingId !== jobId) return reject("JOB");
+        return "READ";
+      }
+      if (op === "ApiOrganizationFromHostedJobsPageName") {
+        if (!keys(v, ["organizationHostedJobsPageName"], ["searchContext"])) return reject("VARIABLE_KEYS");
+        if (v.organizationHostedJobsPageName !== board) return reject("BOARD");
+        if (Object.hasOwn(v, "searchContext") && ![null, "JobPosting"].includes(v.searchContext as null | string)) return reject("CONTEXT");
+        return "READ";
+      }
+      if (op === "ApiAutocompleteGeoLocation") {
+        // The public widget reads this constant query on mount and after saves.
+        // It carries no candidate text, and its response cannot seed a choice.
+        if (keys(v, ["text", "locationTypes"]) && v.text === "" && equal(v.locationTypes, ["City"])) return "READ";
+        if (!fieldAction) return reject("NO_FIELD_ACTION");
+        if (fieldAction.field.type !== "Location") return reject("FIELD_TYPE");
+        if (!search) return reject("NO_SEARCH_ACTION");
+        if (!keys(v, ["text", "locationTypes"])) return reject("VARIABLE_KEYS");
+        if (typeof v.text !== "string" || !v.text.length || !search.startsWith(v.text)) return reject("TEXT");
+        if (!equal(v.locationTypes, ["City"])) return reject("LOCATION_TYPES");
+        return "SEARCH";
+      }
       if (op === "ApiSetFormValue") {
         const a = fieldAction;
-        if (!a || a.admitted || !keys(v, ["organizationHostedJobsPageName", "formRenderIdentifier", "formDefinitionIdentifier", "path", "value"]) || !bound(v, a.form, a.field)) return null;
+        if (!a) return reject("NO_ACTION");
+        if (a.admitted) return reject(a.acknowledged ? "DUPLICATE_ACKNOWLEDGED" : "DUPLICATE_PENDING");
+        if (!keys(v, ["organizationHostedJobsPageName", "formRenderIdentifier", "formDefinitionIdentifier", "path", "value"])) return reject("VARIABLE_KEYS");
+        const mismatch = bindingFailure(v, a.form, a.field); if (mismatch) return reject(mismatch);
         if (a.field.type === "Location") {
           const chosen = chooseSearchResult([...locations.values()].map((value) => String(object(value)!.text)), String(a.approved), a.match);
-          if (!chosen || !locations.has(stable(v.value)) || object(v.value)?.text !== chosen) return null;
+          if (!chosen) return reject("LOCATION_NO_CONFIRMED_RESULT");
+          if (!locations.has(stable(v.value))) return reject("LOCATION_UNKNOWN_RESULT");
+          if (object(v.value)?.text !== chosen) return reject("LOCATION_WRONG_RESULT");
           a.expected = v.value;
         }
-        if (!equal(v.value, a.expected)) return null;
+        if (!equal(v.value, a.expected)) return reject("VALUE");
         a.admitted = true; return "FIELD";
       }
       if (op === "ApiCreateFileUploadHandle") {
         const a = uploadAction;
-        if (!a || a.handleRequested || !keys(v, ["organizationHostedJobsPageName", "fileUploadContext", "filename", "contentType", "contentLength"]) || v.organizationHostedJobsPageName !== board || v.fileUploadContext !== "NonUserFormEngine" || v.filename !== a.artifact.filename || v.contentType !== a.artifact.mediaType || v.contentLength !== a.artifact.byteSize) return null;
+        if (!a) return reject("NO_ACTION");
+        if (a.handleRequested) return reject("DUPLICATE");
+        if (!keys(v, ["organizationHostedJobsPageName", "fileUploadContext", "filename", "contentType", "contentLength"])) return reject("VARIABLE_KEYS");
+        if (v.organizationHostedJobsPageName !== board) return reject("BOARD");
+        if (v.fileUploadContext !== "NonUserFormEngine") return reject("CONTEXT");
+        if (v.filename !== a.artifact.filename) return reject("FILENAME");
+        if (v.contentType !== a.artifact.mediaType) return reject("MEDIA_TYPE");
+        if (v.contentLength !== a.artifact.byteSize) return reject("BYTE_LENGTH");
         a.handleRequested = true; return "HANDLE";
       }
       if (op === "ApiSetFormValueToFile") {
         const a = uploadAction;
-        if (!a?.bytesAcknowledged || a.attachRequested || !keys(v, ["organizationHostedJobsPageName", "formRenderIdentifier", "formDefinitionIdentifier", "path", "fileHandle"]) || !bound(v, a.form, a.field) || v.fileHandle !== a.handle) return null;
+        if (!a) return reject("NO_ACTION");
+        if (!a.bytesAcknowledged) return reject("BYTES_NOT_ACKNOWLEDGED");
+        if (a.attachRequested) return reject(a.acknowledged ? "DUPLICATE_ACKNOWLEDGED" : "DUPLICATE_PENDING");
+        if (!keys(v, ["organizationHostedJobsPageName", "formRenderIdentifier", "formDefinitionIdentifier", "path", "fileHandle"])) return reject("VARIABLE_KEYS");
+        const mismatch = bindingFailure(v, a.form, a.field); if (mismatch) return reject(mismatch);
+        if (v.fileHandle !== a.handle) return reject("HANDLE");
         a.attachRequested = true; return "ATTACH";
       }
-      if (!submitting || fieldAction || uploadAction || !forms.length) return null;
+      if (!submitting) return reject("NO_SUBMIT_ACTION");
+      if (fieldAction) return reject("FIELD_ACTION_ACTIVE");
+      if (uploadAction) return reject("UPLOAD_ACTION_ACTIVE");
+      if (!forms.length) return reject("FORM_NOT_READY");
       const app = forms[0];
       const common = { organizationHostedJobsPageName: board, jobPostingId: jobId };
       const binding = forms.length > 1 ? { ...common, applicationFormRenderIdentifier: app.id, applicationFormActionIdentifier: app.action, applicationFormDefinitionIdentifier: app.definition, surveyIdentifiers: forms.slice(1).map((form) => ({ formRenderId: form.id, actionIdentifier: form.action, sourceFormDefinitionId: form.definition })) }
         : { ...common, formRenderIdentifier: app.id, actionIdentifier: app.action, formDefinitionIdentifier: app.definition };
-      if (op !== (forms.length > 1 ? "ApiSubmitMultipleFormsAction" : "ApiSubmitSingleApplicationFormAction") || !keys(v, Object.keys(binding), ["recaptchaToken", "deviceFingerprint", "sourceAttributionCode", "viewedAutomatedProcessingLegalNoticeRuleId", "applicationRequestId"])) return null;
-      if (Object.entries(binding).some(([key, value]) => !equal(v[key], value))) return null;
-      if (["sourceAttributionCode", "viewedAutomatedProcessingLegalNoticeRuleId", "applicationRequestId"].some((key) => v[key] != null)) return null;
-      if (typeof v.recaptchaToken !== "string" || !/^[A-Za-z0-9_:.\/-]{1,12000}$/u.test(v.recaptchaToken)) return null;
-      if (v.deviceFingerprint != null && (typeof v.deviceFingerprint !== "string" || v.deviceFingerprint.length > 32_000 || !/^W;6\.10\.0;[A-Za-z0-9+/]+={0,2};[A-Za-z0-9+/]+={0,2}$/u.test(v.deviceFingerprint))) return null;
+      if (op !== (forms.length > 1 ? "ApiSubmitMultipleFormsAction" : "ApiSubmitSingleApplicationFormAction")) return reject("FORM_COUNT");
+      if (!keys(v, Object.keys(binding), ["recaptchaToken", "deviceFingerprint", "sourceAttributionCode", "viewedAutomatedProcessingLegalNoticeRuleId", "applicationRequestId"])) return reject("VARIABLE_KEYS");
+      const bindingNames: Record<string, string> = { organizationHostedJobsPageName: "BOARD", jobPostingId: "JOB", applicationFormRenderIdentifier: "FORM", formRenderIdentifier: "FORM", applicationFormActionIdentifier: "ACTION", actionIdentifier: "ACTION", applicationFormDefinitionIdentifier: "DEFINITION", formDefinitionIdentifier: "DEFINITION", surveyIdentifiers: "SURVEYS" };
+      for (const [key, value] of Object.entries(binding)) if (!equal(v[key], value)) return reject(bindingNames[key]);
+      if (v.sourceAttributionCode != null) return reject("SOURCE_ATTRIBUTION");
+      if (v.viewedAutomatedProcessingLegalNoticeRuleId != null) return reject("LEGAL_NOTICE");
+      if (v.applicationRequestId != null) return reject("APPLICATION_REQUEST");
+      if (typeof v.recaptchaToken !== "string" || !/^[A-Za-z0-9_:.\/-]{1,12000}$/u.test(v.recaptchaToken)) return reject("RECAPTCHA_TOKEN");
+      if (v.deviceFingerprint != null && (typeof v.deviceFingerprint !== "string" || v.deviceFingerprint.length > 32_000 || !/^W;6\.10\.0;[A-Za-z0-9+/]+={0,2};[A-Za-z0-9+/]+={0,2}$/u.test(v.deviceFingerprint))) return reject("DEVICE_FINGERPRINT");
       return "SUBMIT";
     },
     observe(envelope: AshbyEnvelope, payload: unknown) {
@@ -207,7 +280,7 @@ export function createAshbyProtocol(board: string, jobId: string) {
           if (!posting || posting.id !== jobId || forms.length || !Array.isArray(posting.surveyForms) || posting.automatedProcessingLegalNotice != null) return fail("POSTING_SCHEMA_DRIFT");
           forms = [readForm(posting.applicationForm), ...posting.surveyForms.map(readForm)];
           if (new Set(forms.map((form) => form.id)).size !== forms.length || forms.some((form) => [...form.fields.values()].some((field) => field.value !== null))) return fail("INITIAL_FORM_STATE_UNSUPPORTED");
-        } else if (op === "ApiAutocompleteGeoLocation" && fieldAction?.field.type === "Location") {
+        } else if (op === "ApiAutocompleteGeoLocation" && envelope.variables.text !== "" && fieldAction?.field.type === "Location") {
           const results = object(data.result)?.suggestions;
           if (!Array.isArray(results)) return fail("LOCATION_RESPONSE_DRIFT");
           for (const item of results) {
