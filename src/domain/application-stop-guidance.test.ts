@@ -78,8 +78,8 @@ test("a stopped send offers Try again only when trying again can help, and alway
     if (guidance.retry === "MANUAL") assert.equal(guidance.primary.kind, "TRY_AGAIN", code);
     // Browser time running out is the one outside cause that clears on its own side: a retry is offered, but never first.
     else if (group === "SERVICE_CREDITS") { assert.equal(guidance.primary.kind, "TRY_AGAIN"); assert.match(guidance.next, /Add credits/u); }
-    else if (group === "CAPACITY") { assert.equal(guidance.primary.kind, "EMPLOYER_PAGE"); assert.equal(guidance.secondary?.kind, "TRY_AGAIN"); }
-    else { assert.equal(offers, 0, `${code} must not offer Try again`); assert.equal(guidance.primary.kind, "EMPLOYER_PAGE", code); }
+    else if (group === "CAPACITY") { assert.equal(guidance.primary.kind, "OPEN_APPLICATION"); assert.equal(guidance.secondary?.kind, "TRY_AGAIN"); }
+    else { assert.equal(offers, 0, `${code} must not offer Try again`); assert.equal(guidance.primary.kind, "OPEN_APPLICATION", code); }
   }
 });
 
@@ -166,25 +166,29 @@ test("a stop names exactly one primary action and at most one secondary", () => 
 
 test("Try again is withheld when the database would refuse it, and the way forward is named", () => {
   const expired = guideSend({ status: "FAILED_SAFE", failureCode: "OPENAI_AGENTS_ABORTED", transientRetries: 2, expired: true });
-  assert.equal(expired.primary.kind, "EMPLOYER_PAGE");
+  assert.equal(expired.primary.kind, "OPEN_APPLICATION");
   assert.equal(expired.secondary, null);
   assert.equal(expired.retry, "AFTER_CHANGE");
   assert.match(expired.next, /expired after 7 days/u);
   const stale = guideSend({ status: "FAILED_SAFE", failureCode: "DELIVERY_EXECUTION_FAILED", profileChanged: true });
   assert.equal(stale.primary.kind, "REFRESH_FILES");
-  assert.equal(stale.secondary?.kind, "EMPLOYER_PAGE");
+  assert.equal(stale.secondary?.kind, "OPEN_APPLICATION");
   assert.match(stale.next, /rewrite them before it can try again/u);
-  // A stop with no retry to withhold is unchanged.
-  assert.equal(guideSend({ status: "FAILED_SAFE", failureCode: "APPLICATION_FILL_CAPTCHA_TAKEOVER", profileChanged: true }).primary.kind, "EMPLOYER_PAGE");
+  // Reopening verification also requires the current candidate inputs.
+  assert.equal(guideSend({ status: "FAILED_SAFE", failureCode: "APPLICATION_FILL_CAPTCHA_TAKEOVER", profileChanged: true }).primary.kind, "REFRESH_FILES");
 });
 
-test("a visible challenge always goes to the candidate and is never retried", () => {
-  const guidance = guideSend({ status: "FAILED_SAFE", failureCode: "APPLICATION_FILL_CAPTCHA_TAKEOVER" });
-  assert.equal(guidance.retry, "AFTER_CHANGE");
-  assert.equal(guidance.primary.kind, "EMPLOYER_PAGE");
-  assert.equal(guidance.secondary, null);
-  assert.match(guidance.happened, /only you can complete/u);
-  assert.match(guidance.happened, /doesn’t try to get past/u);
+test("a visible challenge reopens in RoleDawn and cannot automatically retry", () => {
+  for (const failureCode of ["APPLICATION_FILL_CAPTCHA_TAKEOVER", "DELIVERY_BROWSER_VERIFICATION_TIMEOUT"]) {
+    const stopped = guideSend({ status: "FAILED_SAFE", failureCode });
+    assert.equal(stopped.retry, "MANUAL"); assert.equal(stopped.primary.kind, "TRY_AGAIN");
+    assert.equal(homeActionLabel(stopped.primary), "Verify here");
+  }
+  const active = guideSend({ status: "RUNNING", browserVerification: true });
+  assert.equal(active.needsYou, true); assert.equal(active.primary.kind, "VERIFY_BROWSER");
+  assert.equal(active.canCancel, true); assert.equal(active.secondary?.kind, "PAUSE");
+  const unknown = guideSend({ status: "UNCERTAIN", browserVerification: true });
+  assert.equal(unknown.retry, "NEVER"); assert.equal(unknown.primary.kind, "NONE");
 });
 
 test("an Ashby stop mentions the employer's saved draft; other boards do not", () => {

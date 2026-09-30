@@ -5219,6 +5219,14 @@ export type Database = {
           provider_session_ref: string
         }[]
       }
+      get_application_browser_check_binding: {
+        Args: { p_application_id: string; p_auth_user_id: string }
+        Returns: {
+          destination_url: string
+          expires_at: string
+          provider_session_ref: string
+        }[]
+      }
       get_candidate_mailbox_connection: {
         Args: { p_candidate_id: string }
         Returns: Json
@@ -5365,6 +5373,14 @@ export type Database = {
       read_application_autopilot_verification: {
         Args: { p_id: string; p_lease_token: string }
         Returns: Json
+      }
+      read_application_browser_checks: {
+        Args: { p_application_id?: string }
+        Returns: {
+          application_id: string
+          autopilot_id: string
+          expires_at: string
+        }[]
       }
       read_auto_apply_state: { Args: never; Returns: Json }
       read_autopilot_mailbox_connection: {

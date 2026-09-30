@@ -78,6 +78,8 @@ Single page.
 
 ## Known quirks
 
+- 2026-09-30: A visible check after the final click opens the exact guarded tab inside RoleDawn for the candidate, up to five minutes; no model challenge tools run, and exact final readback still gates submission (D-144; synthetic completion/drift/expiry/cancel coverage).
+
 - The static `/thanks` page and employer success-page redirects (above).
 - Live forms load hCaptcha from `secure-api.js`; RoleDawn's guard blocked it until D-104, so no submit could have scored.
 - Parser side effects after upload (above).

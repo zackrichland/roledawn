@@ -6,7 +6,7 @@ import { chromium, type Page } from "playwright-core";
 import { ASHBY_FIXTURE_FINAL_ACTION, startSyntheticAshby, type AshbyFixtureMode } from "../../test-support/synthetic-ashby-delivery.ts";
 import { createAgentBrowserTools } from "./agents-browser-tools.ts";
 import { createApplicationDeliveryDriver } from "./application-delivery-driver.ts";
-import { createApplicationDeliveryBrowser } from "./application-delivery-browser.ts";
+import { createApplicationDeliveryBrowser, type DeliverySubmissionHooks } from "./application-delivery-browser.ts";
 import { pageShowsCaptchaChallenge } from "./agents-captcha.ts";
 
 const chrome = [process.env.ROLEDAWN_CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/chromium", "/usr/bin/google-chrome"].find((value): value is string => Boolean(value && existsSync(value)));
@@ -21,7 +21,7 @@ async function fixture(mode: AshbyFixtureMode, run: (data: {
  requests: Awaited<ReturnType<typeof startSyntheticAshby>>["requests"];
  checkpoints: Readonly<Record<string, unknown>>[];
  begins: () => number;
-}) => Promise<void>) {
+}) => Promise<void>, browserVerification?: DeliverySubmissionHooks["browserVerification"]) {
  const server = await startSyntheticAshby(mode);
  const browser = await chromium.launch({ executablePath: chrome, headless: true });
  let begins = 0;
@@ -29,7 +29,7 @@ async function fixture(mode: AshbyFixtureMode, run: (data: {
  try {
   const page = await browser.newPage({ serviceWorkers: "block" });
   const runtime = await createApplicationDeliveryBrowser({ page, policy: server.policy, timeoutMs: 1500,
-   hooks: { async begin() { assert.equal(server.requests.submits, 0); begins++; return { attemptId: "fixture-attempt", idempotencyKey: "once" }; }, async checkpoint(state) { checkpoints.push(state); } },
+   hooks: { browserVerification, async begin() { assert.equal(server.requests.submits, 0); begins++; return { attemptId: "fixture-attempt", idempotencyKey: "once" }; }, async checkpoint(state) { checkpoints.push(state); } },
    requestTransport: async (route) => {
     if (new URL(route.request().url()).origin === "https://www.recaptcha.net") {
       // Synthetic provider document only; these tests never run a CAPTCHA SDK.
@@ -320,4 +320,57 @@ test("a reviewed idle reCAPTCHA challenge frame is allowed only while hidden and
   assert.equal(data.begins(), 0);
   assert.equal(data.requests.submits, 0);
  });
+});
+
+// Synthetic checks only: this never loads or interacts with a CAPTCHA SDK.
+test("embedded human check preserves exact review, expiry and once-only dispatch", options, async () => {
+ for (const scenario of ["complete", "drift", "expire", "cancel"] as const) {
+  let opens = 0; let closes = 0; let candidate: Promise<void> | null = null;
+  let page: Page;
+  await fixture("normal", async data => {
+   page = data.page;
+   await fill(data);
+   await page.evaluate(() => {
+    const button = document.querySelector('.ashby-application-form-submit-button')!;
+    button.addEventListener("click", (event) => {
+     if (document.getElementById("fixture-human-done")) return;
+     event.preventDefault(); event.stopImmediatePropagation();
+     const iframe = document.createElement("iframe"); iframe.id = "fixture-human-check";
+     iframe.src = "https://www.recaptcha.net/recaptcha/api2/bframe?k=6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y";
+     iframe.style.cssText = "width:400px;height:400px"; document.body.append(iframe);
+    }, true);
+   });
+   const result = await data.runtime.submit("a".repeat(64), {}, undefined, async () => {
+    if (await page.locator('#_systemfield_name').inputValue() !== "Alex Fixture") throw new Error("DELIVERY_FINAL_REVIEW_DRIFT");
+   });
+   if (candidate) await candidate;
+   assert.equal(opens, 1); assert.equal(closes, 1);
+   if (scenario === "complete") {
+    assert.equal(result.kind, "CONFIRMED", JSON.stringify(result)); assert.equal(data.begins(), 1); assert.equal(data.requests.submits, 1);
+    assert.equal((await data.runtime.submit("a".repeat(64), {})).kind, "UNCERTAIN");
+    assert.equal(data.requests.submits, 1);
+   } else {
+    assert.equal(result.kind, "TAKEOVER", JSON.stringify(result)); assert.equal(data.begins(), 0); assert.equal(data.requests.submits, 0);
+    assert.equal(result.kind === "TAKEOVER" && result.reasonCode, scenario === "drift" ? "DELIVERY_FINAL_REVIEW_DRIFT" : scenario === "expire" ? "DELIVERY_BROWSER_VERIFICATION_TIMEOUT" : "APPLICATION_AUTOPILOT_MUTATION_DENIED");
+   }
+  }, {
+   async open() {
+    opens++;
+    if (scenario === "complete" || scenario === "drift") candidate = (async () => {
+     // Wait longer than the ordinary submit timeout, then simulate a candidate
+     // in the fixture. No real challenge is solved or token supplied.
+     await new Promise(resolve => setTimeout(resolve, 1_650));
+     if (scenario === "drift") await page.locator('#_systemfield_name').evaluate(input => { (input as HTMLInputElement).value = "Changed fixture"; });
+     await page.evaluate(() => {
+      document.getElementById("fixture-human-check")!.remove();
+      const marker = document.createElement("div"); marker.id="fixture-human-done"; document.body.append(marker);
+      (document.querySelector('.ashby-application-form-submit-button') as HTMLButtonElement).click();
+     });
+    })();
+    return Date.now() + (scenario === "expire" ? 100 : 4_000);
+   },
+   async poll() { if (scenario === "cancel") throw new Error("APPLICATION_AUTOPILOT_MUTATION_DENIED"); },
+   async close() { closes++; },
+  });
+ }
 });

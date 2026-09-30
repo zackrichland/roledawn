@@ -111,3 +111,24 @@ test("a used code is excluded next round, and a revoked mailbox falls back to th
   assert.ok(revoked.calls.includes("use:MAILBOX_TOKEN_REVOKED"));
   assert.equal(revoked.calls.at(-1), "settle:EXPIRED");
 });
+
+test("browser verification bounds provider/host lifetime, renews the lease and clears public metadata", async () => {
+ const { createAutopilotBrowserVerificationRelay } = await import('./application-autopilot.ts');
+ let clock = Date.now(); const stages: string[] = []; const data: unknown[] = []; let assertions = 0; let renewals = 0;
+ const budget = createExtendableBudget(10_000, () => clock);
+ const repository = {
+  async assertLease() { assertions++; }, async extendLease() { renewals++; },
+  async checkpoint(_lease: unknown, input: { stage: string; data: unknown }) { stages.push(input.stage); data.push(input.data); },
+ };
+ try {
+  const relay = createAutopilotBrowserVerificationRelay({ claim, repository, budget, now: () => clock,
+   hardDeadline: clock + 250_000, runtimeExpiresAt: new Date(clock + 200_000).toISOString() });
+  const deadline = await relay.open(); assert.equal(deadline, clock + 155_000);
+  assert.equal(budget.deadline(), clock + 195_000); assert.equal(renewals, 1);
+  await relay.poll(); clock += 120_001; await relay.poll(); assert.equal(renewals, 2); assert.equal(assertions, 3);
+  await relay.close(); assert.deepEqual(stages, ['BROWSER_VERIFICATION','BROWSER_VERIFICATION_CLOSED']);
+  assert.deepEqual(data.at(-1), { browserVerificationExpiresAt: null });
+  const expired = createAutopilotBrowserVerificationRelay({ claim, repository, budget, now: () => clock, hardDeadline: clock + 60_000, runtimeExpiresAt: new Date(clock + 30_000).toISOString() });
+  assert.equal(await expired.open(), null);
+ } finally { budget.clear(); }
+});

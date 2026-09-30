@@ -42,10 +42,10 @@ test("a live or stopped send speaks for the application, with the same words eve
   assert.equal(retrying.tone, "working");
 
   const captcha = presentApplication({ ...stopped, autopilot: send("FAILED_SAFE", { failureCode: "APPLICATION_FILL_CAPTCHA_TAKEOVER" }) });
-  assert.equal(captcha.label, "Finish on their site");
+  assert.equal(captcha.label, "Verification needed");
   assert.equal(captcha.needsYou, true);
-  assert.equal(captcha.actionLabel, "Finish on site");
-  assert.equal(captcha.guidance?.retry, "AFTER_CHANGE");
+  assert.equal(captcha.actionLabel, "Verify here");
+  assert.equal(captcha.guidance?.retry, "MANUAL");
   assert.doesNotMatch(captcha.detail, /APPLICATION_FILL/u);
 
   const flaky = presentApplication({ ...stopped, autopilot: send("FAILED_SAFE", { failureCode: "OPENAI_AGENTS_ABORTED", transientRetries: 2 }) });
@@ -53,7 +53,7 @@ test("a live or stopped send speaks for the application, with the same words eve
   assert.equal(flaky.guidance?.retry, "MANUAL");
 
   const expired = presentApplication({ ...stopped, autopilot: send("FAILED_SAFE", { failureCode: "OPENAI_AGENTS_ABORTED", transientRetries: 2, expired: true }) });
-  assert.equal(expired.actionLabel, "Finish on site");
+  assert.equal(expired.actionLabel, "View application");
 
   const unknown = presentApplication({ ...stopped, status: "RECONCILING", autopilot: send("UNCERTAIN") });
   assert.equal(unknown.label, "Confirming");

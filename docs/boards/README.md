@@ -47,7 +47,7 @@ The status is documentation, not permission. Delivery authority comes from `ATS_
 
 ## Rules on every board
 
-- Never solve, click, refresh or wait out a CAPTCHA. Stop on any visible challenge and hand over.
+- Never solve, click, refresh or wait out a CAPTCHA as an agent. A final-click check hands control to the candidate inside RoleDawn while the guarded worker waits up to five minutes (D-144).
 - Never invent an answer. Names, contact details, employers, titles, dates, authorization and demographic answers come only from approved candidate records. Other questions come from the candidate's remembered or standing answers (D-112, D-117). Anything they don't cover goes to the candidate.
 - Use the candidate's application email; employer codes and verification links go there.
 - One sealed submission per named application. Reconcile an unknown outcome before any retry.

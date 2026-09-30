@@ -153,12 +153,13 @@ function ApplicationWorkspace({
     transientRetries: application.autopilot?.transientRetries, reconcileCount: application.autopilot?.reconcileCount, expired: application.autopilot?.expired,
     profileChanged: application.profileChanged, provider, questionCount: currentAutopilot.questions.length,
     verificationRecipient: currentAutopilot.verification?.recipient ?? null, verificationRetry: currentAutopilot.verification?.retry,
+    browserVerification: Boolean(currentAutopilot.browserVerification),
   }) : null;
   const intakeGuidance = intakeFailed ? guideIntakeFailure(application.failureCode) : null;
   const writingGuidance = application.status === "FAILED_SAFE" && !intakeFailed && !sendGuidance && preparationRun?.status === "FAILED"
     ? guideWritingFailure({ code: preparationRun.errorCode, profileChanged: application.profileChanged }) : null;
   const presentation = sendGuidance ? presentGuidance(sendGuidance) : (strandedTakeover
-    ? Object.freeze({ label: "Finish on the employer's site", detail: "RoleDawn stopped at a step it can't do for you. Nothing was sent.", tone: "attention" as const, step: 3, needsYou: true, closed: false })
+    ? Object.freeze({ label: "Stopped", detail: "The earlier form-filling session closed before submission. This application needs a current send request to continue here.", tone: "attention" as const, step: 3, needsYou: true, closed: false })
     : null) ?? presentApplication({
     status: application.status,
     intakeStatus: application.intakeStatus,

@@ -83,7 +83,7 @@ In order: (1) profile facts through anchored label rules (`application-field-fac
 - One sealed, single-use submit permission per attempt, bound to one named application and the exact answers and files that were read back (`begin_application_autopilot_submit`). A retry gets a new key (`autopilot:<id>:<n>`) and a new permission. Never loosen this.
 - Reconcile an uncertain outcome before any new send. Unknown is not failed. Record `NOT_ACCEPTED` only when the employer explicitly refused (D-111).
 - Only the employer's own response is a receipt. A model never decides that a submission or any other side effect happened.
-- No CAPTCHA solving or evasion. A visible challenge stops the send; the emailed code is the legitimate path.
+- No CAPTCHA solving or evasion. A visible final-click check opens the guarded browser inside RoleDawn for the candidate, up to five minutes (D-144); the worker then rechecks exact values and files.
 - Exact facts (name, contact, employers, titles, dates, work authorization, EEO answers) come from structured, provenance-linked candidate records, never from a model or an embedding. Vector retrieval supports narrative only.
 - Models read forms, map questions to the candidate's own saved answers, and draft prose. They never authorize themselves, change policy, or infer a sensitive answer the candidate hasn't given. Demographic and qualification answers need candidate facts. Explicit saved delegation handles consent, terms, attestations and signatures deterministically (D-136); record exact employer wording.
 - Answers belong to one candidate and are never shared or inferred across candidates.
@@ -94,7 +94,7 @@ In order: (1) profile facts through anchored label rules (`application-field-fac
 ## Gotchas
 
 - Board lessons: add one dated line to `docs/boards/<id>.md`, then promote it to `BOARD_CONTEXT` (`src/domain/board-agent-context.ts`, at most 10 bullets and 900 characters; only Greenhouse, Lever and Ashby reach a live prompt) by the README rules (D-132).
-- Stop and retry copy comes from `src/domain/application-stop-guidance.ts`; add a stop code there instead of inline copy. Try again shows only for MANUAL classes; an unknown outcome never retries (D-133).
+- Stop and retry copy comes from `src/domain/application-stop-guidance.ts`; add a stop code there instead of inline copy. Try again shows only for MANUAL classes; Verify here reopens a zero-attempt check inside RoleDawn. An unknown outcome never retries (D-133/D-144).
 - Employer logos are cached per (provider, board) in `employer_logos`; pass the apply URL, not the canonical URL, to `CompanyLogo`. Until the migration is applied the route falls back to live fetching (D-134).
 - Interface fonts are the SF system stack with Inter; the serif is only `--font-document` for the résumé preview. Use the tokens in `globals.css` and keep motion under `prefers-reduced-motion` (D-135).
 - Never deploy without `--build`. On 2026-09-29 a no-build deploy served 404s for every script and exposed build files.

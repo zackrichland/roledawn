@@ -60,3 +60,5 @@ own answers.
 17. **Delegate application acknowledgements.** The candidate authorizes RoleDawn to accept application terms, privacy notices, processing/screening consents and application-information attestations, and to enter the approved legal name in signature fields. Save that authority per candidate and record the exact employer wording on each send; no repeated candidate acknowledgement. This permission does not establish a qualification or personal-status fact. (2026-09-30, D-136)
 
 18. **Write narrative form answers from the approved record.** The agent handles short written responses using the résumé and evidence. Ask only for missing factual details; never fabricate the requested example. Home's Answer panel must display the actual questions and save replies back to the same send. (2026-09-30, D-140)
+
+19. **Finish inside RoleDawn.** Never send the candidate to an employer site to finish a stopped application. Any required human verification belongs in the application’s embedded browser, with RoleDawn continuing and tracking the result. Unsupported forms stay visibly stopped until their delivery path is repaired. (2026-09-30, D-144)

@@ -59,7 +59,7 @@ The diagram is a summary; the table below is authoritative.
 | Site | Today | Evidence |
 |---|---|---|
 | Greenhouse | Fills, submits, and confirms | **Verified** end to end twice on 2026-09-30: Carvana Specialist, Inventory Quality (code read from Gmail 7 s after the request), and Carvana Strategy Analyst with a required GPA multi-select (code read in 6 s; final pass 262 s). The required "Location (City)" typeahead is filled from your city, confirmed by region and country (D-118). See the [Greenhouse template](../boards/greenhouse.md). |
-| Lever | Fills and submits | Fixture tests only; **not yet proven live**. Passive hCaptcha is allowed; a visible challenge stops for you. |
+| Lever | Fills and submits | Fixture tests only; **not yet proven live**. Passive hCaptcha is allowed; final-click human checks open inside RoleDawn (D-144). |
 | Ashby | Hosted-form delivery adapter | Named draft saves, location lookups, uploads and final submission share the existing approval and receipt controls. Public-client observation and fixture checks are separate from live employer acceptance; see the [Ashby template](../boards/ashby.md). |
 | Workday, iCIMS, SmartRecruiters, others | Not supported | Per-board templates for the agent: [docs/boards/](../boards/README.md). See [Next: any site](#next-any-site-including-workday). |
 
@@ -78,8 +78,8 @@ The diagram is a summary; the table below is authoritative.
 | Applied | The employer's response confirmed it. | Nothing. |
 | Trying again | A temporary provider problem stopped the send before anything was submitted; RoleDawn retries by itself (try 2 of 3). | Nothing. |
 | Stopped | The application stopped. The row explains why and whether the employer refused it. | Click the row; Try again is offered only when it can help. |
-| Finish on their site | RoleDawn can't complete this form itself: a verification challenge, a sign-in, an unsupported field or board, or an answer the form refused (D-133). | Open the employer's page from the row. |
-| Couldn't start | RoleDawn's browser time or capacity ran out before the form opened; nothing was sent. | Open the employer's page, or Try again later. |
+| Verification needed | The employer needs a human check. An active check retains its guarded browser; an earlier zero-attempt check can reopen (D-144). | Click Verify here and complete the embedded check in Home or the full application. The worker continues after exact readback. |
+| Couldn't start | RoleDawn's browser time or capacity ran out before the form opened; nothing was sent. | Add browser capacity, then Try again here. |
 | Not confirmed yet | The employer's response hasn't shown the application was received, and the outcome is unknown. Nothing is sent again until it is reconciled (D-124). | Nothing; there is no Try again. |
 | Posting closed | The employer took the posting down. | Nothing. |
 | Writing stopped | The documents couldn't be finished: missing profile detail, a busy writing service or checks that failed. | Open Profile, or Try again when offered. |
@@ -89,7 +89,7 @@ The diagram is a summary; the table below is authoritative.
 
 - **Before any submission** (model or network timeout, full browser pool, unknown worker error): the send runs again by itself, 1 and then 5 minutes later, before it waits for the candidate (D-114).
 - **Employer refused the code**: one automatic retry, then Try again (D-111).
-- **Retry classes (D-133):** *automatic* (six pre-submit provider codes, twice), *manual* (Try again shown), *after a change* (a verification challenge, sign-in, unsupported field or board, refused answer or browser quota: the row says what would change the outcome and offers the employer's page), and *never* (an unknown outcome is reconciled first, so no Try again). `src/domain/application-stop-guidance.ts` owns every state's copy and action; add a stop code there, never inline.
+- **Retry classes (D-133):** *automatic* (six pre-submit provider codes, twice), *manual* (Try again shown), *after a change* (a sign-in, unsupported field or board, refused answer or browser quota: the row explains the repair needed and keeps the application here), and *never* (an unknown outcome is reconciled first, so no Try again). `src/domain/application-stop-guidance.ts` owns every state's copy and action; add a stop code there, never inline.
 - **Open (needs a migration):** manual Try again and re-claimed expired-lease fill runs have no database cap, and browser-quota stops have no backoff. Proposed: `fill_claims` (park at 6), `manual_retries` (deny at 3) and a 30-minute quota backoff, three times.
 - **Unknown outcome after submitting**: RoleDawn reconciles before anything else is sent.
 - **Where to look**: `npm run ops:status` lists live applications, lanes, and recent failures with their cause; add `-- --app <id>` for one application's timeline and `-- --watch` to refresh (D-116).
@@ -100,7 +100,7 @@ The diagram is a summary; the table below is authoritative.
 - Only the employer's own response proves an application was received.
 - One permission per submission, tied to the exact answers and files that were checked.
 - An uncertain result is reconciled before anything is sent again.
-- No CAPTCHA solving. A visible challenge stops the send.
+- No CAPTCHA solving by an agent. A final-click visible check pauses the guarded worker for the candidate in the embedded browser, up to five minutes; exact review and one-use submission still apply (D-144).
 - Your name, contact details, employers, titles, and dates always come from your profile, never from a model.
 
 ## Operating RoleDawn

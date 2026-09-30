@@ -84,6 +84,12 @@ export type DeliveryReceipt = Readonly<{
 export type DeliverySubmissionHooks = Readonly<{
   begin(input: Readonly<{ reviewHash: string; requestFingerprint: string; review: Readonly<Record<string, unknown>> }>): Promise<DeliverySubmissionLease>;
   checkpoint?(state: Readonly<Record<string, unknown>>): Promise<void>;
+  /** The candidate completes a visible check in an embedded, guarded browser. */
+  browserVerification?: Readonly<{
+    open(): Promise<number | null>;
+    poll(): Promise<void>;
+    close(): Promise<void>;
+  }>;
 }>;
 export type DeliverySubmitResult =
   | Readonly<{ kind: "CONFIRMED"; receipt: DeliveryReceipt; submission: DeliveryPriorSubmission }>
@@ -114,6 +120,8 @@ type ActionWindow = {
   beginStarted?: boolean;
   error?: string;
   signal?: AbortSignal;
+  humanVerification?: boolean;
+  humanVerificationDeadline?: number;
   /** The final request's body, kept in memory to bind a verification resend. */
   requestBody?: Buffer;
   /** The employer asked for an emailed code in its response. */
@@ -349,16 +357,21 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     if (request.method() === "GET" && ["/recaptcha/enterprise/webworker.js", ...(ashby ? ["/recaptcha/api2/webworker.js"] : [])].includes(url.pathname)) return recaptchaKeys.size > 0;
     if (!recaptchaKeys.has(url.searchParams.get("k") ?? "")) return false;
     if (request.method() === "GET" && ["/recaptcha/enterprise/anchor", "/recaptcha/enterprise/bframe", ...(ashby ? ["/recaptcha/api2/anchor", "/recaptcha/api2/bframe"] : [])].includes(url.pathname)) return true;
-    // Ordinary passive assessment only. No userverify/solve endpoint or model
-    // interaction with a challenge is ever exposed or allowed.
+    // Challenge traffic is admitted only while the candidate's Live View is
+    // open. The model has no challenge tools, and final sends still read back.
+    if (action?.humanVerification && !action.error && !action.signal?.aborted && request.method() === "GET" &&
+        ["/recaptcha/enterprise/payload", "/recaptcha/api2/payload"].includes(url.pathname)) return true;
     return action?.kind === "SUBMIT" && request.method() === "POST" &&
-      ["/recaptcha/enterprise/reload", "/recaptcha/enterprise/clr", ...(ashby ? ["/recaptcha/api2/reload", "/recaptcha/api2/clr"] : [])].includes(url.pathname) && (request.postDataBuffer()?.length ?? 0) <= 128_000;
+      ["/recaptcha/enterprise/reload", "/recaptcha/enterprise/clr", ...(ashby ? ["/recaptcha/api2/reload", "/recaptcha/api2/clr"] : []),
+        ...(action.humanVerification && !action.error && !action.signal?.aborted ? ["/recaptcha/enterprise/userverify", "/recaptcha/api2/userverify"] : [])].includes(url.pathname) && (request.postDataBuffer()?.length ?? 0) <= 128_000;
   }
   const startHost = new URL(policy.startUrl).hostname;
+  const hcaptchaKeys = new Set<string>();
   function isHcaptcha(request: Request): boolean {
     if (!policy.lever?.invisibleHcaptcha) return false;
     const url = new URL(request.url());
     if (request.method() === "GET") {
+      if (action?.humanVerification && !action.error && !action.signal?.aborted && url.origin === "https://imgs.hcaptcha.com" && request.resourceType() === "image") return true;
       // Live Lever forms load the `secure-api.js` loader (observed 2026-09-28).
       return ["https://js.hcaptcha.com", "https://hcaptcha.com"].includes(url.origin) && ["/1/api.js", "/1/secure-api.js"].includes(url.pathname) ||
         url.origin === "https://newassets.hcaptcha.com" && /^\/(?:captcha\/v1|c)\/[A-Za-z0-9._-]{1,80}\//u.test(url.pathname) ||
@@ -366,11 +379,16 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         /^https:\/\/[0-9a-f]{12}\.w\.hcaptcha\.com$/u.test(url.origin) && url.pathname === "/logo.png" && !url.search;
     }
     if (request.method() !== "POST" || !["https://api.hcaptcha.com", "https://api2.hcaptcha.com"].includes(url.origin) || (request.postDataBuffer()?.length ?? 0) > 128_000) return false;
-    // Site configuration for this exact host, and the passive score request
-    // only while the final submit is in progress. Challenge answers
-    // (checkcaptcha) and every other endpoint stay blocked.
-    if (url.pathname === "/checksiteconfig") return url.searchParams.get("host") === startHost && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(url.searchParams.get("sitekey") ?? "");
-    return action?.kind === "SUBMIT" && /^\/getcaptcha\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(url.pathname);
+    // User challenge responses are allowed only in the guarded human window.
+    const challenge = /^\/checkcaptcha\/([0-9a-f-]{36})\/[A-Za-z0-9._-]{1,200}$/u.exec(url.pathname);
+    if (action?.humanVerification && !action.error && !action.signal?.aborted && challenge && hcaptchaKeys.has(challenge[1])) return true;
+    if (url.pathname === "/checksiteconfig") {
+      const key = url.searchParams.get("sitekey") ?? "";
+      if (url.searchParams.get("host") !== startHost || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(key)) return false;
+      hcaptchaKeys.add(key); return true;
+    }
+    const passive = /^\/getcaptcha\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u.exec(url.pathname);
+    return action?.kind === "SUBMIT" && Boolean(passive && hcaptchaKeys.has(passive[1]));
   }
   async function onResponse(response: Response) {
     const current = action;
@@ -434,6 +452,10 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     const current = action;
     try {
       if (closed) { await route.abort("blockedbyclient"); return; }
+      if (current?.humanVerification && (Date.now() >= (current.humanVerificationDeadline ?? 0) || current.signal?.aborted)) {
+        current.error ??= "DELIVERY_BROWSER_VERIFICATION_TIMEOUT";
+        blockedRequests += 1; await route.abort("blockedbyclient"); return;
+      }
       const recaptcha = isRecaptcha(request);
       const hcaptcha = isHcaptcha(request);
       try {
@@ -497,6 +519,12 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
           const artifacts = [...uploadedArtifacts.values()];
           if (!multipart || artifacts.length !== 1 || multipart.file.length !== artifacts[0].byteSize || hash(multipart.file) !== artifacts[0].sha256) throw new Error("DELIVERY_SUBMIT_ARTIFACT_MISMATCH");
         }
+        if (current.humanVerification) {
+          // Providers may invoke their callback just before hiding the widget.
+          // Wait for its actual disappearance; never suppress the final check.
+          const hidden = await waitFor(async () => !await pageShowsCaptchaChallenge(page, ashby ? passiveFrameUrls() : []), current.signal);
+          if (!hidden) throw new Error(APPLICATION_FILL_CAPTCHA_TAKEOVER);
+        }
         await current.verifyReview?.();
         assertActive(current.signal);
         submitConsumed = true;
@@ -531,14 +559,14 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     // the actual filename; innerText changes its case for presentation only.
     return (policy.lever ? await target.textContent() ?? "" : await target.innerText()).trim();
   }
-  async function waitFor(check: () => Promise<boolean>, signal?: AbortSignal): Promise<boolean> {
+  async function waitFor(check: () => Promise<boolean>, signal?: AbortSignal, extendedDeadline?: () => number): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     do {
       assertActive(signal);
       await drain();
       if (await check()) return true;
       await new Promise((resolve) => setTimeout(resolve, 50));
-    } while (Date.now() < deadline);
+    } while (Date.now() < Math.max(deadline, extendedDeadline?.() ?? 0));
     return false;
   }
   async function currentStep(): Promise<DeliveryStepPolicy | null> {
@@ -689,18 +717,32 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       if (!step?.submit) return { kind: "TAKEOVER", reasonCode: "DELIVERY_SUBMIT_POLICY_REQUIRED" };
       const current: ActionWindow = { kind: "SUBMIT", request: step.submit.request, admitted: false, reviewHash, review, signal, verifyReview };
       action = current;
-      // A passive CAPTCHA may turn into a visible challenge after the click. Stop
-      // before the final request is admitted; never interact with the challenge.
+      // No model tools run during this window. Only the candidate can interact
+      // through Live View; the exact final readback and submit guard stay active.
+      let verificationDeadline = 0;
+      let verificationOpened = false;
+      let polledAt = 0;
       const challenged = async () => {
-        if (!(policy.lever?.invisibleHcaptcha || ashby) || current.admitted || current.error || !await pageShowsCaptchaChallenge(page, ashby ? passiveFrameUrls() : [])) return false;
+        if (!(policy.lever?.invisibleHcaptcha || ashby) || current.admitted || current.error) return false;
+        if (verificationOpened) {
+          if (Date.now() >= verificationDeadline) { current.error = "DELIVERY_BROWSER_VERIFICATION_TIMEOUT"; return true; }
+          if (Date.now() - polledAt >= 2_000) { await hooks.browserVerification!.poll(); polledAt = Date.now(); }
+          return false;
+        }
+        if (!await pageShowsCaptchaChallenge(page, ashby ? passiveFrameUrls() : [])) return false;
         if (current.admitted || current.error) return false;
+        const deadline = await hooks.browserVerification?.open();
+        if (deadline && Number.isFinite(deadline) && deadline > Date.now()) {
+          verificationOpened = true; verificationDeadline = deadline; current.humanVerification = true; current.humanVerificationDeadline = deadline;
+          return false;
+        }
         current.error = APPLICATION_FILL_CAPTCHA_TAKEOVER;
         return true;
       };
       try {
         await page.locator(step.submit.selector).click({ timeout: timeoutMs });
         await waitFor(async () => Boolean(current.error || current.submission && await receipt(current.submission) || await challenged() ||
-          current.challenge && await verificationShown()), signal);
+          current.challenge && await verificationShown()), signal, () => verificationDeadline);
         await drain();
         if (current.submission) {
           const observed = await receipt(current.submission);
@@ -716,7 +758,11 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       } catch (error) {
         return current.beginStarted ? { kind: "UNCERTAIN", reasonCode: safeError(error), submission: current.submission ?? null }
           : { kind: "TAKEOVER", reasonCode: safeError(error) };
-      } finally { await drain(); action = null; }
+      } finally {
+        current.humanVerification = false;
+        if (verificationOpened) await hooks.browserVerification!.close().catch(() => undefined);
+        await drain(); action = null;
+      }
     },
     /**
      * Types the candidate's emailed code into the employer's own boxes and lets

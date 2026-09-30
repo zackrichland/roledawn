@@ -21,6 +21,7 @@ export type ApplicationAutopilotView = Readonly<{
   id: string; applicationId: string; revisionId: string; status: ApplicationAutopilotStatus;
   version: number; questions: readonly ApplicationAgentQuestion[]; failureCode: string | null;
   verification?: ApplicationAutopilotVerificationRequest | null;
+  browserVerification?: Readonly<{ expiresAt: string }> | null;
 }>;
 export type SaveAutopilotAnswersCommand = Readonly<{
   commandId: string; id: string; expectedVersion: number;

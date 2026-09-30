@@ -81,6 +81,8 @@ Single page.
 
 ## Known quirks
 
+- 2026-09-30: A visible check after the final click opens the exact guarded tab inside RoleDawn for the candidate, up to five minutes; no model challenge tools run, and exact final readback still gates submission (D-144; synthetic completion/drift/expiry/cancel coverage).
+
 - **Verified 2026-09-30:** a fresh form changes field fingerprints within the same send. Recall the candidate's original answer by matching wording and option labels in the same frozen context; derived answers and protected questions retain their exclusions (D-143; SQL regression).
 
 - Field saves disclose approved data before final submission; a stopped run may have an employer-side draft. Copy must not claim that no data was sent.

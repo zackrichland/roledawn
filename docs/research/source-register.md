@@ -369,3 +369,7 @@ Recheck product features, prices, model names, policies, domains, and APIs befor
 ### ATS-20260930-06: native text limits
 
 - **Primary specification**, accessed 2026-09-30: [HTML input maxlength](https://html.spec.whatwg.org/multipage/input.html#attr-input-maxlength) constrains native text length. A public Greenhouse posting renders a short-answer input with `maxLength="255"`; the local native-browser regression verifies rejection before writing and shorter-answer recovery. No employer acceptance is established by this field test.
+
+### BB-20260930-02: embedded live verification
+
+- **Vendor documentation**, read 2026-09-30: [Browserbase Session Live View](https://docs.browserbase.com/platform/browser/observability/session-live-view) supports interactive iframe embedding and a URL per tab in `pages`. Its sandbox example permits scripts and same-origin; mobile keyboards are not officially supported. D-144 uses the exact candidate tab with owned active-lease checks. These vendor capabilities do not prove live employer acceptance.
