@@ -89,7 +89,7 @@ Single page.
 - Playwright briefly reports `""` as a newly attached frame's URL. That URL supplies no controls or trust. The current DOM iframe source and eventual frame URL are checked independently against the reviewed CAPTCHA origin, anchor path, observed key and invisible mode; a late approved badge is not a challenge. Visible challenges and unapproved foreign frames still stop final readback before submit permission is consumed (D-127/D-128).
 - The form has no native `<form>` element. Ashby labels, field paths and form identifiers supply the control identity.
 - **Verified by reproduction, 2026-09-30:** the final submit click disables inputs before its request dispatches. Final readback retains and compares their identity, current values and files; ordinary filling still refuses disabled controls. Two real-client replays exercised the actual pre-dispatch guard, while changed disabled values/labels received no authorization or submission (D-130; published in `b103640`).
-- A changed public operation document fails closed until reviewed. Defaults, hidden values, legal-processing notices and unrecognized widgets can still require candidate help; support does not promise every employer-specific form.
+- A changed public operation document fails closed until reviewed. Defaults, hidden values and unrecognized widgets can still require candidate facts; passive processing notices are admitted with exact review binding and acknowledgements use saved delegation; support does not promise every employer-specific form.
 
 ## RoleDawn status and gaps
 
@@ -128,3 +128,5 @@ Don't:
 - [ATS delivery expansion acceptance](../execution/ats-delivery-expansion-acceptance.md); [source register](../research/source-register.md) ATS-D05, ATS-D06; [decision log](../execution/decision-log.md) D-086; `tmp/form-audit/` (5 live forms, 2026-09-28, not committed)
 
 - [Hosted form protocol and branding](../research/source-register.md) AB-20260930-01 and AB-20260930-02 — public-client and DOM observation, accessed 2026-09-30; no live employer receipt implied.
+
+- 2026-09-30 (D-136): `automatedProcessingLegalNotice` is a passive notice, including the standard null-HTML notice. Bind its observed rule ID and content hash into review and require the exact rule ID at submit; a notice alone must not stop delivery. Consent controls use the candidate's saved delegation.

@@ -93,6 +93,13 @@ export async function structuredResponse(request: StructuredResponseRequest): Pr
     });
   } catch (error) {
     const status = (error as { status?: number } | null)?.status;
+    const failure = error as { code?: unknown; type?: unknown; error?: { code?: unknown; type?: unknown } } | null;
+    const code = failure?.code ?? failure?.error?.code;
+    const type = failure?.type ?? failure?.error?.type;
+    if (code === "credit_balance_exhausted" || code === "insufficient_quota" || type === "insufficient_quota") {
+      throw new StructuredResponseError("MODEL_CREDITS_EXHAUSTED", false);
+    }
+    if (code === "rate_limit_exceeded") throw new StructuredResponseError("MODEL_RATE_LIMITED", true);
     const retryable = status === undefined || status === 408 || status === 409 || status === 429 || status >= 500;
     throw new StructuredResponseError(status ? `MODEL_HTTP_${status}` : "MODEL_REQUEST_FAILED", retryable);
   }

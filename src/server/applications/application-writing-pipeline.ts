@@ -1,3 +1,4 @@
+import { StructuredResponseError } from "../ai/structured-response.ts";
 import { createHash } from "node:crypto";
 
 import {
@@ -52,6 +53,7 @@ type Dependencies = Readonly<{
   write: (input: Readonly<{ revision?: Readonly<{ previous: DraftingProposalV2; problems: readonly DraftingIssue[] }> }>) => Promise<WriterResult>;
   verify: (segments: ReturnType<typeof proposalSegments>) => Promise<VerificationResult>;
   lintStyle: StyleLinter;
+  onAttempt?: (attempt: WritingAttempt) => Promise<void>;
 }>;
 
 const TRUTH_CODES = new Set([
@@ -97,7 +99,7 @@ export async function generateApplicationWriting(
       written = await dependencies.write({ revision });
     } catch (error) {
       if (written) break; // keep the last complete draft and finish with salvage
-      const retryable = !(error instanceof Error && /OUTPUT_INVALID|REFUSAL/u.test(error.message));
+      const retryable = error instanceof StructuredResponseError ? error.retryable : !(error instanceof Error && /OUTPUT_INVALID|REFUSAL/u.test(error.message));
       throw new ApplicationWritingError(error instanceof Error && /^[A-Z][A-Z0-9_]{3,}$/u.test(error.message) ? error.message : "APPLICATION_WRITER_FAILED", retryable, attempts);
     }
     const proposal = written.proposal;
@@ -140,6 +142,7 @@ export async function generateApplicationWriting(
       coverLetterWords: wordCount(proposal.coverLetter.paragraphs.map((paragraph) => paragraph.text).join(" ")),
       outcome: clean ? "CLEAN" : last ? "FINAL" : "REPAIR_REQUESTED",
     }));
+    await dependencies.onAttempt?.(attempts.at(-1)!).catch(() => undefined);
     if (clean || last) break;
     revision = Object.freeze({ previous: proposal, problems: Object.freeze(problems) });
   }

@@ -178,7 +178,13 @@ export async function runApplicationAutopilotClaim(claim: ApplicationAutopilotCl
     standingAnswers: createStandingAnswerResolver({ apiKey: configuration.apiKey, model: configuration.model }),
     async drive(task) {
       const driver = createApplicationDeliveryDriver({
-        harness: createApplicationDeliveryHarness({ configuration, client, store: repository, lease: claim, signal }),
+        harness: createApplicationDeliveryHarness({ configuration, client, store: repository, lease: claim, signal,
+          report: async (detail, durationMs) => {
+            const { recordWorkerEvent } = await import("./worker-events.ts");
+            await recordWorkerEvent(supabase as never, { lane: "autopilot", stage: "agent-turn", outcome: "INFO", detail, durationMs,
+              applicationId: claim.applicationId, autopilotId: claim.id });
+          },
+        }),
         questions: task.questions,
         evidence: createApplicationAgentEvidence({ apiKey: configuration.apiKey }),
         resolvePage: (handle) => handle as Page,

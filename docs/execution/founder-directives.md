@@ -56,3 +56,5 @@ own answers.
 14. **Lean and modular.** Keep the repository easy for coding agents to read; keep AGENTS.md current with lessons learned. (2026-09-30)
 15. **Push to GitHub once it works,** with documentation that explains how everything works. (2026-09-29)
 16. **Remember everything.** Record every instruction here, in the decision log, and in agent memory. (2026-09-30)
+
+17. **Delegate application acknowledgements.** The candidate authorizes RoleDawn to accept application terms, privacy notices, processing/screening consents and application-information attestations, and to enter the approved legal name in signature fields. Save that authority per candidate and record the exact employer wording on each send; no repeated candidate acknowledgement. This permission does not establish a qualification or personal-status fact. (2026-09-30, D-136)

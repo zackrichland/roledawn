@@ -53,7 +53,7 @@ The status is documentation, not permission. Delivery authority comes from `ATS_
 - One sealed submission per named application. Reconcile an unknown outcome before any retry.
 - Only the employer's own response is a receipt. A model never decides that an application went through.
 - Never fill a honeypot field (for example Workday's `beecatcher` input).
-- Never accept terms, privacy statements, legal disclaimers or data-consent gates for the candidate; present them and record the candidate's own decision. Decline non-essential cookies.
+- Accept application acknowledgements only under the candidate's explicit saved delegation (D-136); record the exact employer wording and authority basis. Signatures use the approved legal name frozen for that application. Decline non-essential cookies.
 - Never use the candidate's social sign-in (Google, Apple, LinkedIn, Microsoft) or a vendor's employer API; those APIs need the employer's key.
 - A draft, a profile, a talent-network sign-up or an unconfirmed application is not an application.
 - Account-based boards (Workday, iCIMS, Oracle/Taleo, SuccessFactors): use the candidate's application email. Passwords are open decision O-012: the founder asked for one shared password, and the recommendation on record is a unique generated password per employer site, stored encrypted and viewable by the candidate ([decision log](../execution/decision-log.md)). **Not built:** today any password field hands over with `APPLICATION_FILL_ACCOUNT_LOGIN_TAKEOVER` (`src/server/workers/agents-browser-tools.ts`).

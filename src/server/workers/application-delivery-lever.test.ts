@@ -168,3 +168,23 @@ test("the CAPTCHA detector treats hidden, zero-size and off-page widgets as pass
     }
   } finally { await browser.close(); }
 });
+
+
+test("Lever's hidden enclave bootstrap is passive; visible and unreviewed frames still stop inspection", options, async () => {
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", route => route.fulfill({ status: 200, contentType: "text/html", body: "<html><body></body></html>" }));
+    await page.goto("http://localhost/fixture");
+    for (const [src, visibility, expected] of [
+      ["https://newassets.hcaptcha.com/captcha/v1/fixture/static/hcaptcha-enclave.html", "hidden", null],
+      ["https://newassets.hcaptcha.com/captcha/v1/fixture/static/hcaptcha-enclave.html", "visible", "APPLICATION_FILL_CAPTCHA_TAKEOVER"],
+      ["https://newassets.hcaptcha.com/captcha/v1/fixture/static/unreviewed-hcaptcha.html", "hidden", "APPLICATION_FILL_CAPTCHA_TAKEOVER"],
+      ["https://untrusted.invalid/captcha/v1/fixture/static/hcaptcha-enclave.html", "hidden", "APPLICATION_FILL_CAPTCHA_TAKEOVER"],
+    ] as const) {
+      await page.setContent(`<html><body><form id="application-form"><iframe src="${src}" style="position:fixed;top:0;left:0;width:100%;height:100%;visibility:${visibility}"></iframe></form></body></html>`);
+      const tools = createAgentBrowserTools(page, "http://localhost/fixture", { leverLabels: true, invisibleHcaptcha: true });
+      assert.equal((await tools.inspect()).takeoverReason, expected, `${src} ${visibility}`);
+    }
+  } finally { await browser.close(); }
+});

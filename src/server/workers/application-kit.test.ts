@@ -13,3 +13,21 @@ test("transient provider failure keeps bounded outbox recovery and redacts unkno
   assert.equal(decideApplicationKitFailureDisposition(5, failure).action, "DEAD_LETTER");
   assert.equal(decideApplicationKitFailureDisposition(1, new Error("Candidate text and API secret")).errorCode, "WORKER_UNEXPECTED_FAILURE");
 });
+
+
+test("credit exhaustion terminates research and writing failures immediately", async () => {
+  const { StructuredResponseError } = await import("../ai/structured-response.ts");
+  const { generateApplicationWriting } = await import("../applications/application-writing-pipeline.ts");
+  const error = new StructuredResponseError("MODEL_CREDITS_EXHAUSTED", false);
+  assert.equal(decideApplicationKitFailureDisposition(1, error).action, "DEAD_LETTER");
+  let calls = 0;
+  await assert.rejects(generateApplicationWriting({} as never, {
+    async write() { calls += 1; throw error; }, async verify() { throw new Error("not reached"); }, lintStyle() { return []; },
+  }), (wrapped: unknown) => {
+    assert.ok(wrapped instanceof ApplicationWritingError);
+    assert.equal(wrapped.retryable, false);
+    assert.equal(decideApplicationKitFailureDisposition(1, wrapped).action, "DEAD_LETTER");
+    return true;
+  });
+  assert.equal(calls, 1);
+});

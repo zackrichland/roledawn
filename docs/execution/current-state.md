@@ -141,3 +141,11 @@ the only ATS with verified live acceptance for this account.
 
 The [application playbook](application-playbook.md) owns operating instructions;
 the [decision log](decision-log.md) owns decisions and reversal triggers.
+
+## Current repair (2026-09-30)
+
+Verified root causes: passive Ashby automated-processing notices were rejected as posting drift; terminal writing failure release omitted `dead_letter_reason`, violating the outbox pair constraint and leaving Writing active; Greenhouse logos rejected the reviewed s5 CDN and disabled board indexes prevented extraction; daily usage joined only catalog enrollments, excluding pasted links. Local fixes and integration checks cover each. The configured OpenAI key reported credit exhaustion; a small request succeeded after the founder funded it.
+
+D-136 adds explicit saved acknowledgement delegation with worker/database rule parity and exact employer descriptor audit. Model-turn failures and writing repair counts are logged without candidate text. The 95% delivery goal remains a target, not measured product evidence. Deployment, migration readback and new live results will be recorded below.
+
+**Verified repair readback:** migrations `20260930184500`, `20260930190000` and `20260930193436` are applied and recorded (98 migrations). Generated public types are unchanged. Terminal release, pasted usage, cap serialization, delegated mapping and worker/private grants read back correctly. The candidate's explicit delegation and earlier exact clearance answer are present; no profile input epoch changed. The requested Greenhouse logo cache was refreshed through the existing logo RPC. A read-only hosted Linux probe reproduced Lever's hidden hCaptcha enclave false positive, then passed inspection after the exact-path correction. No candidate fields or submission were used in that probe.

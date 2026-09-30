@@ -17,6 +17,7 @@ const CATALOGUE: Readonly<Record<DeliveryStopGroup, readonly string[]>> = {
     "OPENAI_AGENTS_UNSUPPORTED_ACTION", "DELIVERY_RUNTIME_EXPIRED", "DELIVERY_RUNTIME_PROVIDER_FAILED",
     "BROWSERBASE_SESSION_NOT_CONNECTABLE", "DELIVERY_BROWSER_ACTION_FAILED", "DELIVERY_AGENT_TURN_INCOMPLETE",
   ],
+  SERVICE_CREDITS: ["MODEL_CREDITS_EXHAUSTED"],
   CAPACITY: ["DELIVERY_BROWSER_QUOTA_EXHAUSTED"],
   UNSUPPORTED_SITE: ["DELIVERY_SITE_UNSUPPORTED", "APPLICATION_AUTOPILOT_DESTINATION_UNSUPPORTED"],
   HUMAN_CHECK: ["APPLICATION_FILL_CAPTCHA_TAKEOVER"],
@@ -76,6 +77,7 @@ test("a stopped send offers Try again only when trying again can help, and alway
     assert.equal(guidance.canCancel, false, code);
     if (guidance.retry === "MANUAL") assert.equal(guidance.primary.kind, "TRY_AGAIN", code);
     // Browser time running out is the one outside cause that clears on its own side: a retry is offered, but never first.
+    else if (group === "SERVICE_CREDITS") { assert.equal(guidance.primary.kind, "TRY_AGAIN"); assert.match(guidance.next, /Add credits/u); }
     else if (group === "CAPACITY") { assert.equal(guidance.primary.kind, "EMPLOYER_PAGE"); assert.equal(guidance.secondary?.kind, "TRY_AGAIN"); }
     else { assert.equal(offers, 0, `${code} must not offer Try again`); assert.equal(guidance.primary.kind, "EMPLOYER_PAGE", code); }
   }
@@ -252,4 +254,11 @@ test("a send request that closed for an unsupported board and a profile gap each
   assert.equal(guideSendNotDeliverable().needsYou, true);
   assert.equal(guideProfileInput().primary.kind, "OPEN_APPLICATION");
   assert.equal(homeActionLabel({ kind: "NONE", label: "" }), null);
+});
+
+
+test("credit exhaustion explains the account change required instead of reporting a busy service", () => {
+  assert.equal(deliveryStopGroup("MODEL_CREDITS_EXHAUSTED"), "SERVICE_CREDITS");
+  assert.equal(guideWritingFailure({ code: "MODEL_CREDITS_EXHAUSTED" }).retry, "AFTER_CHANGE");
+  assert.match(guideWritingFailure({ code: "MODEL_CREDITS_EXHAUSTED" }).happened, /credits/u);
 });

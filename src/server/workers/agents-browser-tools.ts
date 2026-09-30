@@ -290,7 +290,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       if (options?.invisibleHcaptcha) {
         const foreignCaptcha = await frame.locator('iframe[src*="captcha"], iframe[src*="turnstile"], [data-sitekey]').evaluateAll((elements) => elements.some((element) =>
           element instanceof HTMLIFrameElement
-            ? !/^https:\/\/newassets\.hcaptcha\.com\/captcha\/v1\/[A-Za-z0-9._-]{1,80}\/static\/hcaptcha\.html(?:[?#]|$)/u.test(element.src)
+            ? !/^https:\/\/newassets\.hcaptcha\.com\/captcha\/v1\/[A-Za-z0-9._-]{1,80}\/static\/hcaptcha(?:-enclave)?\.html(?:[?#]|$)/u.test(element.src)
             : element.classList.contains("g-recaptcha") || element.classList.contains("cf-turnstile")));
         if (foreignCaptcha || await frameShowsCaptchaChallenge(frame)) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
       } else {

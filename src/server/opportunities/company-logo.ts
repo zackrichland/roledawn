@@ -83,7 +83,7 @@ export function greenhouseLogoUrl(html: string, board: string): string | null {
       || typeof logo?.url !== "string") return null;
     const url = new URL(logo.url);
     // Only the public employer-logo CDN/path observed on the hosted board, not arbitrary config URLs.
-    if (url.origin !== "https://s8-recruiting.cdn.greenhouse.io" || url.username || url.password || url.hash
+    if (!["https://s8-recruiting.cdn.greenhouse.io", "https://s5-recruiting.cdn.greenhouse.io"].includes(url.origin) || url.username || url.password || url.hash
       || (url.search && !/^\?[0-9]{10,16}$/u.test(url.search)) || !GREENHOUSE_LOGO_PATH.test(url.pathname)
       || /%2f|%5c|%2e/iu.test(url.pathname)) return null;
     return url.href;
@@ -197,9 +197,31 @@ export async function fetchCompanyLogo(provider: string, board: string, fetcher:
   });
   let stage = "BOARD";
   try {
-    const boardResponse = await request(`${BOARD_ORIGINS[provider]}/${board}`, "text/html");
-    const boardRejected = await rejectedStatus(boardResponse, "BOARD");
+    let boardResponse: Response | null = null;
+    let boardRejected: CompanyLogoFetchResult | null = null;
+    try {
+      boardResponse = await request(`${BOARD_ORIGINS[provider]}/${board}`, "text/html");
+      boardRejected = await rejectedStatus(boardResponse, "BOARD");
+    } catch (error) {
+      if (provider !== "greenhouse") throw error;
+      boardRejected = failed("BOARD_NETWORK");
+    }
+    // Some employers disable their board index while individual hosted job pages remain available.
+    // Resolve one public posting ID from the same board; never follow an employer-provided URL.
+    if (boardRejected && provider === "greenhouse") {
+      const index = await request(`https://boards-api.greenhouse.io/v1/boards/${board}/jobs`, "application/json");
+      const indexRejected = await rejectedStatus(index, "BOARD_INDEX");
+      if (indexRejected) return boardRejected.kind === "error" ? boardRejected : indexRejected;
+      const bytes = await readBounded(index, BOARD_BYTE_LIMIT);
+      if (!bytes) return failed("BOARD_INDEX_TOO_LARGE");
+      const jobs = object(JSON.parse(new TextDecoder().decode(bytes)))?.jobs;
+      const id = Array.isArray(jobs) ? object(jobs[0])?.id : null;
+      if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) return boardRejected;
+      boardResponse = await request(`${BOARD_ORIGINS[provider]}/${board}/jobs/${id}`, "text/html");
+      boardRejected = await rejectedStatus(boardResponse, "BOARD_POSTING");
+    }
     if (boardRejected) return boardRejected;
+    if (!boardResponse) return failed("BOARD_NETWORK");
     if (!boardResponse.headers.get("content-type")?.toLowerCase().startsWith("text/html")) {
       await boardResponse.body?.cancel(); return none("BOARD_NOT_HTML");
     }

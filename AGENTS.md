@@ -85,7 +85,7 @@ In order: (1) profile facts through anchored label rules (`application-field-fac
 - Only the employer's own response is a receipt. A model never decides that a submission or any other side effect happened.
 - No CAPTCHA solving or evasion. A visible challenge stops the send; the emailed code is the legitimate path.
 - Exact facts (name, contact, employers, titles, dates, work authorization, EEO answers) come from structured, provenance-linked candidate records, never from a model or an embedding. Vector retrieval supports narrative only.
-- Models read forms, map questions to the candidate's own saved answers, and draft prose. They never authorize themselves, change policy, or infer a sensitive answer the candidate hasn't given. Demographic, legal, consent and signature questions go to the candidate (D-117).
+- Models read forms, map questions to the candidate's own saved answers, and draft prose. They never authorize themselves, change policy, or infer a sensitive answer the candidate hasn't given. Demographic and qualification answers need candidate facts. Explicit saved delegation handles consent, terms, attestations and signatures deterministically (D-136); record exact employer wording.
 - Answers belong to one candidate and are never shared or inferred across candidates.
 - Keep pause, cancel, archive, export and delete paths working. Provider IDs and secrets stay server-side behind adapters.
 - Every public table has RLS. `SECURITY DEFINER` functions set `search_path = ''` and use qualified names.
@@ -112,7 +112,7 @@ In order: (1) profile facts through anchored label rules (`application-field-fac
 - Single-account sign-in: `https://roledawn.netlify.app/auth/test-session?key=<ROLEDAWN_TEST_ACCESS_KEY>`. Without the key: "This RoleDawn workspace is private."
 - `.env.local` points at the hosted database. Local `dev:full` and `worker:*` compete with production lanes and can send real applications; keep `ROLEDAWN_AUTOPILOT_ENABLED=false` locally unless you mean to send.
 - Workers, scripts and tests run under `node --experimental-strip-types`: use relative imports with `.ts` extensions there. `@/` imports and `import "server-only"` belong only in code that Next alone loads.
-- Browserbase HTTP 402/429 appear as `DELIVERY_BROWSER_QUOTA_EXHAUSTED` / `DELIVERY_BROWSER_CONCURRENCY_LIMIT`.
+- OpenAI credit exhaustion is terminal (`MODEL_CREDITS_EXHAUSTED`); a 429 rate limit remains transient. Browserbase HTTP 402/429 appear as `DELIVERY_BROWSER_QUOTA_EXHAUSTED` / `DELIVERY_BROWSER_CONCURRENCY_LIMIT`.
 - Tests are timing-sensitive under load. Keep concurrency at 3 and rerun a failing file alone before debugging it.
 - The GitHub repository is public. Never commit secrets, tokens, personal data or the founder's private details (employers, answers); name variables, not values.
 - Founder directive 11 pre-approves deploys, hosted migrations and settings. If your tool's permission mode still blocks one, say so in one line and stop; don't route around it.

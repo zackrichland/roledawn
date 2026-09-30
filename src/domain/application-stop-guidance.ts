@@ -90,7 +90,7 @@ export const AUTOMATIC_RETRY_LIMIT = 2;
 export const RECONCILE_LIMIT = 3;
 
 export type DeliveryStopGroup =
-  | "TEMPORARY" | "CAPACITY" | "UNSUPPORTED_SITE" | "HUMAN_CHECK" | "FORM_REJECTED" | "SIGN_IN" | "UNSUPPORTED_FIELD"
+  | "TEMPORARY" | "SERVICE_CREDITS" | "CAPACITY" | "UNSUPPORTED_SITE" | "HUMAN_CHECK" | "FORM_REJECTED" | "SIGN_IN" | "UNSUPPORTED_FIELD"
   | "ANSWER_REJECTED" | "CODE_NOT_ACCEPTED" | "FORM_CHECK" | "UNKNOWN";
 
 const SITE_UNSUPPORTED = new Set(["DELIVERY_SITE_UNSUPPORTED", "APPLICATION_AUTOPILOT_DESTINATION_UNSUPPORTED"]);
@@ -101,6 +101,8 @@ const OUR_FAMILY = /^(?:DELIVERY_|AGENTS_|APPLICATION_FILL_)/u;
 export function deliveryStopGroup(code: string | null | undefined): DeliveryStopGroup {
   if (!code) return "UNKNOWN";
   if (AUTOMATIC_RETRY_CODES.has(code)) return "TEMPORARY";
+  if (code === "MODEL_CREDITS_EXHAUSTED") return "SERVICE_CREDITS";
+  if (code === "MODEL_RATE_LIMITED") return "TEMPORARY";
   if (code === "DELIVERY_BROWSER_QUOTA_EXHAUSTED") return "CAPACITY";
   if (SITE_UNSUPPORTED.has(code)) return "UNSUPPORTED_SITE";
   if (code === "APPLICATION_FILL_CAPTCHA_TAKEOVER") return "HUMAN_CHECK";
@@ -135,6 +137,12 @@ const GROUP_COPY: Readonly<Record<DeliveryStopGroup, GroupCopy>> = {
     happened: "A temporary problem on RoleDawn’s side interrupted the form, and it wasn’t submitted.",
     next: "Try again in a few minutes, or apply yourself on the employer’s site with your files.",
     tone: "error", primary: TRY_AGAIN, secondary: EMPLOYER_APPLY, retry: "MANUAL",
+  },
+  SERVICE_CREDITS: {
+    label: "Stopped", heading: "The application service needs credits",
+    happened: "RoleDawn's AI account ran out of credits before this application was submitted.",
+    next: "Add credits to the configured AI account, then try again.",
+    tone: "error", primary: TRY_AGAIN, secondary: null, retry: "AFTER_CHANGE",
   },
   CAPACITY: {
     label: "Couldn’t start", heading: "Couldn’t start",
@@ -379,19 +387,20 @@ export function guideIntakeFailure(code: string | null | undefined): StopGuidanc
 // Writing the documents
 // ---------------------------------------------------------------------------
 
-export type WritingFailureKind = "PROFILE_MISSING" | "LETTER_UNVERIFIED" | "NAME_REQUIRED" | "WRITING_CHECK" | "SERVICE_BUSY" | "UNKNOWN";
+export type WritingFailureKind = "PROFILE_MISSING" | "LETTER_UNVERIFIED" | "NAME_REQUIRED" | "WRITING_CHECK" | "SERVICE_BUSY" | "SERVICE_CREDITS" | "UNKNOWN";
 export function writingFailureKind(code: string | null | undefined): WritingFailureKind {
   if (!code) return "UNKNOWN";
   if (code === "DRAFTING_CAREER_PROFILE_MISSING") return "PROFILE_MISSING";
   if (code === "LETTER_CLAIM_UNVERIFIED") return "LETTER_UNVERIFIED";
   if (code === "APPLICATION_KIT_NAME_REQUIRED") return "NAME_REQUIRED";
   if (code.startsWith("APPLICATION_WRITING") || code.startsWith("APPLICATION_DRAFTING")) return "WRITING_CHECK";
+  if (code === "MODEL_CREDITS_EXHAUSTED") return "SERVICE_CREDITS";
   if (code.startsWith("OPENAI") || code.startsWith("MODEL_")) return "SERVICE_BUSY";
   return "UNKNOWN";
 }
 export function writingRetryClass(code: string | null | undefined): RetryClass {
   const kind = writingFailureKind(code);
-  return kind === "PROFILE_MISSING" || kind === "LETTER_UNVERIFIED" || kind === "NAME_REQUIRED" ? "AFTER_CHANGE" : "MANUAL";
+  return kind === "PROFILE_MISSING" || kind === "LETTER_UNVERIFIED" || kind === "NAME_REQUIRED" || kind === "SERVICE_CREDITS" ? "AFTER_CHANGE" : "MANUAL";
 }
 
 export function guideWritingFailure(input: Readonly<{ code: string | null | undefined; profileChanged?: boolean }>): StopGuidance {
@@ -418,6 +427,9 @@ export function guideWritingFailure(input: Readonly<{ code: string | null | unde
       return guide({ ...shared, label: "Writing stopped", heading, happened: "RoleDawn couldn’t finish documents that passed every check.",
         next: "Nothing was sent. Try again; if it stops again, adding a story to your profile usually helps.", tone: "error", retry: "MANUAL",
         primary: TRY_AGAIN, secondary: action("OPEN_PROFILE", "Add a story", "/vault/stories") });
+    case "SERVICE_CREDITS":
+      return guide({ ...shared, label: "Writing stopped", heading, happened: "RoleDawn's AI account ran out of credits.",
+        next: "Nothing was sent. Add credits to the configured AI account, then try again.", tone: "error", retry: "AFTER_CHANGE", primary: TRY_AGAIN });
     case "SERVICE_BUSY":
       return guide({ ...shared, label: "Writing stopped", heading, happened: "The writing service was busy.",
         next: "Nothing was sent. Try again in a few minutes.", tone: "error", retry: "MANUAL", primary: TRY_AGAIN });

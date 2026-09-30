@@ -1,3 +1,4 @@
+import { StructuredResponseError } from "../ai/structured-response.ts";
 import { errorDetail, recordWorkerEvent } from "./worker-events.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
@@ -146,6 +147,14 @@ export async function handleApplicationDraftingRequested(
       write: ({ revision }) => writeApplicationDraft({ context, research, sources, revision, apiKey, environment }),
       verify: (segments) => verifyApplicationDraft({ segments, sources, apiKey, environment }),
       lintStyle: lintApplicationStyle,
+      onAttempt: async (attempt) => {
+        await recordWorkerEvent(supabase as never, { lane: "kit", stage: "writing-check", outcome: "INFO",
+          applicationId: payload.applicationId, detail: {
+            attempt: attempt.attempt, outcome: attempt.outcome,
+            deterministicCodes: attempt.deterministicCodes, styleCodes: attempt.styleCodes,
+            unsupportedSegments: attempt.unsupportedSegments.length, coverLetterWords: attempt.coverLetterWords,
+          } });
+      },
     },
   );
   if (!writing.quality.readyForCandidateReview) {
@@ -295,7 +304,8 @@ function firstBoolean(value: unknown): boolean {
 export function decideApplicationKitFailureDisposition(attemptCount: number, error: unknown) {
   const errorCode = error instanceof Error && /^[A-Z][A-Z0-9_]{3,99}(?::ATTEMPTS_[0-2])?$/u.test(error.message)
     ? error.message : "WORKER_UNEXPECTED_FAILURE";
-  const permanent = (error instanceof ApplicationWritingError && !error.retryable)
+  const permanent = (error instanceof StructuredResponseError && !error.retryable)
+    || (error instanceof ApplicationWritingError && !error.retryable)
     || (error instanceof DraftingContextV2Error && !error.retryable)
     || errorCode.startsWith("DRAFTING_") || errorCode === "APPLICATION_KIT_NAME_REQUIRED";
   return permanent
@@ -360,6 +370,11 @@ export async function runApplicationKitWorkerOnce(environment: NodeJS.ProcessEnv
             p_retry_after_seconds: disposition.retryAfterSeconds,
           });
       if (releaseError || !firstBoolean(released)) {
+        const databaseCode = releaseError && typeof releaseError.code === "string" && /^[0-9A-Z]{5}$/u.test(releaseError.code)
+          ? releaseError.code : "UNKNOWN";
+        await recordWorkerEvent(supabase as never, { lane: "kit", stage: "failure-release", outcome: "FAILED",
+          code: "OUTBOX_FAILURE_RELEASE_FAILED", applicationId: payload?.applicationId ?? null,
+          detail: { databaseCode, originalCode: disposition.errorCode } });
         throw new Error("OUTBOX_FAILURE_RELEASE_FAILED", { cause: error });
       }
       failed += 1;

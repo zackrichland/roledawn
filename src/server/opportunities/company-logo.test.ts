@@ -297,7 +297,7 @@ test("EU boards are read from their own EU host with the same exact-origin rules
 test("a board with a dotted slug is fetched by that exact slug", async () => {
   const requested: string[] = [];
   await fetchCompanyLogo("greenhouse", "acme.co", (async (url) => { requested.push(String(url)); return new Response("", { status: 404 }); }) as typeof fetch);
-  assert.deepEqual(requested, ["https://job-boards.greenhouse.io/acme.co"]);
+  assert.deepEqual(requested, ["https://job-boards.greenhouse.io/acme.co", "https://boards-api.greenhouse.io/v1/boards/acme.co/jobs"]);
   assert.equal((await fetchCompanyLogo("greenhouse", "a..b")).kind, "none");
 });
 
@@ -317,4 +317,23 @@ test("responses: found logos are cached hard, 'none' briefly in browsers only, '
   const asset = companyLogoResolutionResponse({ kind: "asset", asset: { bytes: pngBytes, contentType: "image/webp" } });
   assert.equal(asset.status, 200);
   assert.match(asset.headers.get("cache-control") ?? "", /public, max-age=86400/u);
+});
+
+test("Greenhouse uses a same-board job page when the board index is disabled and accepts the observed s5 logo CDN", async () => {
+  const url = greenhouseImageUrl.replace('s8-recruiting', 's5-recruiting');
+  assert.equal(greenhouseLogoUrl(greenhouseBoardHtml(url), 'example'), url);
+  const png = await sharp({ create: { width: 10, height: 10, channels: 4, background: '#123456' } }).png().toBuffer();
+  const seen: string[] = [];
+  const fetcher = async (input: string | URL | Request) => {
+    const location = String(input); seen.push(location);
+    if (location === 'https://job-boards.greenhouse.io/example') return new Response('Unavailable', { status: 503 });
+    if (location === 'https://boards-api.greenhouse.io/v1/boards/example/jobs') return Response.json({jobs:[{id:123,absolute_url:'https://evil.test'}]});
+    if (location === 'https://job-boards.greenhouse.io/example/jobs/123') return new Response(greenhouseBoardHtml(url), {headers:{'content-type':'text/html'}});
+    if (location === url) return new Response(png, {headers:{'content-type':'image/png'}});
+    throw new Error('Unexpected request');
+  };
+  const result = await fetchCompanyLogo('greenhouse', 'example', fetcher as typeof fetch);
+  assert.equal(result.kind, 'found');
+  assert.equal(seen.length,4);
+  assert.ok(!seen.some(value => value.includes('evil.test')));
 });

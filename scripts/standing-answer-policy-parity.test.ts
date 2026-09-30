@@ -5,6 +5,8 @@ import type { PGlite } from "@electric-sql/pglite";
 import type { AgentQuestionDescriptor } from "../src/domain/application-agent-questions.ts";
 import { createStandingAnswerResolver, exactStandingAnswerValue, EXACT_CLEARANCE_TOPIC, standingAnswerEligible } from "../src/server/workers/standing-answers.ts";
 
+import { APPLICATION_ACKNOWLEDGEMENTS_AUTHORIZATION, APPLICATION_ACKNOWLEDGEMENTS_TOPIC, delegatedAcknowledgementValue } from "../src/domain/application-delegated-acknowledgements.ts";
+
 let db: PGlite;
 before(async () => {
   // The shared harness is JavaScript; a URL import keeps its local-only setup
@@ -100,4 +102,17 @@ test("database accepts only the same profile fact keys the worker exposes to the
     );
     assert.equal(result.rows[0].allowed, visibleKeys.includes(factKey), factKey);
   }
+});
+
+
+test("delegated acknowledgements have identical SQL and worker scope, signature and choice mapping", async () => {
+  const authorization = { topic: APPLICATION_ACKNOWLEDGEMENTS_TOPIC, answer: APPLICATION_ACKNOWLEDGEMENTS_AUTHORIZATION };
+  for (const label of ["I agree to the privacy policy", "Do you consent to a background check?", "I accept binding arbitration", "I certify that all information provided is true and complete", "Signature", "Electronic signature", "Signature (type your full name)", "Gender", "I certify that I am licensed", "I acknowledge that I have a degree", "Do you have security clearance?", "I do not agree to the terms", "I certify I used no AI", "Can you work on-site?", "Terms", "Privacy", "I have read and agree to the privacy policy", "I agree that I have worked in retail", "I certify I am over 18 years old", "I accept a non-compete agreement", "I acknowledge I am bound by a non-compete"])
+    for (const kind of ["BOOLEAN", "TEXT", "SINGLE_SELECT", "MULTI_SELECT"] as const)
+    for (const options of [[], ["Yes", "No"], ["I agree"], ["Yes", "I agree"], ["I agree to the privacy policy"]])
+    for (const required of [true, false]) {
+      const descriptor = { ...question(label, required, options), kind };
+      const result = await db.query<{ value: unknown }>("select private.autopilot_delegated_standing_value($1::jsonb,$2,$3,$4) as value", [JSON.stringify(descriptor), authorization.topic, authorization.answer, "Synthetic Candidate"]);
+      assert.deepEqual(result.rows[0].value, delegatedAcknowledgementValue(descriptor, authorization, "Synthetic Candidate"), `${label} / ${kind} / ${options} / ${required}`);
+    }
 });

@@ -1,5 +1,5 @@
 {
   "schemaVersion": 1,
-  "release": "roledawn-application-writing/4",
+  "release": "roledawn-application-writing/4.1",
   "documents": ["evidence.md", "resume.md", "cover-letter.md", "voice.md", "quality.md"]
 }

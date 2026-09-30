@@ -96,6 +96,8 @@ export function createAshbyProtocol(board: string, jobId: string) {
   const locations = new Map<string, unknown>();
   let broken = false;
   let authorizationFailure: string | null = null;
+  let informationalNoticeRuleId: string | null = null;
+  let informationalNoticeHash: string | null = null;
   const endpoint = (operation: AshbyOperation, origin: string) => `${origin}/api/non-user-graphql?op=${operation}`;
   const assertReady = () => { if (broken || !forms.length) fail("FORM_NOT_READY"); };
   const matchField = (field: AgentBrowserField): { form: Form; field: Field } => {
@@ -264,7 +266,7 @@ export function createAshbyProtocol(board: string, jobId: string) {
       const bindingNames: Record<string, string> = { organizationHostedJobsPageName: "BOARD", jobPostingId: "JOB", applicationFormRenderIdentifier: "FORM", formRenderIdentifier: "FORM", applicationFormActionIdentifier: "ACTION", actionIdentifier: "ACTION", applicationFormDefinitionIdentifier: "DEFINITION", formDefinitionIdentifier: "DEFINITION", surveyIdentifiers: "SURVEYS" };
       for (const [key, value] of Object.entries(binding)) if (!equal(v[key], value)) return reject(bindingNames[key]);
       if (v.sourceAttributionCode != null) return reject("SOURCE_ATTRIBUTION");
-      if (v.viewedAutomatedProcessingLegalNoticeRuleId != null) return reject("LEGAL_NOTICE");
+      if ((v.viewedAutomatedProcessingLegalNoticeRuleId ?? null) !== informationalNoticeRuleId) return reject("LEGAL_NOTICE");
       if (v.applicationRequestId != null) return reject("APPLICATION_REQUEST");
       if (typeof v.recaptchaToken !== "string" || !/^[A-Za-z0-9_:.\/-]{1,12000}$/u.test(v.recaptchaToken)) return reject("RECAPTCHA_TOKEN");
       if (v.deviceFingerprint != null && (typeof v.deviceFingerprint !== "string" || v.deviceFingerprint.length > 32_000 || !/^W;6\.10\.0;[A-Za-z0-9+/]+={0,2};[A-Za-z0-9+/]+={0,2}$/u.test(v.deviceFingerprint))) return reject("DEVICE_FINGERPRINT");
@@ -277,7 +279,18 @@ export function createAshbyProtocol(board: string, jobId: string) {
         const op = envelope.operation;
         if (op === "ApiJobPosting") {
           const posting = object(data.jobPosting);
-          if (!posting || posting.id !== jobId || forms.length || !Array.isArray(posting.surveyForms) || posting.automatedProcessingLegalNotice != null) return fail("POSTING_SCHEMA_DRIFT");
+          if (!posting || posting.id !== jobId || forms.length || !Array.isArray(posting.surveyForms)) return fail("POSTING_SCHEMA_DRIFT");
+          if (posting.automatedProcessingLegalNotice != null) {
+            const notice = object(posting.automatedProcessingLegalNotice);
+            // The reviewed client displays a passive "may use AI / Learn more" notice and echoes its rule ID.
+            // Passive notice content is bound into review; interactive consent fields use saved delegation.
+            if (!notice || !uuid(notice.automatedProcessingLegalNoticeRuleId)
+              || !Object.hasOwn(notice, "automatedProcessingLegalNoticeHtml")) return fail("LEGAL_NOTICE_SCHEMA_DRIFT");
+            const html = notice.automatedProcessingLegalNoticeHtml;
+            if (html !== null && (typeof html !== "string" || html.length > 32_000)) return fail("LEGAL_NOTICE_SCHEMA_DRIFT");
+            informationalNoticeHash = createHash("sha256").update(JSON.stringify(html)).digest("hex");
+            informationalNoticeRuleId = notice.automatedProcessingLegalNoticeRuleId;
+          }
           forms = [readForm(posting.applicationForm), ...posting.surveyForms.map(readForm)];
           if (new Set(forms.map((form) => form.id)).size !== forms.length || forms.some((form) => [...form.fields.values()].some((field) => field.value !== null))) return fail("INITIAL_FORM_STATE_UNSUPPORTED");
         } else if (op === "ApiAutocompleteGeoLocation" && envelope.variables.text !== "" && fieldAction?.field.type === "Location") {
@@ -302,7 +315,9 @@ export function createAshbyProtocol(board: string, jobId: string) {
       } catch (error) { broken = true; throw error; }
     },
     surveyCount: () => Math.max(0, forms.length - 1),
-    review() { assertReady(); if (fieldAction || uploadAction) return fail("ACTION_ALREADY_ACTIVE"); return forms.map((form) => ({ formId: form.id, definitionId: form.definition, actionId: form.action, fields: [...form.fields.values()].map((field) => ({ path: field.path, valueHash: digest(stable(field.value)) })) })); },
+    review() { assertReady(); if (fieldAction || uploadAction) return fail("ACTION_ALREADY_ACTIVE"); return forms.map((form) => ({ formId: form.id, definitionId: form.definition, actionId: form.action,
+      ...(informationalNoticeRuleId ? { informationalNoticeRuleId, informationalNoticeHash } : {}),
+      fields: [...form.fields.values()].map((field) => ({ path: field.path, valueHash: digest(stable(field.value)) })) })); },
   };
 }
 

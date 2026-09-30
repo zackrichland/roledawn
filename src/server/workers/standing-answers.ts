@@ -3,11 +3,12 @@
  * remembered answer, one model call maps it to the candidate's own saved
  * answers ("GPA: 3.5", "Able to work on-site: Yes") and a short list of profile
  * facts. Code keeps an answer only when it picks choices that exist on the form
- * and cites what it relied on; demographic, legal, consent and signature
- * questions always stay with the candidate. The database checks every answer
+ * and cites what it relied on. Explicit delegated acknowledgements are mapped
+ * by code; personal-status questions need the candidate's own facts or answers. The database checks every answer
  * again when it is recorded, labeled STANDING with its basis.
  */
 import OpenAI from "openai";
+import { APPLICATION_ACKNOWLEDGEMENTS_TOPIC, delegatedAcknowledgementValue } from "../../domain/application-delegated-acknowledgements.ts";
 
 import {
   validateAgentQuestionAnswer,
@@ -175,8 +176,16 @@ export function createStandingAnswerResolver(options: Readonly<{ apiKey?: string
         const value = exactStandingAnswerValue(question, exactAnswers[0]);
         if (value !== null) accepted.push({ descriptor: question, value, basis: [exactAnswers[0].id] });
       }
+      const delegated = context.answers.filter(answer => exactText(answer.topic) === exactText(APPLICATION_ACKNOWLEDGEMENTS_TOPIC));
+      const legalNames = facts.filter(fact => fact.factKey === "identity.legal_name");
+      if (delegated.length === 1) for (const question of questions.slice(0, 24)) {
+        const value = delegatedAcknowledgementValue(question, delegated[0], legalNames.length === 1 ? legalNames[0].value : undefined);
+        if (value !== null && !accepted.some(item => item.descriptor.fingerprint === question.fingerprint)) {
+          accepted.push({ descriptor: question, value, basis: [delegated[0].id] });
+        }
+      }
       // Exact sensitive subscriptions never enter the model's context or basis.
-      const modelAnswers = context.answers.filter(answer => exactText(answer.topic) !== exactText(EXACT_CLEARANCE_TOPIC)).slice(0, 100);
+      const modelAnswers = context.answers.filter(answer => ![exactText(EXACT_CLEARANCE_TOPIC), exactText(APPLICATION_ACKNOWLEDGEMENTS_TOPIC)].includes(exactText(answer.topic))).slice(0, 100);
       const eligible = questions.filter(standingAnswerEligible).slice(0, 24 - accepted.length);
       const usableFacts = facts.filter((fact) => FACT_KEYS.test(fact.factKey) && fact.value.trim()).slice(0, 20);
       if (!eligible.length || (!modelAnswers.length && !usableFacts.length)) return Object.freeze(accepted);

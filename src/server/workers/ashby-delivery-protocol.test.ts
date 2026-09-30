@@ -413,3 +413,29 @@ test("constant empty City lookup is harmless outside a field and its response ne
   assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "unexpected-city" })), null);
   assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "approved-city" })), "FIELD");
 });
+
+test("passive AI notices bind exact rule IDs and content into the sealed review", () => {
+  const protocol = createAshbyProtocol(board, job);
+  protocol.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: form(), surveyForms: [],
+    automatedProcessingLegalNotice: { automatedProcessingLegalNoticeRuleId: id(70), automatedProcessingLegalNoticeHtml: null } } } });
+  assert.equal(protocol.authorize(submission(false, { viewedAutomatedProcessingLegalNoticeRuleId: id(70) }), undefined, true), "SUBMIT");
+  assert.equal(protocol.authorize(submission(), undefined, true), null);
+  assert.equal(protocol.authorize(submission(false, { viewedAutomatedProcessingLegalNoticeRuleId: id(71) }), undefined, true), null);
+  assert.equal(protocol.review()[0].informationalNoticeRuleId, id(70));
+  assert.match(protocol.review()[0].informationalNoticeHash ?? "", /^[a-f0-9]{64}$/u);
+  const custom = createAshbyProtocol(board, job);
+  custom.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: form(), surveyForms: [],
+    automatedProcessingLegalNotice: { automatedProcessingLegalNoticeRuleId: id(70), automatedProcessingLegalNoticeHtml: '<p>Employer processing notice</p>' } } } });
+  assert.equal(custom.authorize(submission(false, { viewedAutomatedProcessingLegalNoticeRuleId: id(70) }), undefined, true), "SUBMIT");
+  assert.notEqual(custom.review()[0].informationalNoticeHash, protocol.review()[0].informationalNoticeHash);
+  for (const notice of [
+    { automatedProcessingLegalNoticeRuleId: id(70), automatedProcessingLegalNoticeHtml: {} },
+    { automatedProcessingLegalNoticeRuleId: id(70), automatedProcessingLegalNoticeHtml: 'x'.repeat(32_001) },
+    { automatedProcessingLegalNoticeRuleId: 'untrusted rule', automatedProcessingLegalNoticeHtml: null },
+    { automatedProcessingLegalNoticeRuleId: id(70) },
+  ]) {
+    const guarded = createAshbyProtocol(board, job);
+    assert.throws(() => guarded.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: form(), surveyForms: [], automatedProcessingLegalNotice: notice } } }));
+    assert.equal(guarded.ready(), false);
+  }
+});

@@ -13,7 +13,7 @@ export const APPLICATION_FILL_CAPTCHA_TAKEOVER = "APPLICATION_FILL_CAPTCHA_TAKEO
 export function isHcaptchaFrameUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.origin === "https://newassets.hcaptcha.com" && /^\/captcha\/v1\/[A-Za-z0-9._-]{1,80}\/static\/hcaptcha\.html$/u.test(url.pathname);
+    return url.origin === "https://newassets.hcaptcha.com" && /^\/captcha\/v1\/[A-Za-z0-9._-]{1,80}\/static\/hcaptcha(?:-enclave)?\.html$/u.test(url.pathname);
   } catch { return false; }
 }
 

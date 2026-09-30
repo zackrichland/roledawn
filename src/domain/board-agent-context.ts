@@ -65,7 +65,7 @@ export const BOARD_CONTEXT: Readonly<Record<BoardId, BoardContext>> = Object.fre
     "Fill approved facts before uploading, then verify all values again.",
     "Question text sits in each card's label; judge sensitivity from the question, never the option.",
     "The required marker, not a native required attribute, signals a required field (the file input may lack it).",
-    "hCaptcha scores the browser passively on submit. Any visible challenge or checkbox means stop and hand over.",
+    "hCaptcha has a hidden enclave bootstrap; it is passive. Any visible challenge, checkbox or prompt means stop.",
     "EEO, disability, pronoun and diversity questions take only the candidate's saved voluntary answers.",
     "The /thanks page alone proves nothing (a direct GET shows the success text); only this attempt's own response counts.",
   ]),
