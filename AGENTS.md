@@ -1,6 +1,6 @@
 # RoleDawn agent guide
 
-RoleDawn applies to jobs for a candidate. A job arrives as a pasted link or a ranked match from the catalog (reviewed Greenhouse, Lever and Ashby boards). RoleDawn freezes the candidate's approved facts, writes a résumé and cover letter under `policies/application-writing/`, fills the employer's form in a Browserbase browser with a GPT form agent, submits once, and counts only the employer's own confirmation as a receipt. Next.js 16 runs on Netlify; Supabase Postgres is the source of truth; background lanes run as Netlify functions. **Verified:** Greenhouse works end to end (two confirmed applications, 2026-09-30). Lever has fixture tests only. Ashby prepares documents only.
+RoleDawn applies to jobs for a candidate. A job arrives as a pasted link or a ranked match from the catalog (reviewed Greenhouse, Lever and Ashby boards). RoleDawn freezes the candidate's approved facts, writes a résumé and cover letter under `policies/application-writing/`, fills the employer's form in a Browserbase browser with a GPT form agent, submits once, and counts only the employer's own confirmation as a receipt. Next.js 16 runs on Netlify; Supabase Postgres is the source of truth; background lanes run as Netlify functions. **Verified:** Greenhouse works end to end (three confirmed applications across two employers, hosted readback 2026-09-30). Lever has fixture tests only. Ashby prepares documents only.
 
 ## Read first
 

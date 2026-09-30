@@ -9,13 +9,13 @@ candidate's approved facts and stories to write a résumé and cover letter,
 fills the employer's form, and counts only the employer's confirmation as an
 application receipt.
 
-This is a private, single-account pilot. The existing acceptance record reports
-two confirmed Greenhouse applications at one employer on 2026-09-30 UTC.
+This is a private, single-account pilot. Hosted readback verified
+three confirmed Greenhouse applications across two employers on 2026-09-30 UTC.
 Lever has fixture coverage; Ashby prepares documents only. These records do
 not establish support for every form or readiness for other users. Read the
 [current state](docs/execution/current-state.md) and
 [independent review](docs/execution/codex-review-2026-09-30.md) for the evidence,
-local changes, and remaining rollout work.
+deployed changes, and remaining limits.
 
 ## Home, Jobs, Profile
 

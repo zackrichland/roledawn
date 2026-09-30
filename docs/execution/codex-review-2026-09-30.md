@@ -1,6 +1,6 @@
 ---
 title: Independent local review of main
-status: hosted migrations and private profile update verified; built deployment pending; no UI changes
+status: backend deployed and verified; private profile updated; no UI changes
 owner: engineering
 last_updated: 2026-09-30
 scope: review of main at 7408a7c, local fixes and cleanup, and private single-candidate readiness
@@ -16,9 +16,10 @@ structure, active UI components, and operating documentation.
 
 **Current stage:** the authorized rollout has applied and verified all three
 reviewed migrations and saved the approved private career/profile content.
-The built deployment is still pending. Keep unchecked sending off until the
-published backend is verified; a new application using the updated profile has
-not been submitted. Hosted readback confirms three earlier Greenhouse
+Backend commit `30e7a19` is published in Netlify deployment
+`6abc7f1ecfcaeba896cb4c16`. Private access, page assets, updated private profile
+content and enabled worker health are verified. A new application using the
+updated profile has not been submitted; inspect its documents before sending. Hosted readback confirms three earlier Greenhouse
 applications across two employers. Lever remains fixture-tested and Ashby
 prepares files. This is not a broader-user release.
 
@@ -88,23 +89,23 @@ error-boundary `retry` API.
 | Updated `npm test` | 718 passed after excluding UI recovery tests, zero failed or skipped. The initial broader review passed 720. |
 | Local SQL checks | All 14 files pass across 92 migrations, including answer-context isolation, policy parity and input invalidation. These checks use local PGlite; the subsequent authorized hosted readback is recorded below. |
 | TypeScript and ESLint | Final combined checks passed locally. |
-| Production build | `npm run build` passed with the local dev server stopped. No preview route remains in the build. Publication and deployed-release verification are still pending. |
+| Production build | `npm run build` passed with the local dev server stopped. No preview route remains in the build. `npm run deploy -- --json` built and published `30e7a19`; the published deployment and its assets are verified. |
 | Documentation and whitespace | Final link validation and `git diff --check` passed. |
 | Dependency audit | `npm audit --omit=dev` reported zero known production dependency vulnerabilities at review time. This is not a security certification. |
-| UI | Initial review rendered Home, Jobs, Experience, Stories and uncertain-state components with synthetic data at desktop and 390 px widths. The proposed date, wrapping, wording and recovery edits are deferred. No authenticated production UI was exercised; the later approved profile update used owning RPCs and readback. |
+| UI | Initial review rendered Home, Jobs, Experience, Stories and uncertain-state components with synthetic data at desktop and 390 px widths. The proposed date, wrapping, wording and recovery edits are deferred. The later profile update used owning RPCs and readback; authenticated production HTML checks confirm the saved career and story on their pages. No interface code changed in this rollout. |
 
 The normal concurrency of three was preserved for the full Node suite. Local
 browser/SQL fixtures establish mechanics. The separate authorized hosted checks
 below establish their stated schema, profile and prior-application metadata;
-they do not verify the pending deployment, current provider quota or a new
-current-profile employer receipt.
+the published-deployment checks below establish release/asset availability,
+but do not establish current provider quota or a new current-profile employer receipt.
 
 ## Approval and remaining work
 
 | Decision | Assessment |
 |---|---|
-| Review and commit this cleanup/fix set | Recommended; combined local checks pass and the authorized hosted migrations/profile update are verified. Built deployment remains pending. |
-| Use the product for one candidate's Greenhouse applications | Conditional on verifying the built deployment and inspecting newly prepared current-profile documents. No unsent packet currently needs regeneration. Observe the next authorized named application through a terminal or needs-you state; this rollout creates no new submission. |
+| Review and commit this cleanup/fix set | Completed: `30e7a19` is committed, pushed and deployed; local checks and hosted migration/profile/release readbacks pass. |
+| Use the product for one candidate's Greenhouse applications | Built deployment verified; inspect newly prepared current-profile documents before sending. No unsent packet currently needs regeneration. Observe the next authorized named application through a terminal or needs-you state; this rollout creates no new submission. |
 | Leave general auto-apply unattended | Not yet recommended. Standing-answer interpretation can still be semantically wrong despite structural validation, and monitoring/answer-management UI remains limited. |
 | Broader ATS or public launch | Not approved by this evidence. Lever live delivery, account-based ATS support, standing-answer editing/readback, notifications, archive/export/delete flows and wider Gmail readiness remain incomplete. |
 
@@ -114,8 +115,8 @@ cover-letter and evidence-gathering materials remain in ignored private local
 files. No private career details are repository content, and no current-role
 achievements, tools or metrics were invented.
 
-The remaining release work is the authorized built deployment and verification
-of its published version and worker health. The current hosted state contains
+The authorized built deployment and verification of its published version and
+worker health are complete. The current hosted state contains
 no unarchived unsent packet to regenerate. Future applications must use the
 updated inputs, and a new send must never bypass unresolved submission
 uncertainty. The [playbook](application-playbook.md) owns the operating commands.
@@ -144,8 +145,13 @@ restorable local patch. The rollout retains the existing interface.
   SECURITY DEFINER command RPCs and disabled leaked-password protection. The
   reviewed migrations add no anonymous/authenticated execute grant; command RPC
   ownership checks remain intentional. Wider-account hardening remains open.
-- The backend-only suite passes 718 tests. The built deployment and its
-  published-release verification remain pending at this checkpoint.
+- The backend-only suite passes 718 tests. Backend commit `30e7a19` was pushed
+  to `main`, built and published as deployment `6abc7f1ecfcaeba896cb4c16`.
+- Netlify reports the deployment ready and published. Authenticated worker health
+  reports the same deployment ID with workers enabled; cleanup completed after
+  publication. The private-entry URL rejects requests without a key, authenticated
+  Experience and Stories pages return 200 with the saved content, and all 14
+  checked page assets return 200. No secret or session cookie is recorded here.
 
 This rollout does not submit a new employer application or establish a new
 current-profile employer receipt. The UI wording issues identified above remain

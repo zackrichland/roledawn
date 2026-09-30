@@ -16,8 +16,8 @@ path, not every Greenhouse form or every ATS.
 
 The review started at `7408a7c` and was initially local only. This snapshot now
 includes the authorized rollout's verified hosted metadata, three applied
-migrations, and approved private profile update. The built deployment remains
-pending. No new employer submission is part of this rollout, and the interface
+migrations, and approved private profile update. Backend commit `30e7a19` is
+published in verified Netlify deployment `6abc7f1ecfcaeba896cb4c16`. No new employer submission is part of this rollout, and the interface
 remains unchanged under the founder's no-UI-change instruction.
 The earlier dated observations are preserved in
 [state history](state-history-through-2026-09-30.md); they are not current
@@ -55,8 +55,11 @@ The [review brief](review-brief-2026-09-30.md) records all 20 migrations from
 deployment through `fa27648`; `e6e8b36` adds `fillMs` timing and had not been
 deployed. `7408a7c` adds the brief. Those are the handoff's historical release
 boundaries. The three review migrations are now applied and verified as detailed
-below; publication of the reviewed backend code and verification of that built
-deployment remain pending.
+below. Backend commit `30e7a19` was built and published as Netlify deployment
+`6abc7f1ecfcaeba896cb4c16` on 2026-09-30 at 03:17 UTC. Its authenticated worker
+health endpoint confirms that exact enabled deployment; all 14 checked page
+assets return 200, private access is enforced, and the saved private profile
+and story appear on their authenticated pages.
 
 The earlier no-build asset failure and open single-account sign-in were
 recorded as fixed in `6abc4897`. Their descriptions in the history are incident
@@ -67,14 +70,14 @@ flow described in the playbook.
 
 The founder authorized implementation, then requested no UI changes. Interface
 edits from the review are deferred outside Git. Backend schema readback passes;
-the built deployment is the remaining release step.
+the built deployment and its private pages, assets and worker health are verified.
 
 | Change | Rollout boundary |
 |---|---|
-| Reviewed worker and SQL policy use matching standing-answer eligibility, fact allowlists, and protected-question exclusions. | Migration `20260930070000` is applied and read back; publication of the matching worker code is pending. |
+| Reviewed worker and SQL policy use matching standing-answer eligibility, fact allowlists, and protected-question exclusions. | Migration `20260930070000` is applied and read back; matching worker code is deployed in `30e7a19`. |
 | Publishing career, voice or story changes invalidates older application inputs and pauses auto-apply. | D-121 is applied and read back; the private profile publication verified the input-version increase. |
 | Remembered answers require current candidate inputs and the same frozen job. Explicit GPA/degree questions may cross jobs within that input version. Only original candidate answers establish recall authority. | D-122 migration `20260930090000` is applied and read back. |
-| A verification resend with an unrecognized response remains uncertain; the city lookup admits only approved query text and exact reviewed parameters. | Local delivery changes need deployment and subsequent observation on a named application. |
+| A verification resend with an unrecognized response remains uncertain; the city lookup admits only approved query text and exact reviewed parameters. | Deployed in `30e7a19`; the next named application remains the live delivery check for this release. |
 
 The approved private career entry and responsibility-only story were saved
 through the owning RPCs and verified by readback. Existing career entries and
@@ -99,9 +102,8 @@ pending packet to regenerate.
 
 ## Next checks
 
-1. Commit the checked change set and complete the authorized built deployment;
-   verify the published version and worker health. See the
-   [review and rollout record](codex-review-2026-09-30.md).
+1. Review the completed [rollout record](codex-review-2026-09-30.md). The source,
+   schema, private profile and published deployment are verified.
 2. Inspect newly prepared documents from the updated private profile before the
    next authorized application. Existing confirmed applications remain history;
    no current unsent packet requires regeneration.
