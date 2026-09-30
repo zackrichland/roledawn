@@ -58,7 +58,7 @@ The diagram is a summary; the table below is authoritative.
 
 | Site | Today | Evidence |
 |---|---|---|
-| Greenhouse | Fills and submits | **Verified** live on Carvana (2026-09-28/29): every field, both uploads, nine questions, final submit. Greenhouse then asked for its emailed code. Automatic Gmail code reading is built but **not yet proven live**. |
+| Greenhouse | Fills, submits, and confirms | **Verified** end to end on 2026-09-30: Carvana Specialist, Inventory Quality was submitted, Greenhouse emailed its security code, RoleDawn read it from Gmail 7 seconds later, and Greenhouse confirmed. Multi-select questions (for example GPA ranges) are not supported yet. |
 | Lever | Fills and submits | Fixture tests only; **not yet proven live**. Passive hCaptcha is allowed; a visible challenge stops for you. |
 | Ashby | Prepares documents | You submit on the employer's site. |
 | Workday, iCIMS, SmartRecruiters, others | Not supported | See [Next: any site](#next-any-site-including-workday). |

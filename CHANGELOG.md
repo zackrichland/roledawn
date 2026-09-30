@@ -4,6 +4,11 @@ This file records material repository changes. Product capability is described
 with evidence labels; repository implementation does not imply hosted activation
 or production readiness.
 
+## 2026-09-30 — First confirmed application and remembered answers
+
+- **Verified:** first end-to-end confirmed application (Carvana, Greenhouse): automatic Gmail security code, receipt stored, Home shows Applied.
+- **Applied to hosted:** remembered answers (D-112; migration `20260930000000`).
+
 ## 2026-09-29 — Production review fixes and application playbook
 
 - **Deployed:** a production deploy without `--build` had broken every script and stylesheet; a proper build restored them and removed public build files.

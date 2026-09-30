@@ -11,6 +11,12 @@ scope: deployed Applications workspace, profile matching, account auto-apply, ed
 The presentation-ready system, stack, data-flow, assumptions, and build order
 are in [architecture at a glance](../architecture/architecture-at-a-glance.md).
 
+## First confirmed application — 2026-09-30 00:04 UTC
+
+**Verified end to end:** a pasted Carvana Greenhouse posting (Specialist, Inventory Quality) was imported, written (documents in 5 minutes), filled in a Browserbase browser by the GPT-6.1 Sol form agent, paused once for nine questions, submitted at 00:03:51, answered by Greenhouse with its emailed security code, and completed with the code RoleDawn read from the candidate's Gmail seven seconds later (verification `USED:MAILBOX`). Greenhouse's confirmation page is stored as the receipt; Home shows Applied. A second job (Data Product Engineer) stopped safely before submitting on an unsupported multi-select GPA question.
+
+**Also live:** remembered answers (D-112): repeat questions are answered from the candidate's earlier answers.
+
 ## Production review and fixes — 2026-09-29 (evening)
 
 **Live problems (Verified):** production deploy `6abb4cf0` (05:30 UTC) was published without a build, so every `/_next/static` script and stylesheet returns 404; pages without cached files do not work (the application page shows "Something didn't load"). Production `/login` signs every visitor into the founder's account. Two Carvana applications stay "Confirming" after unmet Greenhouse code challenges and block new sends for those jobs. 0 applications are confirmed.
