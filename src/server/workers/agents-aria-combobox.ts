@@ -253,6 +253,17 @@ export async function inspectRemoteSearchCombobox(frame: Frame, control: Locator
 }
 
 /**
+ * Reads a control already recognized as type-to-search without opening it.
+ * After a choice its menu shows the last results, which must not turn it into
+ * a static list with a different identity.
+ */
+export async function readRemoteSearchCombobox(control: Locator, options?: AriaComboboxOptions): Promise<RemoteSearchComboboxState | null> {
+  if (!options?.allowReactSelectDisplay || !options.remoteSearch) return null;
+  const shape = await remoteSearchShape(control);
+  return shape && !shape.searchText.trim() ? Object.freeze({ selectedLabel: shape.selectedLabel }) : null;
+}
+
+/**
  * Types the approved value, waits for stable results, and clicks the single
  * result `choose` accepts. Anything else clears the typed text and throws
  * AGENTS_FILL_OPTION_AMBIGUOUS so the field stays with the candidate.

@@ -213,6 +213,17 @@ test("type-to-search location selects only a result confirmed by the candidate's
   });
 });
 
+test("a location lookup carrying any parameter beyond its pinned ones is blocked, so nothing leaks and the field is asked", browserOptions, async () => {
+  await withDelivery("greenhouse-location-leak", async (deliverRun, requests) => {
+    const first = await deliverRun({});
+    assert.equal(first.result.kind, "QUESTIONS_REQUIRED", JSON.stringify(first.result));
+    assert.deepEqual(requests.searches, [], "the guard stopped every lookup before it left the browser");
+    assert.equal(first.values["location-display"], "");
+    assert.ok(first.requested.some((item) => item.label === "Location (City)"));
+    assert.equal(requests.submits, 0);
+  });
+});
+
 test("search-only comboboxes stay unsupported unless the delivery policy permits their lookups", browserOptions, async () => {
   const { policy, close } = await startSyntheticAtsDelivery("greenhouse-location");
   const browser = await chromium.launch({ executablePath: chrome, headless: true });

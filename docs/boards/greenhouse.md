@@ -93,7 +93,7 @@ Single page; the form sits under the posting.
 - **Verified 2026-09-30:** two confirmed applications (Carvana: Specialist, Inventory Quality; Strategy Analyst). Codes were read from Gmail 7 s and 6 s after they were requested ([playbook](../execution/application-playbook.md)). n=2, one employer.
 - Gaps:
   - `multi_value_multi_select`: **Verified** live on 2026-09-30 (Carvana Strategy Analyst, GPA ranges). React Select marks options `aria-selected="false"` on Linux (the hosted browser) and omits it on Apple platforms. Test with a Linux user agent and platform (D-113 follow-up). Values come from candidate, remembered or standing answers (D-117).
-  - A required **Location (City)** stops the send: no `searches` rule for its lookup. School/degree typeaheads are unsupported.
+  - **Location (City)** (D-118): filled from the candidate's city fact through Greenhouse's geocoding proxy (`api-geocode-earth-proxy.greenhouse.io/v1/autocomplete`, parameters pinned), confirmed by their region and country. School/degree typeaheads are still unsupported.
   - EU hosts and employer custom domains are not delivery destinations.
   - The code step needs connected Gmail or a typed code within about 8 minutes.
   - `ATS_DELIVERY_CAPABILITIES.GREENHOUSE.liveEmployerAccepted` is still `false` (`src/domain/application-autopilot-eligibility.ts`).
@@ -105,7 +105,7 @@ Do:
 - Drive only the embed URL built from board token and job id.
 - Fill identity fields from approved facts; upload the exact approved file; read every field back.
 - Use the candidate's application email; on 428 `captcha-failed`, wait for the code (Gmail or candidate), type it into the eight boxes and let the page resend the identical application.
-- Fill multi-selects only from candidate, remembered or standing answers and confirm the chips match exactly (D-113, D-117). Stop on a required location typeahead and ask the candidate.
+- Fill multi-selects only from candidate, remembered or standing answers and confirm the chips match exactly (D-113, D-117). Fill the location typeahead only from the city fact, confirmed by region and country (D-118).
 
 Don't:
 - Solve, refresh or "score-shop" reCAPTCHA; never request a new token to retry.

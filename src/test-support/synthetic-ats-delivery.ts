@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import type { DeliverySitePolicy } from "../server/workers/application-delivery-browser.ts";
 
 export type SyntheticDeliveryMode = "normal" | "uncertain" | "double" | "bad-upload" | "prefilled" | "greenhouse" | "traps" | "shortened-ack" | "wrong-ack"
-  | "large-select" | "large-select-ambiguous" | "greenhouse-location" | "greenhouse-verification" | "greenhouse-verification-tamper";
+  | "large-select" | "large-select-ambiguous" | "greenhouse-location" | "greenhouse-location-leak" | "greenhouse-verification" | "greenhouse-verification-tamper";
 
 /** The emailed code the synthetic employer accepts. */
 export const SYNTHETIC_VERIFICATION_CODE = "ABCD1234";
@@ -43,27 +43,30 @@ const selectHtml = (id: string, label: string, options: readonly (readonly [stri
   `<label for="${id}">${label}</label><select id="${id}" name="${id}" required><option value="">Select...</option>${options.map(([value, text]) => `<option value="${value}">${text}</option>`).join("")}</select>`;
 const LOCATION_RESULTS = ["Washington, District of Columbia, United States", "Washington, Pennsylvania, United States", "Washington Heights, New York, United States"];
 // A React Select-style search-only location field, as on hosted Greenhouse boards.
-const LOCATION_FIELD = `<div class="select__container"><label id="candidate-location-label" for="candidate-location">Location (City)</label>
+const locationField = (extraQuery: string) => `<div class="select__container"><label id="candidate-location-label" for="candidate-location">Location (City)</label>
   <div class="select-shell"><div class="select__control"><div class="select__value-container"><div class="select__single-value"></div>
   <input id="candidate-location" role="combobox" aria-autocomplete="list" aria-haspopup="true" aria-expanded="false" aria-required="true" autocomplete="off" value=""></div></div>
   <div id="react-select-candidate-location-listbox" role="listbox" hidden></div></div></div>
   <script>(() => {
-    const input=document.getElementById('candidate-location'),menu=document.getElementById('react-select-candidate-location-listbox'),display=document.querySelector('.select__single-value');let sequence=0;
+    const input=document.getElementById('candidate-location'),menu=document.getElementById('react-select-candidate-location-listbox'),display=document.querySelector('.select__single-value');let sequence=0,last=[];
     function close(){menu.hidden=true;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-controls');}
     function open(){menu.hidden=false;input.setAttribute('aria-expanded','true');input.setAttribute('aria-controls',menu.id);}
     function render(labels){menu.replaceChildren(...labels.map((label,index)=>{const option=document.createElement('div');option.id='react-select-candidate-location-option-'+index;option.setAttribute('role','option');option.textContent=label;
       option.addEventListener('click',()=>{display.textContent=label;input.value='';close();});return option;}));}
-    input.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){event.preventDefault();if(!input.value)render([]);open();}if(event.key==='Escape'){event.preventDefault();close();}});
+    // Like React Select's async menu: empty before any search, the last results after a choice.
+    input.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){event.preventDefault();if(!input.value)render(display.textContent?last:[]);open();}if(event.key==='Escape'){event.preventDefault();close();}});
     input.addEventListener('input',async()=>{const query=input.value,mine=++sequence;if(!query){render([]);return;}open();menu.setAttribute('aria-busy','true');
-      const response=await fetch('/locations?q='+encodeURIComponent(query)).catch(()=>null);const labels=response&&response.ok?await response.json():[];
-      if(mine!==sequence)return;menu.removeAttribute('aria-busy');render(labels);});
+      // Greenhouse's own lookup carries fixed parameters beside the typed text.
+      const response=await fetch('/locations?api_key=ge-0123456789abcdef&layers=locality&lang=en${extraQuery}&q='+encodeURIComponent(query)).catch(()=>null);const labels=response&&response.ok?await response.json():[];
+      if(mine!==sequence)return;menu.removeAttribute('aria-busy');last=labels;render(labels);});
   })();</script>`;
 
 /** Synthetic local HTTP only. No candidate or employer data and no provider calls. */
 export async function startSyntheticAtsDelivery(mode: SyntheticDeliveryMode = "normal") {
   const requests = { submits: 0, uploads: [] as Buffer[], next: 0, back: 0, leaks: 0, searches: [] as string[] };
   const verification = mode === "greenhouse-verification" || mode === "greenhouse-verification-tamper";
-  const greenhouse = mode === "greenhouse" || mode === "greenhouse-location" || verification;
+  const location = mode === "greenhouse-location" || mode === "greenhouse-location-leak";
+  const greenhouse = mode === "greenhouse" || location || verification;
   // Greenhouse-shaped final request: JSON with a CAPTCHA token; a 428
   // "captcha-failed" answer shows eight code boxes, and the page resends the
   // same application with security_code. The tamper mode alters the resend.
@@ -86,7 +89,7 @@ export async function startSyntheticAtsDelivery(mode: SyntheticDeliveryMode = "n
   const extraFields = mode === "traps" ? TRAP_STEP_FIELDS
     : mode === "large-select" ? selectHtml("country", "Country", countries) + selectHtml("state", "State/Province", SYNTHETIC_REGION_OPTIONS) + selectHtml("school", "School", SYNTHETIC_SCHOOL_OPTIONS)
       : mode === "large-select-ambiguous" ? selectHtml("country", "Country", countries)
-        : mode === "greenhouse-location" ? LOCATION_FIELD : "";
+        : location ? locationField(mode === "greenhouse-location-leak" ? "&email=candidate%40example.test" : "") : "";
   const server = createServer(async (request, response) => {
     const data: Buffer[] = [];
     for await (const chunk of request) data.push(Buffer.from(chunk));
@@ -136,7 +139,7 @@ export async function startSyntheticAtsDelivery(mode: SyntheticDeliveryMode = "n
   const origin = `http://127.0.0.1:${address.port}`;
   const policy: DeliverySitePolicy = { release: "synthetic-delivery/1", startUrl: `${origin}/step1`,
     ...(greenhouse ? { greenhouse: { presignOrigin: origin, uploadOrigins: [origin] } } : {}),
-    ...(mode === "greenhouse-location" ? { searches: [{ origin, path: "/locations", query: "q" }] } : {}),
+    ...(location ? { searches: [{ origin, path: "/locations", query: "q", params: { api_key: "ge-[0-9a-f]{16}", layers: "locality", lang: "[a-z]{2}" } }] } : {}),
     steps: [{ id: "first", url: `${origin}/step1`, readySelector: "#first", uploads: [{ fieldId: "resume", selector: "#resume", ...(greenhouse ? {} : { request: { method: "POST" as const, url: `${origin}/upload` } }), acknowledgementSelector: ".file-upload:has(#upload-label-resume) .file-upload__filename" }], forward: { selector: "#next", request: { method: "POST", url: `${origin}/next` }, nextStepId: "second" } },
       { id: "second", url: `${origin}/step2`, readySelector: "#second", back: { selector: "#back", request: { method: "POST", url: `${origin}/back` }, nextStepId: "first" }, submit: { selector: "#submit", request: { method: "POST", url: `${origin}/submit` } } }],
     receipt: { url: `${origin}/receipt`, selector: "#receipt", textPattern: "Application received", receiptIdAttribute: "data-receipt-id" } };

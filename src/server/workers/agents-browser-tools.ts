@@ -5,7 +5,7 @@ import type { Frame, Page } from "playwright-core";
 import { AGENT_QUESTION_LIMITS, validateAgentQuestionDescriptors, type AgentQuestionDescriptor } from "../../domain/application-agent-questions.ts";
 import type { MaterializedApplicationArtifact } from "./application-fill-materializer.ts";
 import {
-  inspectAriaCombobox, inspectRemoteSearchCombobox, searchRemoteComboboxOption, selectAriaComboboxOption, selectAriaComboboxOptions,
+  inspectAriaCombobox, inspectRemoteSearchCombobox, readRemoteSearchCombobox, searchRemoteComboboxOption, selectAriaComboboxOption, selectAriaComboboxOptions,
   type AriaComboboxState, type RemoteSearchComboboxState,
 } from "./agents-aria-combobox.ts";
 import { chooseSearchResult, MAX_SEARCHABLE_OPTIONS, MODEL_OPTION_SAMPLE, resolveOptionValue, type OptionMatch } from "./agents-option-match.ts";
@@ -214,6 +214,9 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   // selection, search text or form change re-reads it, and a selection always
   // re-reads the live menu before clicking (a changed list is drift).
   const menuReads = new Map<string, Readonly<{ structure: string; reads: Map<string, MenuRead> }>>();
+  // Controls first seen as type-to-search (an empty menu for empty text) stay
+  // that kind: after a choice their menu shows the last results instead.
+  const remoteControls = new Set<string>();
   let latest = new Map<string, LocatedField>();
   const writes = new Map<string, Readonly<{ value?: AgentFieldValue; artifact?: MaterializedApplicationArtifact; phone?: boolean }>>();
   const readsBack = (actual: AgentFieldValue, expected: AgentFieldValue, phone: boolean) => hash(actual) === hash(expected) ||
@@ -267,8 +270,14 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
           const readKey = options?.allowReactSelectDisplay && control.menuState !== null ? `${control.index}:${control.id}:${control.menuState}` : null;
           let read = readKey ? reads.get(readKey) : undefined;
           if (!read) {
-            const aria = await inspectAriaCombobox(frame, frame.locator(CONTROL_SELECTOR).nth(control.index), signal, options);
-            read = { aria, remote: aria ? null : await inspectRemoteSearchCombobox(frame, frame.locator(CONTROL_SELECTOR).nth(control.index), signal, options) };
+            const locator = frame.locator(CONTROL_SELECTOR).nth(control.index);
+            const remoteKey = control.id ? `${frameIndex}:${control.id}` : null;
+            if (remoteKey && remoteControls.has(remoteKey)) read = { aria: null, remote: await readRemoteSearchCombobox(locator, options) };
+            else {
+              const aria = await inspectAriaCombobox(frame, locator, signal, options);
+              read = { aria, remote: aria ? null : await inspectRemoteSearchCombobox(frame, locator, signal, options) };
+              if (read.remote && remoteKey) remoteControls.add(remoteKey);
+            }
             if (readKey) reads.set(readKey, read);
           }
           const state = read.aria;

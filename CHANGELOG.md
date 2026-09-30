@@ -4,6 +4,11 @@ This file records material repository changes. Product capability is described
 with evidence labels; repository implementation does not imply hosted activation
 or production readiness.
 
+## 2026-09-30 — Greenhouse location field
+
+- **Implemented:** Greenhouse's required "Location (City)" typeahead is filled from the candidate's city fact through Greenhouse's own geocoding proxy, with its parameters pinned; a lookup carrying anything else is blocked (D-118). Four of five Greenhouse forms checked require this field.
+- **Implemented:** every send's worker event records phase timings (open, first read, model, submit); `ops:status --app` prints them.
+
 ## 2026-09-30 — Cleanup and agent guide
 
 - **Removed:** unused code no production entry point, script or route reached (`CandidateQueue`, `AutoApplyPanel`, `Icon`, `server/dashboard/automation.ts`, `ingestion/index.ts`, `browserbase-runtime.server.ts`, the application packet domain and its tests), and the kit worker's checks for v1 drafting errors it can no longer receive.

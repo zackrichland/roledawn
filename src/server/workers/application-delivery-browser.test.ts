@@ -193,6 +193,9 @@ test("a Next rule cannot permit the final submission endpoint; Greenhouse routes
   assert.equal(greenhouse.receipt.url, "https://job-boards.greenhouse.io/embed/job_app/confirmation?for=example&token=1234");
   // The presign response names the bucket nearest the browser; only Greenhouse's own are accepted.
   assert.deepEqual(greenhouse.greenhouse?.uploadOrigins, ["https://grnhse-prod-jben-us-east-1.s3.amazonaws.com", "https://grnhse-prod-jben-us-west-2.s3.us-west-2.amazonaws.com"]);
+  // "Location (City)" looks up cities through Greenhouse's own geocoding proxy, with its fixed parameters pinned.
+  assert.deepEqual(greenhouse.searches, [{ origin: "https://api-geocode-earth-proxy.greenhouse.io", path: "/v1/autocomplete", query: "text",
+    params: { api_key: "ge-[0-9a-f]{16}", layers: "locality", lang: "[a-z]{2}(?:-[A-Za-z]{2})?" } }]);
   assert.throws(() => resolveGreenhouseDeliveryPolicy("https://evil.example/example/jobs/1234"), /SITE_UNSUPPORTED/u);
   await assert.rejects(createApplicationDeliveryBrowser({ page: {} as Page, hooks: { async begin() { throw new Error("UNREACHABLE"); } }, policy: {
     ...greenhouse, steps: [{ ...greenhouse.steps[0], forward: { selector: "#next", request: greenhouse.steps[0].submit!.request, nextStepId: "application" } }],

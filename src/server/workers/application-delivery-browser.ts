@@ -27,7 +27,21 @@ export type DeliveryStepPolicy = Readonly<{
   submit?: Readonly<{ selector: string; request: DeliveryRequestRule }>;
 }>;
 /** A page's own type-to-search lookup (for example a location autocomplete): GET, exact origin/path, one query key. */
-export type DeliverySearchRule = Readonly<{ origin: string; path: string; query: string }>;
+/**
+ * One permitted type-to-search lookup. `query` carries the approved typed text;
+ * `params` are the page's own fixed parameters, each a pattern its value must
+ * match in full. Any other parameter blocks the request.
+ */
+export type DeliverySearchRule = Readonly<{ origin: string; path: string; query: string; params?: Readonly<Record<string, string>> }>;
+
+function searchPermitted(url: URL, rule: DeliverySearchRule): boolean {
+  const params = rule.params ?? {};
+  if (url.origin !== rule.origin || url.pathname !== rule.path) return false;
+  if ([...url.searchParams.keys()].some((key) => key !== rule.query && !Object.hasOwn(params, key))) return false;
+  if (url.searchParams.getAll(rule.query).length !== 1 || (url.searchParams.get(rule.query) ?? "").length > 200) return false;
+  return Object.entries(params).every(([name, pattern]) =>
+    url.searchParams.getAll(name).length === 1 && new RegExp(`^(?:${pattern})$`, "u").test(url.searchParams.get(name) ?? ""));
+}
 export type DeliverySitePolicy = Readonly<{
   release: string; startUrl: string;
   /**
@@ -226,6 +240,10 @@ function validatePolicy(policy: DeliverySitePolicy): void {
     if (url.origin !== rule.origin || url.pathname !== rule.path || !/^[A-Za-z][A-Za-z0-9_-]{0,39}$/u.test(rule.query) ||
       !(url.protocol === "https:" || url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname)) ||
       sideEffects.has(canonical(url.href).split("?")[0])) throw new Error("DELIVERY_POLICY_SEARCH_INVALID");
+    for (const [name, pattern] of Object.entries(rule.params ?? {})) {
+      if (name === rule.query || !/^[A-Za-z][A-Za-z0-9_-]{0,39}$/u.test(name) || typeof pattern !== "string" || !pattern || pattern.length > 120) throw new Error("DELIVERY_POLICY_SEARCH_INVALID");
+      new RegExp(`^(?:${pattern})$`, "u");
+    }
   }
   new RegExp(policy.receipt.textPattern, "iu");
 }
@@ -371,9 +389,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         /^\/locales\/[A-Za-z-]{2,20}\/(?:job_post|common|confirmation)\.[A-Za-z0-9_-]{20,100}\.json$/u.test(url.pathname);
       const bootstrap = loading && request.method() === "GET" && canonical(request.url()) === canonical(policy.startUrl) ||
         isPresign(request) || policy.bootstrapRequests?.some((rule) => requestMatches(request, rule));
-      const search = request.method() === "GET" && ["fetch", "xhr"].includes(request.resourceType()) && Boolean(policy.searches?.some((rule) =>
-        url.origin === rule.origin && url.pathname === rule.path && [...url.searchParams.keys()].every((key) => key === rule.query) &&
-        url.searchParams.getAll(rule.query).length === 1 && (url.searchParams.get(rule.query) ?? "").length <= 200));
+      const search = request.method() === "GET" && ["fetch", "xhr"].includes(request.resourceType()) && Boolean(policy.searches?.some((rule) => searchPermitted(url, rule)));
       const receiptNavigation = current?.kind === "SUBMIT" && current.admitted && request.method() === "GET" && canonical(request.url()) === canonical(policy.receipt.url);
       const moveNavigation = current?.kind === "MOVE" && current.admitted && request.method() === "GET" && policy.steps.some((step) => canonical(step.url) === canonical(request.url()));
       if (asset || translation || bootstrap || search || recaptcha || hcaptcha || receiptNavigation || moveNavigation) { await dispatch(route); return; }
@@ -666,9 +682,10 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
  * for every public posting, including boards whose hosted page redirects to a
  * custom careers site (Carvana, Airbnb, Databricks), so delivery never passes
  * through an employer's own site or its bot protection. Other hosts fail closed.
- * No `searches` rule is declared: the "Location (City)" autocomplete lookup
- * endpoint has not been verified, so that control stays unsupported (candidate
- * takeover) until its exact GET origin/path/query is added here.
+ * "Location (City)" is a type-to-search field backed by Greenhouse's own
+ * geocoding proxy (observed 2026-09-30): city results only, the typed text is
+ * the candidate's approved city, and a result is chosen only when their region
+ * and country confirm it.
  */
 export function resolveGreenhouseDeliveryPolicy(destinationUrl: string): DeliverySitePolicy {
   const destination = parseGreenhouseAutopilotDestination(destinationUrl);
@@ -689,6 +706,8 @@ export function resolveGreenhouseDeliveryPolicy(destinationUrl: string): Deliver
     // Greenhouse presigns an upload to the bucket nearest the browser: us-east-1
     // (legacy endpoint) or us-west-2 (regional endpoint), both observed 2026-09-28.
     greenhouse: { presignOrigin: "https://boards.greenhouse.io", uploadOrigins: ["https://grnhse-prod-jben-us-east-1.s3.amazonaws.com", "https://grnhse-prod-jben-us-west-2.s3.us-west-2.amazonaws.com"] },
+    searches: [{ origin: "https://api-geocode-earth-proxy.greenhouse.io", path: "/v1/autocomplete", query: "text",
+      params: { api_key: "ge-[0-9a-f]{16}", layers: "locality", lang: "[a-z]{2}(?:-[A-Za-z]{2})?" } }],
     steps: [{ id: "application", url: startUrl, readySelector: "#application-form",
       uploads: ["resume", "cover_letter"].map((fieldId) => ({ fieldId, selector: `input[type="file"][id="${fieldId}"]`, acknowledgementSelector: `.file-upload:has(#upload-label-${fieldId}) .file-upload__filename` })),
       submit: { selector: '#application-form button[type="submit"]', request: { method: "POST" as const, url: submitUrl } },
