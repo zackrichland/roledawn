@@ -361,3 +361,7 @@ Recheck product features, prices, model names, policies, domains, and APIs befor
 ### LV-20260930-02: parser edit tracking
 
 - **Primary observation**, accessed 2026-09-30: [Lever public parser client](https://jobs.lever.co/js/parseResume.js) protects nonempty inputs after native change/paste events; an input event alone does not mark the last focused field as edited. Replayed with synthetic fields and mocked parsing, without employer upload or submission.
+
+### ATS-20260930-05: idle frames and filename presentation
+
+- **Primary observations**, accessed 2026-09-30: [Ashby public board](https://jobs.ashbyhq.com/Ashby) mounts a hidden reCAPTCHA Enterprise challenge document with the observed key; a hosted Linux before/after inspection isolates the false stop. [Lever public form client](https://jobs.lever.co/js/application.js) and its native form CSS render upload filenames in uppercase without changing the DOM text. A synthetic PDF upload to the parser established successful parsing, with no final application submission or real candidate data.

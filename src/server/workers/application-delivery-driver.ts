@@ -148,7 +148,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           const step = await runtime.currentStep();
           if (!step || visited.has(step.id)) return { ...counts(), kind: "TAKEOVER", reasonCode: "DELIVERY_STEP_UNSUPPORTED_OR_LOOP" };
           visited.add(step.id);
-          const browser = createAgentBrowserTools(page, step.url, { isPermittedPassiveFrameUrl: runtime.isPassiveFrameUrl, allowReactSelectDisplay: Boolean(policy.greenhouse), leverLabels: Boolean(policy.lever), ashbyLabels: Boolean(policy.ashby),
+          const browser = createAgentBrowserTools(page, step.url, { isPermittedPassiveFrameUrl: runtime.isPassiveFrameUrl, isReviewedChallengeFrameUrl: runtime.isReviewedChallengeFrameUrl, allowReactSelectDisplay: Boolean(policy.greenhouse), leverLabels: Boolean(policy.lever), ashbyLabels: Boolean(policy.ashby),
             remoteSearch: Boolean(policy.searches?.length || policy.ashby), remoteSearchSemantic: "CITY", withRemoteSearch: runtime.withSearch, invisibleHcaptcha: Boolean(policy.lever?.invisibleHcaptcha) });
           let snapshot = await browser.inspect(input.signal);
           if (snapshot.takeoverReason) return { ...counts(), kind: "TAKEOVER", reasonCode: snapshot.takeoverReason };

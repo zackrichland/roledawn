@@ -314,6 +314,16 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     return url.origin === "https://www.recaptcha.net" && ["/recaptcha/enterprise/anchor", ...(ashby ? ["/recaptcha/api2/anchor"] : [])].includes(url.pathname) &&
       url.searchParams.get("size") === "invisible" && recaptchaKeys.has(url.searchParams.get("k") ?? "");
   }
+  function isReviewedChallengeFrameUrl(value: string): boolean {
+    if (!policy.greenhouse && !ashby) return false;
+    let url: URL;
+    try { url = new URL(value); } catch { return false; }
+    // The SDK mounts its idle challenge document before any challenge exists.
+    // This is URL identity only: the observer must separately reject visibility.
+    return url.origin === "https://www.recaptcha.net"
+      && ["/recaptcha/enterprise/bframe", ...(ashby ? ["/recaptcha/api2/bframe"] : [])].includes(url.pathname)
+      && recaptchaKeys.has(url.searchParams.get("k") ?? "");
+  }
   function passiveFrameUrls(): string[] {
     return page.frames().map((frame) => frame.url()).filter(isPassiveFrameUrl);
   }
@@ -515,6 +525,12 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   await context.routeWebSocket("**/*", (socket) => socket.close());
 
   async function drain() { await Promise.all([...pending]); }
+  async function uploadAcknowledgementText(selector: string): Promise<string> {
+    const target = page.locator(selector);
+    // Lever styles this filename with text-transform. Its DOM text preserves
+    // the actual filename; innerText changes its case for presentation only.
+    return (policy.lever ? await target.textContent() ?? "" : await target.innerText()).trim();
+  }
   async function waitFor(check: () => Promise<boolean>, signal?: AbortSignal): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     do {
@@ -583,7 +599,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       activeSearch = { query, signal };
       try { return await work(); } finally { activeSearch = null; }
     },
-    passiveFrameUrls, isPassiveFrameUrl,
+    passiveFrameUrls, isPassiveFrameUrl, isReviewedChallengeFrameUrl,
     async open(signal?: AbortSignal) {
       assertActive(signal);
       if (page.url() !== "about:blank" && canonical(page.url()) !== canonical(policy.startUrl) && !await currentStep()) throw new Error("DELIVERY_RESTORE_DESTINATION_INVALID");
@@ -637,11 +653,11 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
           if (current.error || current.response && (current.response.status < 200 || current.response.status >= 300)) return true;
           const ack = page.locator(rule.acknowledgementSelector);
           const success = !rule.successSelector || await page.locator(rule.successSelector).count() === 1 && await page.locator(rule.successSelector).isVisible();
-          return Boolean(current.response && (!ashby || ashby.upload()?.acknowledged) && success && await ack.count() === 1 && await ack.isVisible() && displaysUploadFilename(await ack.innerText(), artifact.filename));
+          return Boolean(current.response && (!ashby || ashby.upload()?.acknowledged) && success && await ack.count() === 1 && await ack.isVisible() && displaysUploadFilename(await uploadAcknowledgementText(rule.acknowledgementSelector), artifact.filename));
         }, signal);
         if (!acknowledged || current.error || ashby && !ashby.upload()?.acknowledged || !current.response || current.response.status < 200 || current.response.status >= 300) throw new Error(current.error || "DELIVERY_UPLOAD_NOT_ACKNOWLEDGED");
         // The review records the exact name the employer received with the bytes.
-        const proof = { artifactVersionId: artifact.artifactVersionId, filename: artifact.filename, sha256: artifact.sha256, byteSize: artifact.byteSize, acknowledgementHash: hash((await page.locator(rule.acknowledgementSelector).innerText()).trim()), response: current.response };
+        const proof = { artifactVersionId: artifact.artifactVersionId, filename: artifact.filename, sha256: artifact.sha256, byteSize: artifact.byteSize, acknowledgementHash: hash(await uploadAcknowledgementText(rule.acknowledgementSelector)), response: current.response };
         uploadProofs.set(field.fieldId, proof);
         uploadedArtifacts.set(field.fieldId, artifact);
         uploadChecks.set(field.fieldId, { stepId: step!.id, selector: rule.acknowledgementSelector, filename: artifact.filename });
@@ -760,7 +776,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         if (check.stepId !== step?.id) continue;
         const acknowledgement = page.locator(check.selector);
         if (await acknowledgement.count() !== 1 || !await acknowledgement.isVisible()) throw new Error("DELIVERY_UPLOAD_ACKNOWLEDGEMENT_DRIFT");
-        const text = (await acknowledgement.innerText()).trim();
+        const text = await uploadAcknowledgementText(check.selector);
         if (!displaysUploadFilename(text, check.filename) || hash(text) !== uploadProofs.get(fieldId)?.acknowledgementHash) throw new Error("DELIVERY_UPLOAD_ACKNOWLEDGEMENT_DRIFT");
       }
     },

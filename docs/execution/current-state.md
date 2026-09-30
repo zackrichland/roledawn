@@ -13,9 +13,9 @@ three employer-confirmed applications across two employers, verified by hosted
 readback on 2026-09-30 UTC. Lever and Ashby have delivery adapters; live employer
 acceptance remains unproven for both. Keep the product scoped to personal use.
 
-**Published release:** `c17fda7` (includes Claude main `0364902`), Netlify deployment
-`6abd66cc945a219a569f32ff`. Authenticated worker health verified that exact release
-at 19:46:32 UTC; the private gate returns 404 without access, all 14 checked page
+**Published release:** `8914db5` (includes Claude main `0364902`), Netlify deployment
+`6abd6e09a26825e9a0a454c5`. Authenticated worker health verified that exact release
+at 20:17:45 UTC; the private gate returns 404 without access, all 14 checked page
 assets return 200 and the approved private profile/story content remains
 visible. The sole new Ashby submission occurred on `b103640`. Final readback
 still shows one attempt, zero confirmed attempts/receipts, and
@@ -153,3 +153,7 @@ D-136 adds explicit saved acknowledgement delegation with worker/database rule p
 **Published repair:** `c17fda7`, full-build production deploy `6abd66cc945a219a569f32ff`; GitHub CI passed. The local dashboard reads Sent today 3/24. Three failed sends with zero attempts were resumed through their owning control RPC. Ashby reached a second startup mismatch: the public form uses a reviewed composite definition ID (D-137). Greenhouse reached missing factual questions; Lever remained queued behind the one active delivery lane. These are live progress observations, not employer receipts.
 
 **Follow-up adapter repair:** D-137 composite definition support passed a fresh public posting read and all 884 unit tests; full-build deploy `6abd6af831bdb2c8beb0fb5f` passed worker health, private gate, profile/story and all 14 page assets. A resumed zero-attempt Ashby run then stopped on the mixed-location empty mount request; D-138 binds that observed widget contract. Lever stopped on exact field readback after parsing; its public client only protects changed/pasted fields, so the last focused edit needs native blur. The real-client mocked-parser replay and regression test pass without employer submission.
+
+**Verified D-138 rollout:** all 886 tests pass; typecheck, lint, docs links and full production build pass. Deploy `6abd6e09a26825e9a0a454c5` serves the enabled workers, private gate, approved career/story and all 14 checked page assets. Real public Lever client replay with mocked parsing reproduced loss of the last focused approved field before the change and preserved it afterwards; no employer upload or submission occurred in either probe.
+
+**Further live diagnosis:** the next zero-attempt Ashby send stopped on an idle hidden reCAPTCHA Enterprise challenge document; the hosted Linux before/after probe reproduces the old stop and corrected inspection with exact key/origin/path checks (D-139). The next Lever send stopped on upload acknowledgement, while a synthetic PDF parser probe shows successful markers and filename DOM text differing from uppercase innerText. D-139 corrects that comparison without changing filename identity or submission proof. No additional confirmed application is claimed.

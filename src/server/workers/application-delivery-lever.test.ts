@@ -80,6 +80,21 @@ test("Lever completes the native field change before upload so its parser preser
   assert.equal(state.begins, 1);
 });
 
+test("Lever verifies the exact uploaded filename through presentation case changes", options, async () => {
+  const { result, observed, state } = await run("filename-uppercase");
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+});
+
+test("Lever still rejects a changed filename in the underlying acknowledgement before submit authority", options, async () => {
+  const { result, observed, state } = await run("filename-changed");
+  assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
+  assert.equal(observed.uploads.length, 1);
+  assert.equal(observed.submits, 0);
+  assert.equal(state.begins, 0);
+});
+
 test("Lever CAPTCHA and changed employer form contract fail before uploads or submission", options, async () => {
   // "captcha" renders a visible checkbox widget; "foreign-captcha" is another provider.
   for (const mode of ["captcha", "foreign-captcha", "form-drift"] as const) {

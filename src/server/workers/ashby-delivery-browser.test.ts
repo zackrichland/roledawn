@@ -287,3 +287,37 @@ test("a late invisible anchor is checked against live adapter authority even bef
   assert.equal(data.requests.submits, 0);
  });
 });
+
+test("a reviewed idle reCAPTCHA challenge frame is allowed only while hidden and bound to an observed key", options, async () => {
+ await fixture("normal", async data => {
+  const key = "6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y";
+  const challenge = "https://www.recaptcha.net/recaptcha/enterprise/bframe?k=" + key;
+  const observer = createAgentBrowserTools(data.page, data.runtime.policy.startUrl, {
+   ashbyLabels: true, isPermittedPassiveFrameUrl: data.runtime.isPassiveFrameUrl,
+   isReviewedChallengeFrameUrl: data.runtime.isReviewedChallengeFrameUrl,
+  });
+  assert.equal(data.runtime.isReviewedChallengeFrameUrl(challenge), false);
+  await data.page.evaluate(key => fetch("https://www.recaptcha.net/recaptcha/api.js?render=" + key), key);
+  assert.equal(data.runtime.isReviewedChallengeFrameUrl(challenge), true);
+  assert.equal(data.runtime.isPassiveFrameUrl(challenge), false, "a challenge document is never a passive badge");
+  await data.page.evaluate(src => {
+   const iframe = document.createElement("iframe"); iframe.style.cssText = "visibility:hidden;width:400px;height:580px";
+   iframe.src = src; document.body.append(iframe);
+  }, challenge);
+  assert.equal((await observer.inspect()).takeoverReason, null);
+  for (const src of [challenge.replace(key, "unreviewed-key"), challenge.replace("www.recaptcha.net", "unreviewed.example"), challenge.replace("/bframe?", "/other?")]) {
+   await data.page.locator("iframe").evaluate((element, src) => { (element as HTMLIFrameElement).src = src; }, src);
+   assert.ok((await observer.inspect()).takeoverReason, "an unreviewed hidden frame supplies no trust");
+  }
+  await data.page.locator("iframe").evaluate((element, src) => {
+   (element as HTMLIFrameElement).src = src; (element as HTMLElement).style.cssText = "visibility:visible;width:400px;height:580px";
+  }, challenge);
+  assert.equal((await observer.verifyWrites()).takeoverReason, "APPLICATION_FILL_CAPTCHA_TAKEOVER");
+  const result = await data.runtime.submit("e".repeat(64), {}, undefined, async () => {
+   if ((await observer.verifyWrites()).takeoverReason) throw new Error("DELIVERY_FINAL_REVIEW_DRIFT");
+  });
+  assert.equal(result.kind, "TAKEOVER");
+  assert.equal(data.begins(), 0);
+  assert.equal(data.requests.submits, 0);
+ });
+});
