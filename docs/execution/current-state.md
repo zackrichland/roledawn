@@ -2,7 +2,7 @@
 title: RoleDawn current state
 status: canonical project snapshot
 owner: founder, product, and engineering
-last_updated: 2026-09-29
+last_updated: 2026-09-30
 scope: deployed Applications workspace, profile matching, account auto-apply, editable writing policies, controlled acceptance and delivery limitations
 ---
 
@@ -10,6 +10,18 @@ scope: deployed Applications workspace, profile matching, account auto-apply, ed
 
 The presentation-ready system, stack, data-flow, assumptions, and build order
 are in [architecture at a glance](../architecture/architecture-at-a-glance.md).
+
+## Second confirmed application and standing answers — 2026-09-30 01:26 UTC
+
+**Verified end to end:** Carvana Strategy Analyst, whose form requires a GPA multi-select, was submitted at 01:26:15 and confirmed at 01:26:26. The emailed code was read from Gmail 6 seconds after Greenhouse asked for it. The final pass took 262 s from claim to receipt. Two earlier passes stopped on the GPA field. The cause was platform-specific: React Select marks options `aria-selected` on Linux (the hosted browser) but not on a Mac, and the reader refused that. Fixed and covered by a Linux-platform test (D-113 follow-up).
+
+**Deployed:**
+- Standing answers (D-117): questions new to the candidate are matched to their saved answers and filled in the same pass. The founder's ten standing answers are saved.
+- Worker events and `npm run ops:status` timelines (D-116).
+- One-pass remembered answers (D-115).
+- Automatic retries of transient stops (D-114).
+
+**Board templates:** eleven ATS templates for the form agent are in [docs/boards/](../boards/README.md) (Workday, iCIMS, Oracle, SuccessFactors and others; only Greenhouse is supported today).
 
 ## First confirmed application — 2026-09-30 00:04 UTC
 

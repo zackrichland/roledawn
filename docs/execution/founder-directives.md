@@ -25,21 +25,24 @@ These are the founder's standing instructions, recorded as he gave them. When on
 
 ## Standing answers (saved in the database for the founder)
 
-Saved as verified profile facts on 2026-09-30. A future onboarding flow must collect the same answers from every user.
+Saved on 2026-09-30. This repository is public, so exact personal details (employers, for example) live only in the database. Profile facts are matched by exact label rules; standing answers (`candidate_standing_answers`, D-117) are matched to any wording by the worker and filled without asking. A future onboarding flow must collect the same answers from every user.
 
 | Question | Answer | Where it lives |
 |---|---|---|
-| Authorized to work in the US | Yes | `work_authorization.us.authorized` |
-| Needs visa sponsorship now or later | No | `work_authorization.us.sponsorship_required` |
-| Highest degree | Bachelor's degree (B.S. Business Management, Virginia Tech, 2017) | `education.highest_degree` |
-| How did you hear about this job | The company's careers website | `application.heard_about` |
-| Undergraduate GPA | 3.5 (range answers: "3.4 - 3.59") | Remembered answer once asked; no profile fact yet |
-| On-site or commute questions | Yes | Remembered answers (D-112) |
-| Ever worked for this employer / referred by an employee | No / No | Remembered answers |
-| Phone country | United States +1 | Remembered answers |
-| LinkedIn, compensation | Blank when optional; compensation "Open to discussion" when required | Remembered answers |
-| Portfolio or website | None ("N/A" / No) | Remembered answers |
-| Preferred AI tool | ChatGPT | Remembered answers |
+| Authorized to work in the US | Yes | Fact `work_authorization.us.authorized` |
+| Needs visa sponsorship now or later | No | Fact `work_authorization.us.sponsorship_required` |
+| Highest degree | Bachelor's degree (B.S. Business Management, Virginia Tech, 2017) | Fact `education.highest_degree` |
+| How did you hear about this job | The company's careers website | Fact `application.heard_about` |
+| Undergraduate GPA | 3.5; GPA ranges take the one containing 3.5 ("3.4 - 3.59"); no graduate degree | Standing answer |
+| Able to work on-site or commute | Yes, including five days a week | Standing answer |
+| Ever worked for the company applied to | No, except the employers in his profile's work history (listed in the saved answer) | Standing answer |
+| Referred by a current employee | No | Standing answer |
+| Currently employed | Yes (per his profile; never at the company applied to) | Standing answer |
+| Phone country code | United States (+1) | Standing answer |
+| Compensation, when a form requires it | Open to discussion (left blank when optional) | Standing answer |
+| Portfolio or personal website | None | Standing answer |
+| Preferred AI tool | ChatGPT | Standing answer |
+| At least 18 years old | Yes | Standing answer |
 
 ## Engineering
 

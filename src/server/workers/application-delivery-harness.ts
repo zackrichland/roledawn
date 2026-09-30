@@ -55,6 +55,7 @@ export function createApplicationDeliveryHarness(input: Readonly<{
           timeoutMs: input.configuration.timeoutMs,
           maxActions: Math.min(task.maxActions, input.configuration.maxActions),
           pollIntervalMs: 750,
+          ...(task.shouldStop ? { shouldStop: task.shouldStop } : {}),
           signal: input.signal && task.signal ? AbortSignal.any([input.signal, task.signal]) : input.signal ?? task.signal,
         });
         if (result.status !== "completed") throw new Error("DELIVERY_AGENT_TURN_INCOMPLETE");

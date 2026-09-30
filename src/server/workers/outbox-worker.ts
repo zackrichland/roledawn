@@ -1,3 +1,4 @@
+import { errorDetail, recordWorkerEvent } from "./worker-events.ts";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 
@@ -67,6 +68,12 @@ export async function runPreparationWorkerOnce(environment: NodeJS.ProcessEnv = 
     } catch (error) {
       const code = error instanceof Error ? error.message.slice(0, 120) : "WORKER_UNEXPECTED_FAILURE";
       const disposition = decideOutboxFailureDisposition(message.attempt_count, code);
+      // The outbox clears its last error on the next success; keep the cause (D-116).
+      const applicationId = typeof (message.payload as { applicationId?: unknown } | null)?.applicationId === "string"
+        ? (message.payload as { applicationId: string }).applicationId : null;
+      await recordWorkerEvent(supabase as never, { lane: "preparation", stage: `outbox:${String(message.topic ?? "unknown")}`.slice(0, 80), outcome: "FAILED",
+        code: disposition.errorCode, detail: { ...errorDetail(error), attempt: String(message.attempt_count), action: disposition.action },
+        applicationId: applicationId && /^[0-9a-f-]{36}$/iu.test(applicationId) ? applicationId : null });
       const { data: released, error: releaseError } = disposition.action === "DEAD_LETTER"
         ? await supabase.rpc("dead_letter_outbox_message", {
             p_worker_id: workerId,

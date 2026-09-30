@@ -366,6 +366,8 @@ export async function runOpenAIAgentsFunctions(options: Readonly<{
   pollIntervalMs?: number;
   maxPolls?: number;
   signal?: AbortSignal;
+  /** Checked after each delivered batch of tool results; true ends the run without a closing turn. */
+  shouldStop?: () => boolean;
 }>): Promise<OpenAIAgentsRunResult> {
   const timeoutMs = boundedInteger(options.timeoutMs, 1, 900_000);
   const maxActions = boundedInteger(options.maxActions, 1, 200);
@@ -497,6 +499,13 @@ export async function runOpenAIAgentsFunctions(options: Readonly<{
           results.push(result);
         }
         checkSignal(signal);
+        // The caller's work is done (for example, the step review passed):
+        // end here instead of paying for the model's closing turn.
+        if (options.shouldStop?.() && turnId) {
+          const cleanup = AbortSignal.timeout(2000);
+          await abortable(options.client.cancelTurn(sessionId, cleanup), cleanup).catch(() => undefined);
+          return { sessionId, turnId, status: "completed", actionCount };
+        }
         try { await bounded(options.client.sendToolResults(sessionId, results, signal)); }
         catch (error) {
           // A lost acknowledgement can be reconciled by pending actions; saved results are reused.

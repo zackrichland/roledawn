@@ -111,8 +111,12 @@ type RawOption = Readonly<{ optionId: string; value: string; label: string; sele
  * identified by its label: the stable option list is the menu plus the chips.
  */
 function multiState(raw: readonly RawOption[] | null, listboxId: string, optionPrefix: string, chips: readonly string[]): AriaComboboxState | null {
+  // React Select sets aria-selected on options everywhere except Apple
+  // platforms, so a hosted Linux browser sees "false" where a Mac sees nothing.
+  // A "true" option must already be a chip.
   if (!raw || raw.length > MAX_SEARCHABLE_OPTIONS || chips.some((label) => !label || label.length > 1_000) || new Set(chips).size !== chips.length ||
-    raw.some((option) => !SAFE_DOM_ID.test(option.optionId) || !option.optionId.startsWith(optionPrefix) || option.selected !== null ||
+    raw.some((option) => !SAFE_DOM_ID.test(option.optionId) || !option.optionId.startsWith(optionPrefix) ||
+      !(option.selected === null || option.selected === "false" || option.selected === "true" && chips.includes(option.label)) ||
       !option.label || option.label.length > 1_000 || option.dangerous)) return null;
   const rendered = raw.filter((option) => !option.disabled && option.visible).map((option) => option.label);
   if (new Set(rendered).size !== rendered.length) return null;

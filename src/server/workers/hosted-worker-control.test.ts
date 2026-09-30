@@ -37,8 +37,11 @@ test("execution failures record a redacted durable outcome under the same lease"
   const result = await coordinateHostedWorker({ lane: "kit", database: { async rpc(name, args) { requests.push({ name, args }); return { data: requests.length === 1 ? token : true, error: null }; } },
     async execute() { throw new Error("provider error with private candidate text and credentials"); } });
   assert.equal(result.success, false);
-  assert.equal(requests[1]!.args.p_lease_token, token);
-  assert.equal(requests[1]!.args.p_error_code, "HOSTED_WORKER_EXECUTION_FAILED");
+  const finish = requests.find((request) => request.name === "finish_hosted_worker_lane")!;
+  assert.equal(finish.args.p_lease_token, token);
+  assert.equal(finish.args.p_error_code, "HOSTED_WORKER_EXECUTION_FAILED");
+  // The failure is also recorded as an event, still without the raw message (D-116).
+  assert.equal(requests.some((request) => request.name === "record_worker_event" && request.args.p_code === "HOSTED_WORKER_EXECUTION_FAILED"), true);
   assert.equal(JSON.stringify(requests).includes("candidate text"), false);
 });
 

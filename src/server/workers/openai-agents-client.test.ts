@@ -412,3 +412,15 @@ test("repeated pending result is bounded even when the provider never acknowledg
   })), /RESULT_NOT_ACCEPTED/u);
   assert.equal(executions, 1);
 });
+
+test("runner ends without the model's closing turn once the caller's work is done", async () => {
+  const order: string[] = [];
+  let done = false;
+  const result = await runOpenAIAgentsFunctions(runnerOptions({
+    tools: { inspect_form: { parseArguments: () => ({}), async execute() { done = true; order.push("executed"); return { fields: [] }; } } },
+    client: mockClient({ async sendToolResults() { order.push("sent"); }, async cancelTurn() { order.push("cancelled"); } }),
+    shouldStop: () => done,
+  }));
+  assert.deepEqual(order, ["executed", "cancelled"]);
+  assert.deepEqual(result, { sessionId: "session_1", turnId: "turn_1", status: "completed", actionCount: 1 });
+});

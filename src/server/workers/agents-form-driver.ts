@@ -28,6 +28,8 @@ export interface AgentFormHarness {
     executeTool: (name: string, argumentsValue: unknown, signal?: AbortSignal) => Promise<unknown>;
     maxActions: number;
     signal?: AbortSignal;
+    /** True once the step's review has passed; the model's closing turn is then skipped. */
+    shouldStop?: () => boolean;
   }>): Promise<void>;
 }
 

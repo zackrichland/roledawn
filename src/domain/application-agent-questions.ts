@@ -51,7 +51,23 @@ export interface ApplicationAgentQuestionRepository {
     binding: AgentQuestionBinding;
     questions: readonly AgentQuestionDescriptor[];
   }>): Promise<readonly AgentQuestionAnswer[]>;
+  /**
+   * Answers the candidate's standing answers cover (D-117), recorded as this
+   * send's own answers before anything is asked. Unanswered questions are
+   * simply left out.
+   */
+  resolveSavedAnswers?(input: Readonly<{
+    binding: AgentQuestionBinding;
+    questions: readonly AgentQuestionDescriptor[];
+  }>): Promise<readonly AgentQuestionAnswer[]>;
 }
+
+/** A candidate's own saved answer to a routine question ("GPA" → "3.5"). */
+export type StandingAnswer = Readonly<{ id: string; topic: string; answer: string }>;
+export type StandingAnswerJob = Readonly<{ title: string | null; employer: string | null; location: string | null; workMode: string | null }>;
+export type StandingAnswerContext = Readonly<{ answers: readonly StandingAnswer[]; job: StandingAnswerJob | null }>;
+/** basis: standing answer ids and `fact:<key>` references, as the database stores them. */
+export type StandingAnswerProposal = Readonly<{ descriptor: AgentQuestionDescriptor; value: AgentQuestionValue; basis: readonly string[] }>;
 
 export type SaveAgentQuestionAnswersCommand = Readonly<{
   commandId: string;

@@ -1,3 +1,4 @@
+import { errorDetail, recordWorkerEvent } from "./worker-events.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
@@ -341,6 +342,8 @@ export async function runApplicationKitWorkerOnce(environment: NodeJS.ProcessEnv
     } catch (error) {
       const disposition = decideApplicationKitFailureDisposition(message.attempt_count, error);
       const payload = parseApplicationDraftingPayload(message.payload);
+      await recordWorkerEvent(supabase as never, { lane: "kit", stage: "kit", outcome: "FAILED", code: disposition.errorCode,
+        detail: { ...errorDetail(error), attempt: String(message.attempt_count), action: disposition.action }, applicationId: payload?.applicationId ?? null });
       const { data: released, error: releaseError } = disposition.action === "DEAD_LETTER"
         ? payload ? await asUntyped(supabase).rpc("fail_application_drafting_terminal", {
             p_outbox_id: message.outbox_id, p_worker_id: workerId, p_application_id: payload.applicationId,

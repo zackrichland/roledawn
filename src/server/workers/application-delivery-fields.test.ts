@@ -30,7 +30,7 @@ function packet(url: string, facts: readonly MaterializedApplicationFact[] = FAC
     artifacts: [{ artifactVersionId: "resume-1", variant: "RESUME_PDF", filename: "Alex-Fixture-Synthetic-Resume.pdf", mediaType: "application/pdf", byteSize: bytes.length, bytes, sha256: digest(bytes) }] };
 }
 
-type Observed = { begins: number; firstStep: Record<string, string> | null; writes: Record<string, unknown>[] };
+type Observed = { begins: number; firstStep: Record<string, string> | null; writes: Record<string, unknown>[]; lastValues?: Record<string, string> };
 async function deliver(mode: SyntheticDeliveryMode, harness: AgentFormHarness, facts: readonly MaterializedApplicationFact[] = FACTS) {
   const { policy, requests, close } = await startSyntheticAtsDelivery(mode);
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
@@ -52,6 +52,7 @@ async function deliver(mode: SyntheticDeliveryMode, harness: AgentFormHarness, f
     };
     const driver = createApplicationDeliveryDriver({ harness, questions, resolvePage: () => page, sitePolicy: policy as DeliverySitePolicy, submissionHooks, browserTimeoutMs: 600 });
     const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: policy.startUrl, executionPackage: packet(policy.startUrl, facts) });
+    observed.lastValues = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input:not([type=file]), select")].map((element) => [element.name, element.value])));
     return { result, requests, observed };
   } finally { await browser.close(); await close(); }
 }
@@ -60,7 +61,8 @@ test("deterministic delivery fills anchored contact fields and leaves referral, 
   let modelCalls = 0;
   const { result, requests, observed } = await deliver("traps", { async run() { modelCalls += 1; } });
   assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
-  assert.ok(modelCalls >= 1, "optional unresolved look-alikes still reach the model turn");
+  // Optional look-alikes without a known fact stay empty and never start a model turn (D-115).
+  assert.equal(modelCalls, 0, "a step whose required fields are all filled skips the model");
   assert.equal(requests.submits, 1);
   const values = observed.firstStep!;
   assert.equal(values.name, "Alex Fixture");
@@ -89,12 +91,15 @@ test("model-proposed candidate facts are refused for look-alike third-party, emp
       refusals[field.name] = result.errorCode!;
     }
   } };
-  const { result, requests, observed } = await deliver("traps", harness);
-  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
-  assert.equal(requests.submits, 1);
+  // Without a legal-name fact the required Name field stays empty, so the model runs and tries every trap.
+  const { result, requests, observed } = await deliver("traps", harness, FACTS.filter((fact) => fact.factKey !== "identity.legal_name"));
+  assert.equal(result.kind, "QUESTIONS_REQUIRED", JSON.stringify(result));
+  assert.equal(requests.submits, 0);
   assert.deepEqual(Object.keys(refusals).sort(), Object.keys(naive).sort());
-  for (const [name, code] of Object.entries(refusals)) assert.match(code, /CANDIDATE_ANSWER_REQUIRED|FACT_TYPE_MISMATCH|FACT_FIELD_MISMATCH/u, name);
-  for (const name of Object.keys(naive)) assert.equal(observed.firstStep![name], "", name);
+  // Traps the naive mapper pairs with the absent legal-name fact are refused as unauthorized.
+  for (const [name, code] of Object.entries(refusals)) assert.match(code, /CANDIDATE_ANSWER_REQUIRED|FACT_TYPE_MISMATCH|FACT_FIELD_MISMATCH|FACT_NOT_AUTHORIZED/u, name);
+  // No step was reviewed, so read the traps straight from the page.
+  for (const name of Object.keys(naive)) assert.equal(observed.lastValues?.[name] ?? "", "", name);
 });
 
 type Run = Readonly<{ harness?: AgentFormHarness; facts?: readonly MaterializedApplicationFact[]; answers?: readonly AgentQuestionAnswer[] }>;

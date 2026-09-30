@@ -2,7 +2,7 @@
 title: Application playbook
 status: canonical operating guide
 owner: founder and engineering
-last_updated: 2026-09-29
+last_updated: 2026-09-30
 scope: how one application moves from a job link to a confirmed receipt, what each Home status means, how to operate RoleDawn, and what comes next
 ---
 
@@ -49,7 +49,7 @@ The diagram is a summary; the table below is authoritative.
 | 3. Write | Research (GPT-6 Sol with web search), then drafting (GPT-6 Astra) under the five writing rules, up to three write-check-repair rounds. An independent model (GPT-5.6 Terra) checks each sentence against its cited sources, and a writing lint blocks banned and self-undercutting phrasing. | `src/server/applications/application-writing-pipeline.ts`, `policies/application-writing/` |
 | 4. Render and store | Five files: résumé and cover letter as PDF and DOCX, plus one combined PDF. Text is read back out of each file. Files go to the private `application-artifacts` bucket under a content-addressed path, with SHA-256 hashes; rows are append-only. | `src/server/applications/application-document-renderer.ts`, `src/server/workers/application-kit.ts` |
 | 5. Send | With "Let me review before it's sent" off (the default), sending starts by itself. A fresh Browserbase session opens; the form agent (GPT-6.1 Sol) maps each field; RoleDawn types exact values from your profile, uploads byte-checked files, and reads every field back. | `src/server/workers/application-autopilot.ts`, `application-delivery-driver.ts`, `application-delivery-browser.ts` |
-| 6. Questions | A required question RoleDawn can't answer from your profile appears on Home as "Answer N questions". The send continues after you answer. | `src/server/applications/autopilot.ts` |
+| 6. Questions | Answers come from four places, in order. (1) Profile facts matched by exact label rules. (2) Questions the candidate answered on an earlier application, answered the same way on the first read of the form (D-112, D-115). (3) Standing answers: a required question nothing else covers is matched by one model call to the candidate's saved answers ("GPA: 3.5") and filled in the same pass. Code checks the chosen options, and the answer is labeled `STANDING` with what it rests on (D-117). (4) Only what is left appears on Home as "Answer N questions". Optional fields never block a send. Demographic, legal, consent and signature questions always go to the candidate. | `src/server/workers/standing-answers.ts`, `application-autopilot-worker.ts`, `application-delivery-driver.ts` |
 | 7. Submit | The exact answers and files are sealed; the database grants one permission for one network submission, and records the request and response. | `begin_application_autopilot_submit` |
 | 8. Employer code | Greenhouse answers a cloud-browser submission with HTTP 428 and emails you an 8-character code. RoleDawn polls your Gmail every 5 seconds for up to 8 minutes, takes only a "Security code for your application to <Company>" email from Greenhouse whose company matches this job, types it into the page, and lets the page resend. Without Gmail, Home shows "Enter code". | `src/server/mailbox/google-mailbox.ts`, `createAutopilotVerificationRelay` |
 | 9. Confirm | Only the employer's own response counts as a receipt. A model never decides that an application went through. | `receiptEvidence` in `application-autopilot-worker.ts` |
@@ -58,10 +58,10 @@ The diagram is a summary; the table below is authoritative.
 
 | Site | Today | Evidence |
 |---|---|---|
-| Greenhouse | Fills, submits, and confirms | **Verified** end to end on 2026-09-30: Carvana Specialist, Inventory Quality was submitted, Greenhouse emailed its security code, RoleDawn read it from Gmail 7 seconds later, and Greenhouse confirmed. Multi-select questions such as GPA ranges are supported (D-113). |
+| Greenhouse | Fills, submits, and confirms | **Verified** end to end twice on 2026-09-30: Carvana Specialist, Inventory Quality (code read from Gmail 7 s after the request), and Carvana Strategy Analyst with a required GPA multi-select (code read in 6 s; final pass 262 s). See the [Greenhouse template](../boards/greenhouse.md). |
 | Lever | Fills and submits | Fixture tests only; **not yet proven live**. Passive hCaptcha is allowed; a visible challenge stops for you. |
 | Ashby | Prepares documents | You submit on the employer's site. |
-| Workday, iCIMS, SmartRecruiters, others | Not supported | See [Next: any site](#next-any-site-including-workday). |
+| Workday, iCIMS, SmartRecruiters, others | Not supported | Per-board templates for the agent: [docs/boards/](../boards/README.md). See [Next: any site](#next-any-site-including-workday). |
 
 ## What Home tells you
 
@@ -76,6 +76,14 @@ The diagram is a summary; the table below is authoritative.
 | Applied | The employer's response confirmed it. | Nothing. |
 | Stopped | RoleDawn stopped before sending. The row explains why. | Click the row; Try again when offered. |
 | Couldn't read job | The posting couldn't be imported. | Check the link or skip it. |
+
+## When something fails
+
+- **Before any submission** (model or network timeout, full browser pool, unknown worker error): the send runs again by itself, 1 and then 5 minutes later, before it waits for the candidate (D-114).
+- **Employer refused the code**: one automatic retry, then Try again (D-111).
+- **Unknown outcome after submitting**: RoleDawn reconciles before anything else is sent.
+- **Where to look**: `npm run ops:status` lists live applications, lanes, and recent failures with their cause; add `-- --app <id>` for one application's timeline and `-- --watch` to refresh (D-116).
+- **Works locally, fails in production**: the hosted browser is Linux Chrome on Browserbase. Page scripts can behave differently by platform. React Select, for example, marks options `aria-selected` everywhere except on Apple devices, and that difference hid the GPA field on 2026-09-30. Reproduce with a Linux user agent and `navigator.platform` before concluding a form works.
 
 ## Rules that never change
 
@@ -128,7 +136,7 @@ Connect under Profile → Preferences. The connection is read-only (`gmail.reado
 
 Developer plan since 2026-09-29: 25 browsers at once and 100 browser hours a month ([source register](../research/source-register.md)). One application uses about 3 to 14 browser minutes. Browserbase's own "Agents" feature is not used: RoleDawn's steps are fixed code, and Browserbase only supplies the browser.
 
-## Known gaps (2026-09-29)
+## Known gaps (2026-09-30)
 
 | Gap | Effect | Status |
 |---|---|---|
@@ -136,7 +144,9 @@ Developer plan since 2026-09-29: 25 browsers at once and 100 browser hours a mon
 | Open sign-in | Anyone with the URL was signed into the founder's account. | Fixed 2026-09-29 (D-109). |
 | Code timeout left an application "Confirming" | The job could never be sent again. | Fixed 2026-09-29 (D-111); see below. |
 | Archive has no button yet | Archiving is a database update (`applications.archived_at`). | Open. |
-| GPA has no profile fact | The first GPA multi-select a candidate meets is asked once; later ones reuse the answer (D-112, D-113). | Open: add an `education.gpa` fact collected at onboarding. |
+| Standing answers have no page yet | They are saved with `save_candidate_standing_answer` (the founder's ten are in). | Open: an onboarding step and a Profile → Answers list to add, edit and remove them. |
+| Automatic answers aren't shown on the application page | Each is recorded with its source (`CANDIDATE`, `REMEMBERED`, `STANDING`) and basis, and `ops:status --app` shows the step. | Open: list "Answered from your saved answers" on the application page. |
+| Consent and attestation checkboxes stop a send | They always go to the candidate. | Open decision O-013. |
 | Profile, story, and voice edits don't mark documents out of date | Documents made before an edit can still be sent. | Open. |
 | No notifications | Nothing outside the app tells you when a send needs you. | Open. |
 | No export or delete-account | Required by RoleDawn's own rules and by Google for wider Gmail access. | Open. |

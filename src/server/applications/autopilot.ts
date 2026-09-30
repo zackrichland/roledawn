@@ -5,9 +5,10 @@ import {
   type ApplicationAutopilotView, type ControlAutopilotCommand, type DelegateApplicationAutopilotCommand,
   type SaveAutopilotAnswersCommand,
 } from "../../domain/application-autopilot.ts";
-import { validateAgentQuestionAnswer, validateAgentQuestionDescriptors, type AgentQuestionAnswer, type AgentQuestionDescriptor, type ApplicationAgentQuestion } from "../../domain/application-agent-questions.ts";
+import { validateAgentQuestionAnswer, validateAgentQuestionDescriptors, type AgentQuestionAnswer, type AgentQuestionDescriptor, type ApplicationAgentQuestion, type StandingAnswerContext } from "../../domain/application-agent-questions.ts";
 import { AUTOPILOT_UNSUPPORTED_DESTINATION_COPY, parseAutopilotDestination } from "../../domain/application-autopilot-eligibility.ts";
 import type { OpenAIAgentActionLedger, OpenAIAgentCallKey, OpenAIAgentToolResult } from "../workers/openai-agents-client.ts";
+import { recordWorkerEvent } from "../workers/worker-events.ts";
 
 type Row = Record<string, unknown>;
 type QueryResult = { data: unknown; error: { code?: string; message?: string } | null };
@@ -72,6 +73,32 @@ function toolResult(value: unknown, key: OpenAIAgentCallKey): asserts value is O
     Object.keys(value).some(name => !["type","turn_id","call_id","success","output","error"].includes(name)) || JSON.stringify(value).length > 262_144) protocol();
 }
 
+/** Answers exactly as the database returned them, each checked against its own question. */
+function parseAnswers(value: unknown): readonly AgentQuestionAnswer[] {
+  if (!Array.isArray(value) || value.length > 96) protocol();
+  return Object.freeze(value.map(item => {
+    if (!row(item) || !uuid(item.answer_id) || !hash(item.fingerprint) || !row(item.descriptor)) protocol();
+    const descriptor = item.descriptor as unknown as AgentQuestionDescriptor;
+    validateAgentQuestionDescriptors([descriptor]);
+    if (descriptor.fingerprint !== item.fingerprint || descriptor.fieldId !== item.field_id) protocol();
+    validateAgentQuestionAnswer(descriptor, item.value);
+    return Object.freeze({ answerId: item.answer_id, fieldId: item.field_id, fingerprint: item.fingerprint, value: item.value }) as AgentQuestionAnswer;
+  }));
+}
+
+function parseStandingAnswers(value: unknown): StandingAnswerContext {
+  if (!row(value) || !Array.isArray(value.answers) || value.answers.length > 100 || (value.job !== null && !row(value.job))) protocol();
+  const text = (item: unknown, max: number) => typeof item === "string" && item.trim().length > 0 && item.length <= max;
+  const answers = value.answers.map(item => {
+    if (!row(item) || !uuid(item.id) || !text(item.topic, 200) || !text(item.answer, 1_000)) protocol();
+    return Object.freeze({ id: item.id as string, topic: item.topic as string, answer: item.answer as string });
+  });
+  const job = value.job as Row | null;
+  const optional = (item: unknown) => typeof item === "string" && item.trim() ? item.slice(0, 200) : null;
+  return Object.freeze({ answers: Object.freeze(answers),
+    job: job ? Object.freeze({ title: optional(job.title), employer: optional(job.employer), location: optional(job.location), workMode: optional(job.work_mode) }) : null });
+}
+
 export function createApplicationAutopilotRepository(client: unknown): ApplicationAutopilotStore {
   const repository: ApplicationAutopilotStore = {
     async claim(workerId, leaseSeconds = 300, targetId) {
@@ -111,17 +138,31 @@ export function createApplicationAutopilotRepository(client: unknown): Applicati
       validateAgentQuestionDescriptors(questions);
       await call(client, "request_application_autopilot_questions", { ...leaseArgs(lease), p_questions: questions });
     },
+    async recordEvent(claim, event) {
+      await recordWorkerEvent(client as never, { lane: "autopilot", ...event, applicationId: claim.applicationId, autopilotId: claim.id });
+    },
+    async prefillAnswers(lease, questions) {
+      if (!questions.length) return [];
+      if (questions.length > 24) protocol();
+      validateAgentQuestionDescriptors(questions);
+      return parseAnswers(await call(client, "prefill_application_autopilot_answers", { ...leaseArgs(lease), p_questions: questions }));
+    },
     async readAllAnswers(lease) {
-      const value = await call(client, "read_application_autopilot_answers", leaseArgs(lease));
-      if (!Array.isArray(value) || value.length > 96) protocol();
-      return Object.freeze(value.map(item => {
-        if (!row(item) || !uuid(item.answer_id) || !hash(item.fingerprint) || !row(item.descriptor)) protocol();
-        const descriptor = item.descriptor as unknown as AgentQuestionDescriptor;
-        validateAgentQuestionDescriptors([descriptor]);
-        if (descriptor.fingerprint !== item.fingerprint || descriptor.fieldId !== item.field_id) protocol();
-        validateAgentQuestionAnswer(descriptor, item.value);
-        return Object.freeze({ answerId: item.answer_id, fieldId: item.field_id, fingerprint: item.fingerprint, value: item.value }) as AgentQuestionAnswer;
-      }));
+      return parseAnswers(await call(client, "read_application_autopilot_answers", leaseArgs(lease)));
+    },
+    async readStandingAnswers(lease) {
+      return parseStandingAnswers(await call(client, "read_candidate_standing_answers", leaseArgs(lease)));
+    },
+    async recordStandingAnswers(lease, answers) {
+      if (!answers.length) return [];
+      if (answers.length > 24) protocol();
+      for (const answer of answers) {
+        validateAgentQuestionAnswer(answer.descriptor, answer.value);
+        if (!Array.isArray(answer.basis) || answer.basis.length < 1 || answer.basis.length > 6 ||
+          answer.basis.some(id => !uuid(id) && !/^fact:[a-z_]+(?:\.[a-z_]+){1,3}$/u.test(id))) protocol();
+      }
+      return parseAnswers(await call(client, "record_application_autopilot_standing_answers", { ...leaseArgs(lease),
+        p_answers: answers.map(answer => ({ descriptor: answer.descriptor, value: answer.value, basis: answer.basis })) }));
     },
     async seal(lease, input) {
       if (!row(input.diff) || !hash(input.readbackHash) || !hash(input.requestFingerprint) || !input.destinationUrl.startsWith("https://")) protocol();

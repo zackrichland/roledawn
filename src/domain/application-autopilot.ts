@@ -1,4 +1,4 @@
-import type { AgentQuestionAnswer, AgentQuestionDescriptor, ApplicationAgentQuestion } from "./application-agent-questions.ts";
+import type { AgentQuestionAnswer, AgentQuestionDescriptor, ApplicationAgentQuestion, StandingAnswerContext, StandingAnswerProposal } from "./application-agent-questions.ts";
 import type { Json } from "../lib/supabase/database.types.ts";
 
 export type AutopilotJsonObject = Readonly<{ [key: string]: Json | undefined }>;
@@ -53,6 +53,17 @@ export interface ApplicationAutopilotRepository {
   setAgentSession(lease: ApplicationAutopilotLease, sessionId: string | null): Promise<void>;
   requestQuestions(lease: ApplicationAutopilotLease, questions: readonly AgentQuestionDescriptor[]): Promise<void>;
   readAllAnswers(lease: ApplicationAutopilotLease): Promise<readonly AgentQuestionAnswer[]>;
+  /** One observability event for this send (D-116); best effort, never throws. */
+  recordEvent?(lease: ApplicationAutopilotClaim, event: Readonly<{
+    stage: string; outcome: "OK" | "FAILED" | "SKIPPED" | "INFO"; code?: string | null;
+    detail?: Readonly<Record<string, unknown>>; durationMs?: number | null;
+  }>): Promise<void>;
+  /** Remembered answers for these askable fields, stored as this send's own answers (D-115). */
+  prefillAnswers?(lease: ApplicationAutopilotLease, questions: readonly AgentQuestionDescriptor[]): Promise<readonly AgentQuestionAnswer[]>;
+  /** The candidate's standing answers and the job (D-117). */
+  readStandingAnswers?(lease: ApplicationAutopilotLease): Promise<StandingAnswerContext>;
+  /** Records answers derived from standing answers, labeled STANDING with their basis (D-117). */
+  recordStandingAnswers?(lease: ApplicationAutopilotLease, answers: readonly StandingAnswerProposal[]): Promise<readonly AgentQuestionAnswer[]>;
   seal(lease: ApplicationAutopilotLease, input: ApplicationAutopilotSeal): Promise<string>;
   beginSubmit(lease: ApplicationAutopilotLease, input: Readonly<{ sealHash: string; requestFingerprint: string; adapterRelease: string }>): Promise<ApplicationAutopilotSubmitPermit>;
   finish(lease: ApplicationAutopilotLease, input: ApplicationAutopilotCompletion): Promise<void>;

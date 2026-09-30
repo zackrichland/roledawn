@@ -8,6 +8,7 @@ import { createSupabaseAdminClient } from "../../lib/supabase/admin.ts";
 import { createApplicationAutopilotRepository, type ApplicationAutopilotStore } from "../applications/autopilot.ts";
 import type { ApplicationAutopilotClaim } from "../../domain/application-autopilot.ts";
 import { createApplicationAgentEvidence } from "./application-agent-evidence.ts";
+import { createStandingAnswerResolver } from "./standing-answers.ts";
 import { coordinateApplicationAutopilot } from "./application-autopilot-worker.ts";
 import { createApplicationDeliveryDriver, type DeliveryVerificationRelay } from "./application-delivery-driver.ts";
 import { parseAutopilotDestination } from "../../domain/application-autopilot-eligibility.ts";
@@ -174,6 +175,7 @@ export async function runApplicationAutopilotClaim(claim: ApplicationAutopilotCl
       },
     },
     materializer: createSupabaseApplicationFillExecutionMaterializer(supabase),
+    standingAnswers: createStandingAnswerResolver({ apiKey: configuration.apiKey, model: configuration.model }),
     async drive(task) {
       const driver = createApplicationDeliveryDriver({
         harness: createApplicationDeliveryHarness({ configuration, client, store: repository, lease: claim, signal }),

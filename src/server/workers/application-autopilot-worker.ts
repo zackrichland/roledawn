@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { AgentQuestionDescriptor, ApplicationAgentQuestionRepository } from "../../domain/application-agent-questions.ts";
+import type { AgentQuestionAnswer, AgentQuestionDescriptor, ApplicationAgentQuestionRepository } from "../../domain/application-agent-questions.ts";
 import type { ApplicationAutopilotClaim, ApplicationAutopilotRepository, ApplicationAutopilotSubmitPermit, AutopilotJsonObject } from "../../domain/application-autopilot.ts";
 import type { Json } from "../../lib/supabase/database.types.ts";
 import { eraseApplicationFillExecutionPackage, type ApplicationFillExecutionMaterializer, type ApplicationFillExecutionPackage } from "./application-fill-materializer.ts";
 import type { ApplicationDeliveryRuntime, ApplicationDeliveryRuntimeAdapter } from "./application-delivery-runtime.ts";
 import type { Page } from "playwright-core";
+import type { StandingAnswerResolver } from "./standing-answers.ts";
+import { errorDetail } from "./worker-events.ts";
 
 export type DeliveryWorkerReceipt = Readonly<{
   url: string; observedAt: string; bodyHash: string; requestFingerprint: string; attemptId: string;
@@ -13,6 +15,8 @@ export type DeliveryWorkerReceipt = Readonly<{
 export type DeliveryWorkerOutcome = Readonly<{
   kind: "CONFIRMED" | "QUESTIONS_REQUIRED" | "TAKEOVER" | "UNCERTAIN" | "FAILED_SAFE" | "NOT_ACCEPTED";
   reasonCode?: string; receipt?: DeliveryWorkerReceipt; attemptId?: string;
+  /** Error class and short message behind a stop (D-116). */
+  detail?: Readonly<Record<string, string>>;
   questions?: readonly AgentQuestionDescriptor[];
 }>;
 export type DeliveryWorkerDriveInput = Readonly<{
@@ -57,6 +61,8 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
   runtimeAdapter: ApplicationDeliveryRuntimeAdapter;
   materializer: ApplicationFillExecutionMaterializer;
   drive(task: DeliveryWorkerDriveInput): Promise<DeliveryWorkerOutcome>;
+  /** Maps new questions to the candidate's standing answers (D-117). */
+  standingAnswers?: StandingAnswerResolver;
   signal?: AbortSignal;
 }>): Promise<Readonly<{ kind: DeliveryWorkerOutcome["kind"]; cleanupPending: boolean }>> {
   const { claim, repository } = input;
@@ -66,6 +72,7 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
   const submission: { permit: ApplicationAutopilotSubmitPermit | null; authorizationRequested: boolean } = { permit: null, authorizationRequested: false };
   let outcome: DeliveryWorkerOutcome = { kind: "FAILED_SAFE", reasonCode: "APPLICATION_DELIVERY_FAILED" };
   let cleanupPending = false;
+  const timings = { started: Date.now(), browserMs: null as number | null, driveMs: null as number | null };
   const requested = new Map<string, AgentQuestionDescriptor>();
   try {
     await repository.assertLease(claim, claim.mode === "FILL");
@@ -101,6 +108,7 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
         await repository.bindRuntime(claim, sessionId);
         await repository.checkpoint(claim, { stage: "BROWSER_BOUND", data: { runtimeProvisionKey: provisionKey, runtimeState: "BOUND", browserExpiresAt: expiresAt } });
     };
+    const browserStarted = Date.now();
     try {
       runtime = await input.runtimeAdapter.open({
         provisionKey, runtimeReference: claim.runtimeReference,
@@ -115,11 +123,42 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
       await repository.checkpoint(claim, { stage: "PROVISIONING", data: { runtimeProvisionKey: provisionKey, runtimeState: "INTENT" } });
       runtime = await input.runtimeAdapter.open({ provisionKey, runtimeReference: null, allowCreate: true, onBound });
     }
-    const answers = await repository.readAllAnswers(claim);
+    const answers: AgentQuestionAnswer[] = [...await repository.readAllAnswers(claim)];
+    // Each askable field is looked up in the candidate's remembered answers at
+    // most once per run, so repeat questions are filled in this same pass.
+    const remembered = new Set<string>();
+    let standing: ReturnType<NonNullable<ApplicationAutopilotRepository["readStandingAnswers"]>> | null = null;
     const questions: ApplicationAgentQuestionRepository = {
       async loadAnswers({ binding: actual, questions: fields }) {
         if (actual.applicationId !== claim.applicationId || actual.revisionId !== claim.revisionId || actual.fillAttemptId !== claim.id) throw new Error("DELIVERY_QUESTION_BINDING_MISMATCH");
+        const unanswered = fields.filter(field => !remembered.has(field.fingerprint) &&
+          !answers.some(answer => answer.fingerprint === field.fingerprint && answer.fieldId === field.fieldId));
+        if (unanswered.length && repository.prefillAnswers && claim.mode === "FILL") {
+          unanswered.forEach(field => remembered.add(field.fingerprint));
+          answers.push(...await repository.prefillAnswers(claim, unanswered));
+        }
         return answers.filter(answer => fields.some(field => field.fingerprint === answer.fingerprint && field.fieldId === answer.fieldId));
+      },
+      async resolveSavedAnswers({ binding: actual, questions: fields }) {
+        if (actual.applicationId !== claim.applicationId || actual.revisionId !== claim.revisionId || actual.fillAttemptId !== claim.id) throw new Error("DELIVERY_QUESTION_BINDING_MISMATCH");
+        const pending = fields.filter(field => !answers.some(answer => answer.fingerprint === field.fingerprint && answer.fieldId === field.fieldId));
+        if (!pending.length || claim.mode !== "FILL" || !input.standingAnswers || !execution || !repository.readStandingAnswers || !repository.recordStandingAnswers) return [];
+        const started = Date.now();
+        try {
+          standing ??= repository.readStandingAnswers(claim);
+          const proposals = await input.standingAnswers.resolve({ questions: pending, context: await standing, facts: execution.facts, signal });
+          const recorded = proposals.length ? await repository.recordStandingAnswers(claim, proposals) : [];
+          answers.push(...recorded);
+          await repository.recordEvent?.(claim, { stage: "standing_answers", outcome: recorded.length ? "OK" : "SKIPPED",
+            detail: { questions: String(pending.length), answered: String(recorded.length) }, durationMs: Date.now() - started });
+          return recorded;
+        } catch (error) {
+          // A failed lookup never fails the send: the questions go to the candidate.
+          standing = null;
+          if (signal.aborted) throw error;
+          await repository.recordEvent?.(claim, { stage: "standing_answers", outcome: "FAILED", code: safeCode(error), detail: errorDetail(error), durationMs: Date.now() - started });
+          return [];
+        }
       },
       async requestQuestions({ binding: actual, questions: fields }) {
         if (actual.applicationId !== claim.applicationId || actual.revisionId !== claim.revisionId || actual.fillAttemptId !== claim.id) throw new Error("DELIVERY_QUESTION_BINDING_MISMATCH");
@@ -128,6 +167,8 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
         return fields.map(field => ({ ...field, id: randomUUID(), status: "OPEN" as const }));
       },
     };
+    timings.browserMs = Date.now() - browserStarted;
+    const driveStarted = Date.now();
     outcome = await input.drive({
       claim, page: runtime.page, executionPackage: execution, questions, signal,
       async begin(request) {
@@ -144,6 +185,7 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
         await repository.checkpoint(claim, { stage: "DELIVERY_PROGRESS", data: { delivery: jsonObject(state) as Json } });
       },
     });
+    timings.driveMs = Date.now() - driveStarted;
     if (outcome.kind === "CONFIRMED") {
       if (!outcome.receipt || outcome.receipt.attemptId !== (submission.permit?.attemptId ?? claim.attemptId)) throw new Error("DELIVERY_RECEIPT_ATTEMPT_MISMATCH");
       const receipt = receiptEvidence(outcome.receipt, claim);
@@ -161,7 +203,7 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
     // The database also checks whether beginSubmit committed when its response
     // was lost. A client-side exception cannot erase that durable attempt.
     const kind = submission.permit || claim.attemptId ? "UNCERTAIN" : "FAILED_SAFE";
-    outcome = { kind: submission.authorizationRequested ? "UNCERTAIN" : kind, reasonCode: safeCode(error) };
+    outcome = { kind: submission.authorizationRequested ? "UNCERTAIN" : kind, reasonCode: safeCode(error), detail: errorDetail(error) };
     try { await repository.finish(claim, { outcome: kind, failureCode: safeCode(error) }); }
     catch { /* A canceled/expired lease is reconciled by the next durable claim. */ }
   } finally {
@@ -173,5 +215,13 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
     }
     if (execution) eraseApplicationFillExecutionPackage(execution);
   }
+  await repository.recordEvent?.(claim, {
+    stage: claim.mode === "RECONCILE" ? "reconcile" : "send",
+    outcome: outcome.kind === "CONFIRMED" ? "OK" : outcome.kind === "QUESTIONS_REQUIRED" ? "INFO" : "FAILED",
+    code: outcome.reasonCode ?? null,
+    detail: { kind: outcome.kind, ...(outcome.detail ?? {}), ...(timings.browserMs !== null ? { browserMs: String(timings.browserMs) } : {}),
+      ...(timings.driveMs !== null ? { driveMs: String(timings.driveMs) } : {}), ...(cleanupPending ? { cleanupPending: "true" } : {}) },
+    durationMs: Date.now() - timings.started,
+  });
   return { kind: outcome.kind, cleanupPending };
 }

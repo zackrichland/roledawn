@@ -618,7 +618,9 @@ test("Greenhouse React Select mode verifies selected option class and display to
   });
 });
 
-test("Greenhouse React Select multi-select chooses by label, survives re-numbered options, and reads back the chips", browserOptions, async () => {
+// React Select omits aria-selected on Apple platforms only; hosted browsers run
+// Linux, where every option carries aria-selected="false".
+for (const platform of ["apple", "linux"] as const) test(`Greenhouse React Select multi-select (${platform}) chooses by label, survives re-numbered options, and reads back the chips`, browserOptions, async () => {
   const id = "question_69070645[]";
   await fixture(`<form><label for="${id}">What were your undergrad GPAs?</label><div class="select-shell"><div class="select__control">
     <div class="select__value-container select__value-container--is-multi"></div>
@@ -630,7 +632,7 @@ test("Greenhouse React Select multi-select chooses by label, survives re-numbere
       function close(){menu.hidden=true;input.setAttribute('aria-expanded','false');}
       input.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();}if(e.key==='ArrowDown'){e.preventDefault();
         // Like React Select: chosen options leave the menu and the rest are re-numbered.
-        menu.replaceChildren(...all.filter(label=>!chosen.includes(label)).map((label,i)=>{const option=document.createElement('div');option.id=${JSON.stringify(`react-select-${id}-option-`)}+i;option.setAttribute('role','option');option.className='select__option';option.textContent=label;
+        menu.replaceChildren(...all.filter(label=>!chosen.includes(label)).map((label,i)=>{const option=document.createElement('div');option.id=${JSON.stringify(`react-select-${id}-option-`)}+i;option.setAttribute('role','option');option.className='select__option';option.textContent=label;if(${JSON.stringify(platform === "linux")})option.setAttribute('aria-selected','false');
           option.addEventListener('click',()=>{chosen.push(globalThis.tamper?'3.8 - 4.0':label);render();close();});return option;}));
         menu.hidden=false;input.setAttribute('aria-expanded','true');}});
     </script>`, async (page, url) => {

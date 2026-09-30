@@ -1,5 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
+import { errorDetail, recordWorkerEvent } from "./worker-events.ts";
+
 export const HOSTED_WORKER_LANES = ["catalog", "preparation", "kit", "auto-apply", "autopilot", "cleanup"] as const;
 export type HostedWorkerLane = typeof HOSTED_WORKER_LANES[number];
 export type HostedWorkerSummary = Record<string, number | boolean>;
@@ -39,6 +41,7 @@ export async function coordinateHostedWorker(input: {
   if (typeof claim.data !== "string" || !/^[a-f0-9-]{36}$/iu.test(claim.data)) throw new Error("HOSTED_WORKER_CLAIM_INVALID");
   let summary: HostedWorkerSummary = {};
   let errorCode: string | null = null;
+  const started = Date.now();
   try {
     summary = await input.execute();
     if (Object.values(summary).some(value => typeof value !== "boolean" && (!Number.isSafeInteger(value) || value < 0))) {
@@ -49,6 +52,10 @@ export async function coordinateHostedWorker(input: {
     if (typeof summary.uncertain === "number" && summary.uncertain > 0) errorCode = "HOSTED_WORKER_ITEMS_UNCERTAIN";
   } catch (error) {
     errorCode = error instanceof Error && /^[A-Z][A-Z0-9_]{2,119}$/u.test(error.message) ? error.message : "HOSTED_WORKER_EXECUTION_FAILED";
+    await recordWorkerEvent(input.database, { lane: input.lane, stage: "lane", outcome: "FAILED", code: errorCode, detail: errorDetail(error), durationMs: Date.now() - started });
+  }
+  if (errorCode === "HOSTED_WORKER_ITEMS_FAILED" || errorCode === "HOSTED_WORKER_ITEMS_UNCERTAIN") {
+    await recordWorkerEvent(input.database, { lane: input.lane, stage: "lane-items", outcome: "FAILED", code: errorCode, detail: summary, durationMs: Date.now() - started });
   }
   const result = await input.database.rpc("finish_hosted_worker_lane", {
     p_lane: input.lane, p_lease_token: claim.data, p_summary: summary, p_error_code: errorCode,

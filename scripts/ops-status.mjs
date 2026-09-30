@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Read-only production status: where every live application is, what the
 // background lanes are doing, and what failed recently.
-//   npm run ops:status            one snapshot
-//   npm run ops:status -- --watch refresh every 20 s until Ctrl-C
+//   npm run ops:status                    one snapshot
+//   npm run ops:status -- --watch         refresh every 20 s until Ctrl-C
+//   npm run ops:status -- --app <id>      one application's timeline (full id or 8-character prefix)
 // Runs one `begin transaction read only; … rollback;` query through the linked
 // Supabase CLI. It never selects tokens, codes, or document contents.
 import { execFileSync } from "node:child_process";
@@ -32,16 +33,41 @@ select json_build_object(
   'failures_24h', (select coalesce(json_agg(json_build_object('failure', failure_code, 'count', n)), '[]') from (
     select failure_code, count(*) n from public.application_autopilots
     where failure_code is not null and updated_at > now() - interval '24 hours' group by failure_code order by n desc) f),
+  'recent_failures', (select coalesce(json_agg(e order by e.at desc), '[]') from (
+    select to_char(occurred_at at time zone 'utc', 'MM-DD HH24:MI:SS') as at, lane, stage, code,
+      left(coalesce(detail->>'message', detail->>'kind', ''), 90) as cause, left(coalesce(application_id::text, ''), 8) as app,
+      round(duration_ms / 1000.0) as seconds
+    from private.worker_events where outcome = 'FAILED' and occurred_at > now() - interval '24 hours'
+    order by occurred_at desc limit 12) e),
   'pending_outbox', (select count(*) from public.outbox where published_at is null),
   'oldest_pending_outbox_minutes', (select round(extract(epoch from now() - min(created_at)) / 60) from public.outbox where published_at is null)
 ) as status;
 rollback;
 `;
 
-function query() {
+function timelineSql(prefix) {
+  if (!/^[0-9a-f-]{8,36}$/iu.test(prefix)) throw new Error("Pass --app with an application id or its first 8 characters.");
+  return `begin transaction read only;
+select json_build_object('now', to_char(now() at time zone 'utc', 'YYYY-MM-DD HH24:MI:SS'), 'timeline', (select coalesce(json_agg(t order by t.at), '[]') from (
+  select d.occurred_at as at_raw, to_char(d.occurred_at at time zone 'utc', 'HH24:MI:SS') as at, 'event' as source, d.event_type as what,
+    coalesce(d.payload->>'status', '') || coalesce(' ' || (d.payload->>'failure_code'), '') as info
+  from public.domain_events d join public.applications a on a.id = d.aggregate_id where a.id::text like '${prefix}%'
+  union all
+  select w.occurred_at, to_char(w.occurred_at at time zone 'utc', 'HH24:MI:SS'), 'worker:' || w.lane, w.stage || ' ' || w.outcome,
+    coalesce(w.code, '') || coalesce(' ' || round(w.duration_ms / 1000.0) || 's', '') || coalesce(' ' || left(w.detail->>'message', 80), '')
+  from private.worker_events w where w.application_id::text like '${prefix}%'
+  union all
+  select c.created_at, to_char(c.created_at at time zone 'utc', 'HH24:MI:SS'), 'agent', c.tool_name, coalesce(c.result->>'success', 'pending')
+  from private.application_autopilot_tool_calls c join public.application_autopilots p on p.id = c.autopilot_id where p.application_id::text like '${prefix}%'
+  order by 1) t)) as status;
+rollback;
+`;
+}
+
+function query(sql = SQL) {
   const directory = mkdtempSync(join(tmpdir(), "roledawn-ops-"));
   const file = join(directory, "status.sql");
-  writeFileSync(file, SQL);
+  writeFileSync(file, sql);
   try {
     for (let attempt = 1; attempt <= 6; attempt += 1) {
       try {
@@ -74,9 +100,18 @@ function print(status) {
   console.log(table(status.applications, ["created", "id", "employer", "role", "status", "send", "stage", "open_questions", "codes", "attempts", "receipt", "failure"]));
   console.log("\nSend failures in the last 24 hours");
   console.log(table(status.failures_24h, ["failure", "count"]));
+  console.log("\nRecent failures with their cause (24 hours)");
+  console.log(table(status.recent_failures ?? [], ["at", "lane", "stage", "code", "seconds", "app", "cause"]));
   console.log(`\nOutbox: ${status.pending_outbox} pending${status.pending_outbox ? `, oldest ${status.oldest_pending_outbox_minutes} min` : ""}`);
 }
 
+const appIndex = process.argv.indexOf("--app");
+if (appIndex >= 0) {
+  const status = query(timelineSql(String(process.argv[appIndex + 1] ?? "")));
+  console.log(`Timeline at ${status.now} UTC`);
+  console.log(table(status.timeline, ["at", "source", "what", "info"]));
+  process.exit(0);
+}
 const watch = process.argv.includes("--watch");
 do {
   const status = query();

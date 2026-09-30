@@ -117,5 +117,56 @@ begin
   insert into remembered_answer_checks values('missing_choice_is_asked_again',true);
 end $check$;
 
+create function pg_temp.as_worker_prefill(p_fixture jsonb, p_questions jsonb) returns jsonb
+language plpgsql as $$
+declare v_result jsonb;
+begin
+  execute 'set local role service_role';
+  v_result:=public.prefill_application_autopilot_answers((p_fixture->>'autopilot')::uuid,(p_fixture->>'lease')::uuid,p_questions);
+  execute 'reset role';
+  return v_result;
+end $$;
+
+do $prefill$
+declare who jsonb:=pg_temp.candidate(); earlier jsonb; now_c jsonb; v_result jsonb; v_again jsonb;
+  sponsor_old jsonb:=pg_temp.question('Will you now or in the future require visa sponsorship?*','SINGLE_SELECT','[{"label":"Yes","value":"old-0"},{"label":"No","value":"old-1"}]');
+  sponsor_new jsonb:=pg_temp.question('Will you now or in the future require visa sponsorship?','SINGLE_SELECT','[{"label":"Yes","value":"p-0"},{"label":"No","value":"p-1"}]');
+  unseen jsonb:=pg_temp.question('Do you have a driver''s license?','SINGLE_SELECT','[{"label":"Yes","value":"d-0"},{"label":"No","value":"d-1"}]');
+begin
+  earlier:=pg_temp.running(who);
+  perform pg_temp.answer_earlier(earlier,sponsor_old,'"old-1"');
+  now_c:=pg_temp.running(who);
+  -- The first read of a form returns remembered answers as this send's own answers, without changing its status.
+  v_result:=pg_temp.as_worker_prefill(now_c,jsonb_build_array(sponsor_new,unseen));
+  if jsonb_array_length(v_result)<>1 or v_result->0->>'value'<>'p-1' or v_result->0->>'fingerprint'<>sponsor_new->>'fingerprint' then raise exception 'CHECK_PREFILL_RESULT %',v_result; end if;
+  if (select status from public.application_autopilots where id=(now_c->>'autopilot')::uuid)<>'RUNNING' then raise exception 'CHECK_PREFILL_CHANGED_STATUS'; end if;
+  if exists(select 1 from public.application_autopilot_questions where autopilot_id=(now_c->>'autopilot')::uuid and fingerprint=unseen->>'fingerprint') then raise exception 'CHECK_PREFILL_RECORDED_UNSEEN'; end if;
+  if (select a.answered_by from public.application_autopilot_answers a join public.application_autopilot_questions q on q.id=a.question_id
+      where q.autopilot_id=(now_c->>'autopilot')::uuid)<>(who->>'user')::uuid then raise exception 'CHECK_PREFILL_NOT_CANDIDATE_ANSWER'; end if;
+  insert into remembered_answer_checks values('first_read_prefills_remembered_answers_without_changing_status',true);
+  -- A second read never duplicates the answer.
+  v_again:=pg_temp.as_worker_prefill(now_c,jsonb_build_array(sponsor_new));
+  if jsonb_array_length(v_again)<>0 or (select count(*) from public.application_autopilot_answers a join public.application_autopilot_questions q on q.id=a.question_id where q.autopilot_id=(now_c->>'autopilot')::uuid)<>1 then
+    raise exception 'CHECK_PREFILL_DUPLICATED'; end if;
+  insert into remembered_answer_checks values('prefill_is_idempotent',true);
+end $prefill$;
+
+do $punctuation$
+declare who jsonb:=pg_temp.candidate(); newest jsonb; older jsonb; now_d jsonb; v_result jsonb;
+  employed_old jsonb:=pg_temp.question('Have you ever worked here?','SINGLE_SELECT','[{"label":"Yes, I did.","value":"e-0"},{"label":"No, I have never worked for Carvana or ADESA.","value":"e-1"}]');
+  employed_newest jsonb:=pg_temp.question('Have you ever worked here?','SINGLE_SELECT','[{"label":"Current employee","value":"f-0"},{"label":"Never","value":"f-1"}]');
+  employed_now jsonb:=pg_temp.question('Have you ever worked here?','SINGLE_SELECT','[{"label":"Yes, I did","value":"g-0"},{"label":"No, I have never worked for Carvana or ADESA","value":"g-1"}]');
+begin
+  older:=pg_temp.running(who);
+  perform pg_temp.answer_earlier(older,employed_old,'"e-1"');
+  newest:=pg_temp.running(who);
+  perform pg_temp.answer_earlier(newest,employed_newest,'"f-1"');
+  now_d:=pg_temp.running(who);
+  -- The newest answer's choice ("Never") isn't offered; the older answer matches despite the trailing period.
+  v_result:=pg_temp.as_worker_prefill(now_d,jsonb_build_array(employed_now));
+  if jsonb_array_length(v_result)<>1 or v_result->0->>'value'<>'g-1' then raise exception 'CHECK_PUNCTUATION_OR_FALLBACK %',v_result; end if;
+  insert into remembered_answer_checks values('choices_match_despite_punctuation_and_older_answers_are_tried',true);
+end $punctuation$;
+
 select check_name, passed from remembered_answer_checks order by check_name;
 rollback;

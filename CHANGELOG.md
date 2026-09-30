@@ -4,6 +4,14 @@ This file records material repository changes. Product capability is described
 with evidence labels; repository implementation does not imply hosted activation
 or production readiness.
 
+## 2026-09-30 — Standing answers, second confirmed application, observability
+
+- **Verified:** second confirmed application (Carvana Strategy Analyst) with a required GPA multi-select; Gmail code read in 6 s.
+- **Deployed:** React Select multi-selects read correctly in the hosted Linux browser (options carry `aria-selected` there); Linux-platform fixture test (D-113 follow-up).
+- **Deployed:** standing answers (D-117). A candidate's saved answers to routine questions fill new wordings in the same pass; each automatic answer is labeled `CANDIDATE`, `REMEMBERED` or `STANDING` with its basis. Migration `20260930050000` applied to hosted and recorded.
+- **Deployed:** worker events and `npm run ops:status` (`--watch`, `--app <id>`) (D-116); one-pass remembered answers (D-115); transient-stop retries (D-114). Migrations `20260930010000` to `20260930040000` applied to hosted and recorded.
+- **Docs:** [founder directives](docs/execution/founder-directives.md), [ATS board templates](docs/boards/README.md), playbook updates.
+
 ## 2026-09-30 — First confirmed application and remembered answers
 
 - **Verified:** first end-to-end confirmed application (Carvana, Greenhouse): automatic Gmail security code, receipt stored, Home shows Applied.

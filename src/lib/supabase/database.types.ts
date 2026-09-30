@@ -413,26 +413,32 @@ export type Database = {
       application_autopilot_answers: {
         Row: {
           answered_by: string
+          basis: Json | null
           command_id: string
           created_at: string
           id: string
           question_id: string
+          source: string
           value_json: Json
         }
         Insert: {
           answered_by: string
+          basis?: Json | null
           command_id: string
           created_at?: string
           id?: string
           question_id: string
+          source?: string
           value_json: Json
         }
         Update: {
           answered_by?: string
+          basis?: Json | null
           command_id?: string
           created_at?: string
           id?: string
           question_id?: string
+          source?: string
           value_json?: Json
         }
         Relationships: [
@@ -2534,6 +2540,36 @@ export type Database = {
           extraction_status?: string
           id?: string
           kind?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      candidate_standing_answers: {
+        Row: {
+          answer: string
+          candidate_id: string
+          created_at: string
+          id: string
+          topic: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          answer: string
+          candidate_id: string
+          created_at?: string
+          id?: string
+          topic: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          answer?: string
+          candidate_id?: string
+          created_at?: string
+          id?: string
+          topic?: string
           updated_at?: string
           workspace_id?: string
         }
@@ -4947,7 +4983,15 @@ export type Database = {
         Args: { p_id: string; p_lease_token: string }
         Returns: Json
       }
+      read_candidate_standing_answers: {
+        Args: { p_id: string; p_lease_token: string }
+        Returns: Json
+      }
       read_auto_apply_state: { Args: never; Returns: Json }
+      record_application_autopilot_standing_answers: {
+        Args: { p_answers: Json; p_id: string; p_lease_token: string }
+        Returns: Json
+      }
       reconcile_application_fill_runtime_release: {
         Args: {
           p_computer_session_id: string
@@ -5205,6 +5249,10 @@ export type Database = {
           replayed: boolean
           resume_attempt_id: string
         }[]
+      }
+      save_candidate_standing_answer: {
+        Args: { p_answer: string; p_topic: string }
+        Returns: string
       }
       save_application_autopilot_answers: {
         Args: {

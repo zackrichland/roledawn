@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Page } from "playwright-core";
+import type { AgentQuestionDescriptor } from "../../domain/application-agent-questions.ts";
 import type { ApplicationAutopilotClaim, ApplicationAutopilotCompletion, ApplicationAutopilotRepository } from "../../domain/application-autopilot.ts";
 import { coordinateApplicationAutopilot, type DeliveryWorkerOutcome } from "./application-autopilot-worker.ts";
 import type { ApplicationFillExecutionPackage } from "./application-fill-materializer.ts";
@@ -111,4 +112,59 @@ test("a refusal claimed before any submission permission stays a safe stop", asy
   const f = fixture();
   await coordinateApplicationAutopilot({ ...f, claim, async drive() { return { kind: "NOT_ACCEPTED", reasonCode: "DELIVERY_EMAIL_VERIFICATION_TIMEOUT" }; } });
   assert.equal(f.completions[0]?.outcome, "FAILED_SAFE");
+});
+
+test("remembered answers for askable fields are fetched once per field and filled in the same pass", async () => {
+  const f = fixture();
+  const asked: string[][] = [];
+  const remembered = { answerId: ID, fieldId: "field_1", fingerprint: HASH, value: "No" };
+  const repository = { ...f.repository, async prefillAnswers(_lease: unknown, questions: readonly { fingerprint: string }[]) {
+    asked.push(questions.map((question) => question.fingerprint));
+    return questions.some((question) => question.fingerprint === HASH) ? [remembered] : [];
+  } };
+  const descriptor = { fieldId: "field_1", fingerprint: HASH, label: "Will you require sponsorship?", kind: "SINGLE_SELECT" as const, required: true,
+    options: [{ value: "Yes", label: "Yes" }, { value: "No", label: "No" }], reasonCode: "MISSING_EXACT_ANSWER" as const };
+  const loaded: unknown[] = [];
+  await coordinateApplicationAutopilot({ ...f, repository, claim, async drive(task) {
+    loaded.push(await task.questions.loadAnswers({ binding: task.executionPackage.binding, questions: [descriptor] }));
+    loaded.push(await task.questions.loadAnswers({ binding: task.executionPackage.binding, questions: [descriptor] }));
+    return { kind: "FAILED_SAFE", reasonCode: "TEST_STOP" };
+  } });
+  assert.deepEqual(asked, [[HASH]], "each field is looked up once per run");
+  assert.deepEqual(loaded, [[remembered], [remembered]]);
+});
+
+test("standing answers are recorded and returned once; a failed lookup asks the candidate instead of failing the send", async () => {
+  const f = fixture();
+  const descriptor: AgentQuestionDescriptor = { fieldId: "field_2", fingerprint: HASH, label: "What was your GPA?", kind: "TEXT", required: true,
+    options: [], reasonCode: "MISSING_EXACT_ANSWER" };
+  const recorded = { answerId: ID, fieldId: "field_2", fingerprint: HASH, value: "3.5" };
+  const events: { stage: string; outcome: string }[] = [];
+  let reads = 0; let fail = false;
+  const repository = { ...f.repository,
+    async readStandingAnswers() { reads += 1; return { answers: [{ id: ID, topic: "GPA", answer: "3.5" }], job: null }; },
+    async recordStandingAnswers(_lease: unknown, proposals: readonly { value: unknown; basis: readonly string[] }[]) {
+      assert.deepEqual(proposals.map((item) => [item.value, item.basis]), [["3.5", [ID]]]);
+      return [recorded];
+    },
+    async recordEvent(_claim: unknown, event: { stage: string; outcome: string }) { events.push(event); },
+  };
+  const standingAnswers = { async resolve({ questions }: { questions: readonly AgentQuestionDescriptor[] }) {
+    if (fail) throw new Error("STANDING_ANSWERS_RESPONSE_INCOMPLETE");
+    return questions.map((question) => ({ descriptor: question, value: "3.5", basis: [ID] }));
+  } };
+  const results: unknown[] = [];
+  await coordinateApplicationAutopilot({ ...f, repository, claim, standingAnswers, async drive(task) {
+    const binding = task.executionPackage.binding;
+    results.push(await task.questions.resolveSavedAnswers!({ binding, questions: [descriptor] }));
+    // Already answered: no second lookup.
+    results.push(await task.questions.resolveSavedAnswers!({ binding, questions: [descriptor] }));
+    results.push(await task.questions.loadAnswers({ binding, questions: [descriptor] }));
+    fail = true;
+    results.push(await task.questions.resolveSavedAnswers!({ binding, questions: [{ ...descriptor, fieldId: "field_3", fingerprint: "b".repeat(64) }] }));
+    return { kind: "FAILED_SAFE", reasonCode: "TEST_STOP" };
+  } });
+  assert.deepEqual(results, [[recorded], [], [recorded], []]);
+  assert.equal(reads, 1, "standing answers are read once per run");
+  assert.deepEqual(events.filter((event) => event.stage === "standing_answers").map((event) => event.outcome), ["OK", "FAILED"]);
 });

@@ -144,6 +144,43 @@ test("delivery model fills known fields, pauses legal answers, rebuilds with exa
   });
 });
 
+test("standing answers fill a requested field in the same pass, so nothing is asked (D-117)", browserOptions, async () => {
+  await fixture(async ({ page, policy, requests }) => {
+    const answers: AgentQuestionAnswer[] = []; let asked: readonly AgentQuestionDescriptor[] = []; let offered: readonly AgentQuestionDescriptor[] = [];
+    // The resolver's own policy (which questions it may answer) is tested in standing-answers.test.ts.
+    const questions: ApplicationAgentQuestionRepository = {
+      async loadAnswers({ questions }) { return answers.filter((answer) => questions.some((question) => question.fieldId === answer.fieldId && question.fingerprint === answer.fingerprint)); },
+      async requestQuestions({ questions }) { asked = questions; return questions.map((question) => ({ ...question, id: "question-1", status: "OPEN" })); },
+      async resolveSavedAnswers({ questions }) {
+        validateAgentQuestionDescriptors(questions); offered = questions;
+        const answer = { answerId: "standing-1", fieldId: questions[0].fieldId, fingerprint: questions[0].fingerprint, value: true };
+        answers.push(answer);
+        return [answer];
+      },
+    };
+    const results: unknown[] = [];
+    const harness: AgentFormHarness = { async run(input) {
+      const form = input.input.form as { fields: AgentBrowserField[] };
+      for (const field of form.fields) {
+        if (field.hasValue) continue;
+        if (field.name === "name") await input.executeTool("fill_fact", { fieldId: field.fieldId, factVersionId: "name-1" });
+        else if (field.kind === "FILE") await input.executeTool("upload_artifact", { fieldId: field.fieldId, artifactVersionId: "resume-1" });
+        else if (field.name === "consent") results.push(await input.executeTool("request_questions", { fieldIds: [field.fieldId] }));
+      }
+      await input.executeTool("complete_review", {});
+    } };
+    const authority = hooks(requests);
+    const driver = createApplicationDeliveryDriver({ harness, questions, resolvePage: () => page, sitePolicy: policy, submissionHooks: authority.value, browserTimeoutMs: 600 });
+    const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: policy.startUrl, executionPackage: packet(policy.startUrl) });
+    assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+    assert.equal(offered.length, 1);
+    assert.equal(asked.length, 0, "a covered question is never sent to the candidate");
+    assert.deepEqual((results[0] as { requestedFieldIds: string[] }).requestedFieldIds, []);
+    assert.deepEqual((results[0] as { answeredFromSavedAnswers: string[] }).answeredFromSavedAnswers, [offered[0].fieldId]);
+    assert.equal(requests.submits, 1); assert.equal(authority.begins(), 1);
+  });
+});
+
 test("a Next rule cannot permit the final submission endpoint; Greenhouse routes bind one board/job", async () => {
   const greenhouse = resolveGreenhouseDeliveryPolicy("https://job-boards.greenhouse.io/example/jobs/1234");
   // Boards that redirect their hosted page to a custom careers site still
@@ -495,6 +532,63 @@ test("saved answers fill only their own questions; self-identification uses equi
       saved("self_id.gender", "Woman"), saved("self_id.hispanic_latino", "Decline to self-identify"),
       saved("self_id.veteran_status", "I am not a protected veteran"), saved("self_id.disability_status", "Decline to self-identify")];
     const authority = hooks(requests); let reviewed: Record<string, string> = {}; const writes: Record<string, unknown>[] = [];
+    let modelCalls = 0;
+    const questions: ApplicationAgentQuestionRepository = {
+      async loadAnswers({ questions }) { return questions.filter((item) => item.kind === "BOOLEAN").map((item) => ({ answerId: "consent-true", fieldId: item.fieldId, fingerprint: item.fingerprint, value: true })); },
+      async requestQuestions({ questions }) { return questions.map((item) => ({ ...item, id: "question", status: "OPEN" })); },
+    };
+    // Every required field is filled from facts, so the model is not needed (D-115).
+    const harness: AgentFormHarness = { async run() { modelCalls += 1; } };
+    const driver = createApplicationDeliveryDriver({ harness, questions, resolvePage: () => page, sitePolicy: policy, browserTimeoutMs: 600,
+      submissionHooks: { ...authority.value, async checkpoint(state) {
+        if (state.phase === "STEP_REVIEWED" && state.stepId === "first") {
+          reviewed = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("#first input:not([type=file]), #first select")].map((element) => [element.name, element.value])));
+          writes.push(...state.writes as Record<string, unknown>[]);
+        }
+        await authority.value.checkpoint?.(state);
+      } },
+    });
+    const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: policy.startUrl, executionPackage: { ...content, facts } });
+    assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+    assert.equal(requests.submits, 1);
+    assert.deepEqual({ preferred_name: reviewed.preferred_name, zip: reviewed.zip, expected_salary: reviewed.expected_salary, source: reviewed.source,
+      gender: reviewed.gender, hispanic: reviewed.hispanic, disability: reviewed.disability },
+    { preferred_name: "Sam", zip: "20001", expected_salary: "$150,000 base", source: "2", gender: "2", hispanic: "3", disability: "3" });
+    for (const name of ["current_salary", "referrer_email", "veteran"]) assert.equal(reviewed[name], "", name);
+    assert.equal(modelCalls, 0);
+    // Every protected write is bound to its approved fact version, never a raw value.
+    for (const key of ["self_id.gender", "self_id.hispanic_latino", "self_id.disability_status", "compensation.expected_salary"]) {
+      assert.ok(writes.some((write) => write.factVersionId === `${key}-v1` && typeof write.valueHash === "string" && !("value" in write)), key);
+    }
+    assert.equal(writes.some((write) => write.factVersionId === "self_id.veteran_status-v1"), false);
+  });
+});
+
+test("model-proposed look-alike facts are refused when a required field sends the step to the model", browserOptions, async () => {
+  await fixture(async ({ page, policy, requests }) => {
+    await page.addInitScript(() => { document.addEventListener("DOMContentLoaded", () => {
+      const select = (name: string, label: string, choices: readonly string[]) =>
+        `<label>${label}<select name="${name}"><option value="">Select</option>${choices.map((choice, index) => `<option value="${index + 1}">${choice}</option>`).join("")}</select></label>`;
+      document.querySelector("#first")?.insertAdjacentHTML("afterbegin", [
+        '<label>Preferred first name<input name="preferred_name"></label>', '<label>ZIP code<input name="zip"></label>',
+        '<label>Describe your portfolio<input name="portfolio_notes" required></label>',
+        '<label>What are your salary expectations?<input name="expected_salary"></label>', '<label>Current salary<input name="current_salary"></label>',
+        '<label>Referrer\'s email<input name="referrer_email" type="email"></label>',
+        select("source", "How did you hear about us?", ["LinkedIn", "Company careers page"]),
+        select("gender", "Gender", ["Male", "Female", "Decline To Self Identify"]),
+        select("hispanic", "Are you Hispanic/Latino?", ["Yes", "No", "Decline To Self Identify"]),
+        // "I am not a protected veteran" is not "I am not a veteran": left for the candidate.
+        select("veteran", "Veteran Status", ["I am a veteran", "I am not a veteran", "Decline to self-identify"]),
+        select("disability", "Disability Status", ["Yes, I have a disability, or have had one in the past", "No, I do not have a disability and have not had one in the past", "I do not want to answer"]),
+      ].join(""));
+    }); });
+    const content = packet(policy.startUrl);
+    const saved = (factKey: string, value: string) => ({ factVersionId: `${factKey}-v1`, factKey, value, valueHash: createHash("sha256").update(JSON.stringify(value)).digest("hex") }) as ApplicationFillExecutionPackage["facts"][number];
+    const facts = [...content.facts, saved("contact.application_email", "alex@example.test"), saved("identity.preferred_name", "Sam"),
+      saved("location.postal_code", "20001"), saved("compensation.expected_salary", "$150,000 base"), saved("application.heard_about", "Company careers page"),
+      saved("self_id.gender", "Woman"), saved("self_id.hispanic_latino", "Decline to self-identify"),
+      saved("self_id.veteran_status", "I am not a protected veteran"), saved("self_id.disability_status", "Decline to self-identify")];
+    const authority = hooks(requests); let reviewed: Record<string, string> = {}; const writes: Record<string, unknown>[] = [];
     const refusals: Record<string, string | undefined> = {};
     const questions: ApplicationAgentQuestionRepository = {
       async loadAnswers({ questions }) { return questions.filter((item) => item.kind === "BOOLEAN").map((item) => ({ answerId: "consent-true", fieldId: item.fieldId, fingerprint: item.fingerprint, value: true })); },
@@ -519,19 +613,15 @@ test("saved answers fill only their own questions; self-identification uses equi
       } },
     });
     const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: policy.startUrl, executionPackage: { ...content, facts } });
-    assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
-    assert.equal(requests.submits, 1);
-    assert.deepEqual({ preferred_name: reviewed.preferred_name, zip: reviewed.zip, expected_salary: reviewed.expected_salary, source: reviewed.source,
-      gender: reviewed.gender, hispanic: reviewed.hispanic, disability: reviewed.disability },
-    { preferred_name: "Sam", zip: "20001", expected_salary: "$150,000 base", source: "2", gender: "2", hispanic: "3", disability: "3" });
-    for (const name of ["current_salary", "referrer_email", "veteran"]) assert.equal(reviewed[name], "", name);
+    // The unanswerable required field stops the step for the candidate; nothing is submitted.
+    assert.equal(result.kind, "QUESTIONS_REQUIRED", JSON.stringify(result));
+    assert.equal(requests.submits, 0);
+    const values = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("#first input:not([type=file]), #first select")].map((element) => [element.name, element.value])));
+    for (const name of ["current_salary", "referrer_email", "veteran"]) assert.equal(values[name], "", name);
     assert.match(refusals.current_salary ?? "", /CANDIDATE_ANSWER_REQUIRED/u);
     assert.match(refusals.referrer_email ?? "", /CANDIDATE_ANSWER_REQUIRED|FACT_FIELD_MISMATCH/u);
     assert.equal(refusals.veteran, "AGENTS_FILL_OPTION_AMBIGUOUS");
-    // Every protected write is bound to its approved fact version, never a raw value.
-    for (const key of ["self_id.gender", "self_id.hispanic_latino", "self_id.disability_status", "compensation.expected_salary"]) {
-      assert.ok(writes.some((write) => write.factVersionId === `${key}-v1` && typeof write.valueHash === "string" && !("value" in write)), key);
-    }
-    assert.equal(writes.some((write) => write.factVersionId === "self_id.veteran_status-v1"), false);
+    assert.equal(reviewed.current_salary, undefined, "no step was reviewed");
+    assert.equal(writes.length, 0);
   });
 });
