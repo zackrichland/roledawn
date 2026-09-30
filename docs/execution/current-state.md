@@ -13,9 +13,9 @@ three employer-confirmed applications across two employers, verified by hosted
 readback on 2026-09-30 UTC. Lever and Ashby have delivery adapters; live employer
 acceptance remains unproven for both. Keep the product scoped to personal use.
 
-**Published release:** `b4ae35b`, Netlify deployment
-`6abca481cfba66dce4ca9bd1`. Authenticated worker health verified that exact release
-at 05:56:59 UTC; the private gate returns 404 without access, all 14 checked page
+**Published release:** `3dd97f6` (includes Claude main `0364902`), Netlify deployment
+`6abd4c43f2662a90bbd6ccf2`. Authenticated worker health verified that exact release
+at 17:52:46 UTC; the private gate returns 404 without access, all 14 checked page
 assets return 200 and the approved private profile/story content remains
 visible. The sole new Ashby submission occurred on `b103640`. Final readback
 still shows one attempt, zero confirmed attempts/receipts, and
@@ -38,10 +38,10 @@ They do not override this snapshot or the [application playbook](application-pla
 | Writing | Frozen candidate inputs, source-linked drafting and verification, owned writing policies and five rendered files. | See [writing policies](../../policies/application-writing/README.md). |
 | Delivery | Browserbase form agent, approved facts/files, acknowledged writes, sealed single-use submit permission and employer-evidenced receipts. | Visible challenges and unknown contracts stop the send. |
 | Answers | Profile facts, same-context remembered candidate answers, saved standing answers, then the candidate. | Sensitive exclusions remain in worker and SQL; D-125 permits only exact explicitly saved clearance reuse. |
-| Branding | Employer logos from exact Ashby theme, Greenhouse configuration or Lever header, with bounded thumbnails. Code for a per-employer stored cache (`employer_logos`, D-134) is written and tested locally; the migration is **not applied** and the code falls back to live fetching. | Missing branding retains initials; no guessed domains, platform logos or banners. |
+| Branding | Employer logos from exact Ashby theme, Greenhouse configuration or Lever header, with bounded thumbnails. The per-employer cache (`employer_logos`, D-134) is applied and deployed. Production returned the same 1,044-byte WebP twice and hosted readback confirmed a FOUND row for the tested Ashby board. | Missing branding retains initials; no guessed domains, platform logos or banners. |
 | Stops and retry | One catalogue gives every stop plain-English copy, one primary action and a retry class; Try again shows only where it can help (D-133). | Database caps on manual retries and re-claimed fill runs are not built (needs a migration). |
-| Agent context | Reviewed per-ATS notes for Greenhouse, Lever and Ashby are added to the delivery-step prompt; eight other boards keep unverified paths (D-132). | Unit-tested only; not yet observed in a live run. |
-| Interface | SF system stack with Inter fallback, tokenized surfaces and CSS-only motion (D-135). | Public pages screenshotted; signed-in screens checked only in a static mock. |
+| Agent context | Reviewed per-ATS notes for Greenhouse, Lever and Ashby are added to the delivery-step prompt; eight other boards keep unverified paths (D-132). | Deployed and unit-tested; not yet observed in a live application run. |
+| Interface | SF system stack with Inter fallback, tokenized surfaces and CSS-only motion (D-135). | Signed-in local Home visually checked after rollout; the tested Ashby logo renders and review-before-send remains on. Other screens retain earlier evidence. |
 | Operations and access | Private access-key sessions, ownership checks, database leases, immediate lane wakeups, scheduled recovery and sanitized worker events. | Local web development still relies on the hosted scheduler for its initial tick. |
 
 ## ATS evidence
