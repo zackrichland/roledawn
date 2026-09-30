@@ -95,9 +95,10 @@ export async function loadAshbyCompanyLogo(board: string, fetcher: typeof fetch 
     if (!rasterMatchesType(bytes, contentType)) return null;
     // Employer-uploaded rasters can be enormous despite a small compressed body.
     // Decode once on the server; the cached browser asset stays at most 96 px per side.
+    // Local Netlify deploys include sharp's WASM fallback on Linux; allow a bounded cold-start margin.
     const thumbnail = await sharp(bytes, { limitInputPixels: IMAGE_PIXEL_LIMIT, failOn: "warning", animated: false })
       .rotate().resize({ width: 96, height: 96, fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 85 }).timeout({ seconds: 3 }).toBuffer();
+      .webp({ quality: 85 }).timeout({ seconds: 8 }).toBuffer();
     return { bytes: thumbnail, contentType: "image/webp" };
   } catch {
     return null;

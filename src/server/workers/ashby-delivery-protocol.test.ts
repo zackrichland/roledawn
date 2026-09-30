@@ -85,7 +85,7 @@ test("a server echo that changes another answer or the form schema permanently s
   ]) {
     const protocol = initialized(); protocol.beginField(field("_systemfield_name"), "Alex Candidate");
     const request = save("_systemfield_name", "Alex Candidate"); protocol.authorize(request);
-    assert.throws(() => protocol.observe(request, { data: { setFormValue: mutate() } }), /CONTRACT_DRIFT/u);
+    assert.throws(() => protocol.observe(request, { data: { setFormValue: mutate() } }), /DRIFT/u);
     assert.equal(protocol.ready(), false); assert.equal(protocol.authorize(submission(), undefined, true), null);
   }
 });
@@ -161,4 +161,18 @@ test("only an employer application FormSubmitSuccess, without errors or a block,
   }
   assert.equal(ashbySubmissionAccepted("ApiSubmitMultipleFormsAction", { data: { submitMultipleFormsAction: { ...success, surveyFormResults: [] } } }, 1), false);
   assert.equal(ashbySubmissionAccepted("ApiSubmitMultipleFormsAction", { data: { submitMultipleFormsAction: success } }, 2), false);
+});
+
+test("protocol drift reports a static stage without exposing an answer", () => {
+  for (const [response, reason] of [
+    [{ ...form(2, { _systemfield_name: "Alex Candidate" }), sourceFormDefinitionId: null }, "DELIVERY_ASHBY_FORM_DEFINITION_ID_DRIFT"],
+    [{ ...form(2, { _systemfield_name: "Alex Candidate" }), id: id(99) }, "DELIVERY_ASHBY_FORM_RENDER_ID_DRIFT"],
+    [form(2, { _systemfield_name: "Private unexpected response" }), "DELIVERY_ASHBY_FIELD_VALUE_ECHO_DRIFT"],
+    [form(2, { _systemfield_name: "Alex Candidate", eligible: true }), "DELIVERY_ASHBY_OTHER_FIELD_VALUE_DRIFT"],
+  ] as const) {
+    const protocol = initialized(); protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+    const request = save("_systemfield_name", "Alex Candidate"); protocol.authorize(request);
+    assert.throws(() => protocol.observe(request, { data: { setFormValue: response } }), { message: reason });
+    assert.equal(protocol.ready(), false);
+  }
 });

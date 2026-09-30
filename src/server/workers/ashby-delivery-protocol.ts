@@ -24,7 +24,7 @@ const stable = (value: unknown): string => JSON.stringify(value, (_key, val: unk
 const equal = (a: unknown, b: unknown) => stable(a) === stable(b);
 const uuid = (value: unknown): value is string => typeof value === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(value);
 const keys = (value: Obj, required: string[], optional: string[] = []) => required.every((key) => Object.hasOwn(value, key)) && Object.keys(value).every((key) => required.includes(key) || optional.includes(key));
-const fail = (): never => { throw new Error("DELIVERY_ASHBY_CONTRACT_DRIFT"); };
+const fail = (reason = "CONTRACT_DRIFT"): never => { throw new Error(`DELIVERY_ASHBY_${reason}`); };
 export type AshbyEnvelope = Readonly<{ operation: AshbyOperation; variables: Obj }>;
 export function parseAshbyEnvelope(url: string, method: string, body: Buffer | null, origin: string): AshbyEnvelope | null {
   const parsed = new URL(url);
@@ -42,21 +42,24 @@ type Field = { path: string; type: string; many: boolean; options: { label: stri
 type Form = { id: string; definition: string; action: string; fields: Map<string, Field> };
 function readForm(value: unknown): Form {
   const form = object(value);
-  if (!form || !uuid(form.id) || !uuid(form.sourceFormDefinitionId) || !Array.isArray(form.formControls) || form.formControls.length !== 1 || !uuid(object(form.formControls[0])?.identifier) || !Array.isArray(form.sections)) return fail();
+  if (!form || !uuid(form.id)) return fail("FORM_RENDER_ID_DRIFT");
+  if (!uuid(form.sourceFormDefinitionId)) return fail("FORM_DEFINITION_ID_DRIFT");
+  if (!Array.isArray(form.formControls) || form.formControls.length !== 1 || !uuid(object(form.formControls[0])?.identifier)) return fail("FORM_ACTION_SCHEMA_DRIFT");
+  if (!Array.isArray(form.sections)) return fail("FORM_SECTION_SCHEMA_DRIFT");
   const fields = new Map<string, Field>();
   for (const section of form.sections) {
     const s = object(section);
-    if (!s || !Array.isArray(s.fieldEntries)) return fail();
+    if (!s || !Array.isArray(s.fieldEntries)) return fail("FORM_FIELD_LIST_DRIFT");
     for (const entry of s.fieldEntries) {
       const e = object(entry), f = object(e?.field);
-      if (!e || !f || typeof f.path !== "string" || !/^[A-Za-z0-9_-]{1,100}$/u.test(f.path) || typeof f.type !== "string" || fields.has(f.path)) return fail();
+      if (!e || !f || typeof f.path !== "string" || !/^[A-Za-z0-9_-]{1,100}$/u.test(f.path) || typeof f.type !== "string" || fields.has(f.path)) return fail("FIELD_SCHEMA_DRIFT");
       const options = Array.isArray(f.selectableValues) ? f.selectableValues.map((item) => {
         const option = object(item);
-        if (!option || typeof option.label !== "string" || !Object.hasOwn(option, "value")) return fail();
+        if (!option || typeof option.label !== "string" || !Object.hasOwn(option, "value")) return fail("FIELD_OPTIONS_SCHEMA_DRIFT");
         return { label: option.label, value: option.value };
       }) : [];
       const raw = object(e.fieldValue);
-      const stored = raw?.__typename === "JSONBox" ? raw.value : raw?.__typename === "File" ? { fileId: raw.id, filename: raw.filename } : e.fieldValue == null ? null : fail();
+      const stored = raw?.__typename === "JSONBox" ? raw.value : raw?.__typename === "File" ? { fileId: raw.id, filename: raw.filename } : e.fieldValue == null ? null : fail("FIELD_VALUE_SCHEMA_DRIFT");
       fields.set(f.path, { path: f.path, type: f.type, many: f.isMany === true, options, value: stored, required: e.isRequired === true, hidden: s.isHidden === true || e.isHidden === true });
     }
   }
@@ -73,25 +76,27 @@ export function createAshbyProtocol(board: string, jobId: string) {
   const locations = new Map<string, unknown>();
   let broken = false;
   const endpoint = (operation: AshbyOperation, origin: string) => `${origin}/api/non-user-graphql?op=${operation}`;
-  const assertReady = () => { if (broken || !forms.length) fail(); };
+  const assertReady = () => { if (broken || !forms.length) fail("FORM_NOT_READY"); };
   const matchField = (field: AgentBrowserField): { form: Form; field: Field } => {
     assertReady();
     const matches = forms.flatMap((form) => [...form.fields.values()].filter((item) => item.path === (field.domId || field.name) && (!field.formKey || field.formKey === form.id)).map((item) => ({ form, field: item })));
-    if (matches.length !== 1 || matches[0].field.hidden) return fail();
+    if (matches.length !== 1 || matches[0].field.hidden) return fail("FIELD_BINDING_DRIFT");
     return matches[0];
   };
   const bound = (v: Obj, form: Form, field: Field) => v.organizationHostedJobsPageName === board && v.formRenderIdentifier === form.id && v.formDefinitionIdentifier === form.definition && v.path === field.path;
   function updateForm(raw: unknown, expected: FieldAction | UploadAction, file: boolean) {
     const next = readForm(raw);
-    if (!equal(identity(next), identity(expected.form))) return fail();
+    if (next.id !== expected.form.id) return fail("FORM_RENDER_ID_DRIFT");
+    if (next.definition !== expected.form.definition) return fail("FORM_DEFINITION_ID_DRIFT");
+    if (!equal(identity(next), identity(expected.form))) return fail("FORM_SCHEMA_DRIFT");
     for (const [path, prior] of expected.form.fields) {
       const actual = next.fields.get(path)!.value;
       if (path === expected.field.path) {
         if (file) {
           const saved = object(actual);
-          if (!saved || !uuid(saved.fileId) || saved.filename !== (expected as UploadAction).artifact.filename) return fail();
-        } else if (!equal(actual, (expected as FieldAction).expected)) return fail();
-      } else if (!equal(actual, prior.value)) return fail();
+          if (!saved || !uuid(saved.fileId) || saved.filename !== (expected as UploadAction).artifact.filename) return fail("UPLOAD_ECHO_DRIFT");
+        } else if (!equal(actual, (expected as FieldAction).expected)) return fail("FIELD_VALUE_ECHO_DRIFT");
+      } else if (!equal(actual, prior.value)) return fail("OTHER_FIELD_VALUE_DRIFT");
     }
     for (const [path, actual] of next.fields) expected.form.fields.get(path)!.value = actual.value;
     expected.acknowledged = true;
@@ -102,14 +107,14 @@ export function createAshbyProtocol(board: string, jobId: string) {
     submitOperation: (): AshbyOperation => forms.length > 1 ? "ApiSubmitMultipleFormsAction" : "ApiSubmitSingleApplicationFormAction",
     fileFields() { assertReady(); return forms.flatMap((form) => [...form.fields.values()].filter((field) => field.type === "File" && !field.many && !field.hidden).map((field) => ({ formId: form.id, path: field.path }))); },
     beginField(field: AgentBrowserField, approved: AgentFieldValue, match?: OptionMatch) {
-      if (fieldAction || uploadAction) return fail();
+      if (fieldAction || uploadAction) return fail("ACTION_ALREADY_ACTIVE");
       const target = matchField(field);
       const { type, many, options } = target.field;
       let expected: unknown = approved;
       if (type === "Boolean") {
         if (typeof approved === "boolean") expected = approved;
         else if (typeof approved === "string" && /^(?:yes|no|true|false)$/iu.test(approved.trim())) expected = /^(?:yes|true)$/iu.test(approved.trim());
-        else return fail();
+        else return fail("BOOLEAN_VALUE_TYPE_INVALID");
       } else if (type === "ValueSelect") {
         const resolve = (value: string) => {
           const found = resolveOptionValue(options.map((option) => ({ label: option.label, value: String(option.value) })), value, match);
@@ -117,17 +122,17 @@ export function createAshbyProtocol(board: string, jobId: string) {
         };
         expected = many && Array.isArray(approved) ? approved.map(resolve) : typeof approved === "string" && !many ? resolve(approved) : fail();
       } else if (type === "Location") {
-        if (typeof approved !== "string" || many) return fail();
+        if (typeof approved !== "string" || many) return fail("LOCATION_VALUE_TYPE_INVALID");
         expected = undefined; locations.clear();
-      } else if (!["String", "LongText", "Email", "Phone", "Url", "Number"].includes(type) || many || typeof approved !== "string") return fail();
+      } else if (!["String", "LongText", "Email", "Phone", "Url", "Number"].includes(type) || many || typeof approved !== "string") return fail("FIELD_VALUE_TYPE_UNSUPPORTED");
       fieldAction = { ...target, expected, admitted: false, acknowledged: false, approved, match };
     },
     fieldAcknowledged: () => fieldAction?.acknowledged === true,
     endField() { fieldAction = null; locations.clear(); },
     beginUpload(field: AgentBrowserField, artifact: MaterializedApplicationArtifact) {
-      if (fieldAction || uploadAction) return fail();
+      if (fieldAction || uploadAction) return fail("ACTION_ALREADY_ACTIVE");
       const target = matchField(field);
-      if (target.field.type !== "File" || target.field.many || target.field.value !== null) return fail();
+      if (target.field.type !== "File" || target.field.many || target.field.value !== null) return fail("UPLOAD_FIELD_STATE_DRIFT");
       uploadAction = { ...target, artifact, handleRequested: false, bytesAcknowledged: false, attachRequested: false, acknowledged: false };
     },
     upload: () => uploadAction,
@@ -176,16 +181,16 @@ export function createAshbyProtocol(board: string, jobId: string) {
     observe(envelope: AshbyEnvelope, payload: unknown) {
       try {
         const body = object(payload), data = object(body?.data);
-        if (!data || body?.errors != null) return fail();
+        if (!data || body?.errors != null) return fail("RESPONSE_DATA_INVALID");
         const op = envelope.operation;
         if (op === "ApiJobPosting") {
           const posting = object(data.jobPosting);
-          if (!posting || posting.id !== jobId || forms.length || !Array.isArray(posting.surveyForms) || posting.automatedProcessingLegalNotice != null) return fail();
+          if (!posting || posting.id !== jobId || forms.length || !Array.isArray(posting.surveyForms) || posting.automatedProcessingLegalNotice != null) return fail("POSTING_SCHEMA_DRIFT");
           forms = [readForm(posting.applicationForm), ...posting.surveyForms.map(readForm)];
-          if (new Set(forms.map((form) => form.id)).size !== forms.length || forms.some((form) => [...form.fields.values()].some((field) => field.value !== null))) return fail();
+          if (new Set(forms.map((form) => form.id)).size !== forms.length || forms.some((form) => [...form.fields.values()].some((field) => field.value !== null))) return fail("INITIAL_FORM_STATE_UNSUPPORTED");
         } else if (op === "ApiAutocompleteGeoLocation" && fieldAction?.field.type === "Location") {
           const results = object(data.result)?.suggestions;
-          if (!Array.isArray(results)) return fail();
+          if (!Array.isArray(results)) return fail("LOCATION_RESPONSE_DRIFT");
           for (const item of results) {
             const result = object(item), path = result?.geoLocationPath;
             const last = Array.isArray(path) ? object(path.at(-1)) : null;
@@ -193,19 +198,19 @@ export function createAshbyProtocol(board: string, jobId: string) {
             const value = { text: result.name, providerLocationId: last.providerLocationId };
             locations.set(stable(value), value);
           }
-        } else if (op === "ApiSetFormValue") { if (!fieldAction?.admitted) return fail(); updateForm(data.setFormValue, fieldAction, false); }
+        } else if (op === "ApiSetFormValue") { if (!fieldAction?.admitted) return fail("FIELD_ACK_OUTSIDE_ACTION"); updateForm(data.setFormValue, fieldAction, false); }
         else if (op === "ApiCreateFileUploadHandle") {
           const a = uploadAction, handle = object(data.fileUploadHandle), fields = object(handle?.fields);
-          if (!a?.handleRequested || a.handle || typeof handle?.handle !== "string" || !handle.handle || handle.handle.length > 500 || typeof handle.url !== "string" || !fields) return fail();
+          if (!a?.handleRequested || a.handle || typeof handle?.handle !== "string" || !handle.handle || handle.handle.length > 500 || typeof handle.url !== "string" || !fields) return fail("UPLOAD_HANDLE_SCHEMA_DRIFT");
           const url = new URL(handle.url);
-          if (url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash || !/^[a-z0-9.-]+\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com$/u.test(url.hostname) || Object.keys(fields).length > 20 || Object.entries(fields).some(([key, value]) => !/^[A-Za-z0-9_-]{1,100}$/u.test(key) || typeof value !== "string" || value.length > 12_000)) return fail();
+          if (url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash || !/^[a-z0-9.-]+\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com$/u.test(url.hostname) || Object.keys(fields).length > 20 || Object.entries(fields).some(([key, value]) => !/^[A-Za-z0-9_-]{1,100}$/u.test(key) || typeof value !== "string" || value.length > 12_000)) return fail("UPLOAD_HANDLE_DESTINATION_DRIFT");
           a.handle = handle.handle; a.url = url.href; a.fields = { "Content-Type": a.artifact.mediaType, ...fields as Record<string, string> };
-          if (a.fields["Content-Type"] !== a.artifact.mediaType || Object.hasOwn(a.fields, "success_action_redirect") || Object.hasOwn(a.fields, "redirect")) return fail();
-        } else if (op === "ApiSetFormValueToFile") { if (!uploadAction?.attachRequested) return fail(); updateForm(data.setFormValueToFile, uploadAction, true); }
+          if (a.fields["Content-Type"] !== a.artifact.mediaType || Object.hasOwn(a.fields, "success_action_redirect") || Object.hasOwn(a.fields, "redirect")) return fail("UPLOAD_HANDLE_FIELDS_DRIFT");
+        } else if (op === "ApiSetFormValueToFile") { if (!uploadAction?.attachRequested) return fail("UPLOAD_ACK_OUTSIDE_ACTION"); updateForm(data.setFormValueToFile, uploadAction, true); }
       } catch (error) { broken = true; throw error; }
     },
     surveyCount: () => Math.max(0, forms.length - 1),
-    review() { assertReady(); if (fieldAction || uploadAction) return fail(); return forms.map((form) => ({ formId: form.id, definitionId: form.definition, actionId: form.action, fields: [...form.fields.values()].map((field) => ({ path: field.path, valueHash: digest(stable(field.value)) })) })); },
+    review() { assertReady(); if (fieldAction || uploadAction) return fail("ACTION_ALREADY_ACTIVE"); return forms.map((form) => ({ formId: form.id, definitionId: form.definition, actionId: form.action, fields: [...form.fields.values()].map((field) => ({ path: field.path, valueHash: digest(stable(field.value)) })) })); },
   };
 }
 

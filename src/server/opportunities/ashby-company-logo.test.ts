@@ -84,7 +84,8 @@ test("a large employer-uploaded raster becomes an aspect-preserving thumbnail", 
   assert.ok(bytes.byteLength > 256_000 && bytes.byteLength < 1_000_000);
   const fetcher = (async (url) => String(url).includes("jobs.ashbyhq.com")
     ? new Response(boardHtml(), { headers: { "content-type": "text/html" } })
-    : new Response(bytes, { headers: { "content-type": "image/png" } })) as typeof fetch;
+    // WASM sharp can return a SharedArrayBuffer-backed Buffer; HTTP bodies use ordinary buffers.
+    : new Response(new Uint8Array(bytes), { headers: { "content-type": "image/png" } })) as typeof fetch;
   const asset = await loadAshbyCompanyLogo("example", fetcher);
   assert.ok(asset);
   assert.equal(asset.contentType, "image/webp");
@@ -92,6 +93,7 @@ test("a large employer-uploaded raster becomes an aspect-preserving thumbnail", 
   const metadata = await sharp(asset.bytes).metadata();
   assert.equal(metadata.width, 96);
   assert.equal(metadata.height, 19);
+  assert.equal((await companyLogoResponse(asset).arrayBuffer()).byteLength, asset.bytes.byteLength);
 });
 
 test("compressed rasters above 80 megapixels are rejected before pixel decoding", async () => {
