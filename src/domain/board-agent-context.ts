@@ -58,7 +58,7 @@ export const BOARD_CONTEXT: Readonly<Record<BoardId, BoardContext>> = Object.fre
     "The phone widget reformats numbers with spaces and dashes; same digits, same number.",
     "For repeat routine questions use the candidate's remembered or standing answer IDs; never guess.",
     "School and degree typeaheads are unsupported; leave them for the candidate.",
-    "Narrative prompts can use single-line inputs; keep paragraphs for textareas only.",
+    "Narrative inputs can have short maxLength limits; revise to fit. Only textareas keep paragraphs.",
     "Submit is server-side. HTTP 428 requests an emailed code; it is neither an error nor a receipt.",
   ]),
   lever: board("lever", "Lever", "fills-only", "repo", [

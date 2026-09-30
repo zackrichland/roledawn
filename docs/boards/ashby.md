@@ -81,6 +81,8 @@ Single page.
 
 ## Known quirks
 
+- **Verified 2026-09-30:** a fresh form changes field fingerprints within the same send. Recall the candidate's original answer by matching wording and option labels in the same frozen context; derived answers and protected questions retain their exclusions (D-143; SQL regression).
+
 - Field saves disclose approved data before final submission; a stopped run may have an employer-side draft. Copy must not claim that no data was sent.
 - One shared GraphQL URL handles both reads and writes. Never allow it by origin or operation name alone; query documents, variables and the current action must agree.
 - The reviewed public client refetches organization metadata with optional `searchContext` omitted, `null` or `JobPosting`, and issues a constant empty City lookup on mount and around uploads. Those exact reads are admitted; empty-search responses never supply candidate location choices. Every nonempty lookup still requires an active approved-city search. Rejections report a static operation/rule code without request values.

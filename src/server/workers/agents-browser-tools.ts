@@ -22,6 +22,7 @@ export type AgentFieldKind = AgentQuestionDescriptor["kind"] | "FILE" | "UNSUPPO
 type RawControl = {
   index: number; tag: string; type: string; role: string; name: string; id: string; label: string; optionLabel: string;
   autocomplete: string; placeholder: string; required: boolean; readOnly: boolean;
+  maxLength?: number;
   form: string; value: string; checked: boolean; selected: string[];
   valid: boolean; accept: string; multiple: boolean; disabled: boolean;
   options: { value: string; label: string }[];
@@ -47,6 +48,8 @@ export type AgentBrowserField = Readonly<{
   provider?: "ASHBY";
   autocomplete: string;
   placeholder: string;
+  /** Native UTF-16 text limit; omitted when the control has none. */
+  maxLength?: number;
   required: boolean;
   readOnly: boolean;
   candidateOnly: boolean;
@@ -199,6 +202,7 @@ async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = fals
       optionLabel: [labelledBy, element.getAttribute("aria-label"), labels || ownText(element.closest("label"))]
         .filter(Boolean).join(" ").replace(/\s+/gu, " ").trim(),
       autocomplete: native.autocomplete ?? "", placeholder: native.placeholder ?? "",
+      ...((element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && native.maxLength >= 0 ? { maxLength: native.maxLength } : {}),
       required: ashbyRequired || Boolean(native.required) || element.getAttribute("aria-required") === "true" || Boolean(leverHeading?.querySelector(".required")) || type === "file" && Boolean(element.closest('.file-upload[aria-required="true"]')),
       readOnly: (Boolean(native.readOnly) && element.getAttribute("role") !== "combobox") || element.getAttribute("aria-readonly") === "true",
       form: ashbyEntry ? ashbyEntry.getAttribute("data-field-entry-id")!.slice(0, -(ashbyPath.length + 1)) : form ? JSON.stringify([form.id, form.getAttribute("name"), form.getAttribute("action"), form.method]) : "outside-form",
@@ -391,6 +395,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
           ...(ashbyLabels && control.form !== "outside-form" ? { provider: "ASHBY" as const } : {}),
           name: control.name, id: control.id, label, autocomplete: control.autocomplete,
           placeholder: control.placeholder, required: group.some((item) => item.required),
+          ...(control.maxLength !== undefined ? { maxLength: control.maxLength } : {}),
           readOnly: group.some((item) => item.readOnly), kind: fieldKind, options,
           accept: control.accept, multiple: control.multiple,
           aria: control.aria ? { listboxId: control.aria.listboxId, options: control.aria.options } : null,
@@ -417,6 +422,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
         let field: AgentBrowserField = Object.freeze({
           fieldId: `field_${fingerprint}`, fingerprint, label, kind: fieldKind, inputType: control.type,
           name: control.name, domId: control.id, autocomplete: control.autocomplete, placeholder: control.placeholder,
+          ...(descriptor.maxLength !== undefined ? { maxLength: descriptor.maxLength } : {}),
           ...(ashbyLabels && control.form !== "outside-form" ? { formKey: control.form } : {}),
           ...(descriptor.provider ? { provider: descriptor.provider } : {}),
           required: descriptor.required, readOnly: descriptor.readOnly,
@@ -486,6 +492,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     let expected: AgentFieldValue;
     if (field.kind === "TEXT" || field.kind === "LONG_TEXT") {
       if (typeof answer !== "string" || answer.length > 8_000) throw new Error("AGENTS_FILL_ANSWER_TYPE_INVALID");
+      if (field.maxLength !== undefined && answer.length > field.maxLength) throw new Error("AGENTS_FILL_TEXT_TOO_LONG");
       expected = answer;
       await controls.nth(indexes[0]).fill(answer, { timeout: 5_000 });
       // Lever's parser protects inputs on native change/paste, not input.

@@ -334,6 +334,56 @@ test("narrative paragraphs fit native single-line fields before validation and e
   });
 });
 
+test("bounded narrative rejects an oversized draft before writing and accepts a supported revision", browserOptions, async () => {
+  await fixture(async ({ page, policy, requests }) => {
+    await page.addInitScript(() => document.addEventListener("DOMContentLoaded", () => {
+      document.querySelector("#first")?.insertAdjacentHTML("beforeend", '<label>Describe a project you built.<input name="project_story" type="text" maxlength="255" required></label>');
+    }));
+    const authority = hooks(requests); let validations = 0;
+    const questions: ApplicationAgentQuestionRepository = {
+      async loadAnswers({ questions }) { return questions.filter(item => item.kind === "BOOLEAN").map(item => ({ answerId: "saved-consent", fieldId: item.fieldId, fingerprint: item.fingerprint, value: true })); },
+      async requestQuestions({ questions }) { return questions.map(item => ({ ...item, id: "question", status: "OPEN" })); },
+    };
+    const harness: AgentFormHarness = { async run(input) {
+      const field = (input.input.form as { fields: AgentBrowserField[] }).fields.find(item => item.name === "project_story");
+      if (!field) return;
+      const tooLong = "I mapped the workflow and shipped the platform. ".repeat(8);
+      assert.deepEqual(await input.executeTool("fill_supported_text", { fieldId: field.fieldId, text: tooLong, sourceIds: ["resume:0"] }), { ok: false, errorCode: "AGENTS_FILL_TEXT_TOO_LONG" });
+      assert.equal(await page.locator('[name="project_story"]').inputValue(), "", "rejection must leave no truncated draft or poisoned readback");
+      assert.equal(validations, 0);
+      assert.equal(field.maxLength, 255);
+      assert.deepEqual(await input.executeTool("fill_supported_text", { fieldId: field.fieldId, text: "I mapped the workflow and shipped the platform.", sourceIds: ["resume:0"] }), { ok: true });
+      await input.executeTool("complete_review", {});
+    } };
+    const driver = createApplicationDeliveryDriver({ harness, questions, resolvePage: () => page, sitePolicy: policy, submissionHooks: authority.value, browserTimeoutMs: 600,
+      evidence: { async load() { return [{ sourceId: "resume:0", text: "Mapped the workflow. Built and shipped the platform." }]; }, async validate() { validations++; return true; } },
+    });
+    const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: policy.startUrl, executionPackage: packet(policy.startUrl) });
+    assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+    assert.equal(validations, 1); assert.equal(authority.begins(), 1); assert.equal(requests.submits, 1);
+  });
+});
+
+test("native text limits protect exact answers, count UTF-16 units and detect constraint drift", browserOptions, async () => {
+  await fixture(async ({ page, policy }) => {
+    await page.addInitScript(() => document.addEventListener("DOMContentLoaded", () => {
+      document.querySelector("#first")?.insertAdjacentHTML("beforeend", '<label>Approved response<textarea name="bounded_answer" maxlength="4"></textarea></label>');
+    }));
+    const runtime = await createApplicationDeliveryBrowser({ page, policy, hooks: { async begin() { throw new Error("NO_SUBMIT"); } } });
+    await runtime.open();
+    const tools = createAgentBrowserTools(page, policy.startUrl);
+    const field = (await tools.inspect()).fields.find(item => item.name === "bounded_answer")!;
+    assert.equal(field.maxLength, 4);
+    await assert.rejects(tools.fillValue(field.fieldId, "😀😀x"), /AGENTS_FILL_TEXT_TOO_LONG/u);
+    assert.equal(await page.locator('[name="bounded_answer"]').inputValue(), "");
+    await tools.fillValue(field.fieldId, "a\n\nb");
+    assert.equal(await page.locator('[name="bounded_answer"]').inputValue(), "a\n\nb");
+    await page.locator('[name="bounded_answer"]').evaluate(element => element.setAttribute("maxlength", "3"));
+    await assert.rejects(tools.verifyWrites(), /AGENTS_FILL_FIELD_DRIFT/u);
+    await runtime.dispose();
+  });
+});
+
 test("optional contact defaults and exact fact mappings require matching provenance; conflicting email is preserved", browserOptions, async () => {
   for (const matches of [true, false]) await fixture(async ({ page, policy, requests }) => {
     const approvedEmail = "alex@example.test";

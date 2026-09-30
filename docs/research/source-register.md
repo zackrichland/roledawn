@@ -365,3 +365,7 @@ Recheck product features, prices, model names, policies, domains, and APIs befor
 ### ATS-20260930-05: idle frames and filename presentation
 
 - **Primary observations**, accessed 2026-09-30: [Ashby public board](https://jobs.ashbyhq.com/Ashby) mounts a hidden reCAPTCHA Enterprise challenge document with the observed key; a hosted Linux before/after inspection isolates the false stop. [Lever public form client](https://jobs.lever.co/js/application.js) and its native form CSS render upload filenames in uppercase without changing the DOM text. A synthetic PDF upload to the parser established successful parsing, with no final application submission or real candidate data.
+
+### ATS-20260930-06: native text limits
+
+- **Primary specification**, accessed 2026-09-30: [HTML input maxlength](https://html.spec.whatwg.org/multipage/input.html#attr-input-maxlength) constrains native text length. A public Greenhouse posting renders a short-answer input with `maxLength="255"`; the local native-browser regression verifies rejection before writing and shorter-answer recovery. No employer acceptance is established by this field test.

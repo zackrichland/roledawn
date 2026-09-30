@@ -83,6 +83,8 @@ Single page; the form sits under the posting.
 
 ## Known quirks
 
+- **Verified 2026-09-30:** native narrative inputs may cap text at 255 UTF-16 units; the reader exposes `maxLength`, rejects an oversized draft before writing and lets the agent compose a complete shorter answer (D-143; native-browser regression).
+
 - Redirecting hosted pages still serve the same form at the embed URL (D-102).
 - Opening React Select menus is slow: about 22 s per full inspection before caching, 2.1 s cached (D-104).
 - Phone readback differs in format from saved E.164; compare digits. Upload bucket follows the browser's region (D-104).
