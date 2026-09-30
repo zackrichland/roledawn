@@ -33,6 +33,10 @@ function field(path: string, type = "TEXT"): AgentBrowserField {
 const save = (path: string, value: unknown, extra: Record<string, unknown> = {}) => envelope("ApiSetFormValue", {
   organizationHostedJobsPageName: board, formRenderIdentifier: id(2), formDefinitionIdentifier: id(3), path, value, ...extra,
 });
+const compositeDefinition = (overrides: Record<string, unknown> = {}) => JSON.stringify({
+  kind: "CompositeFormDefinitionId-JobPostingApplicationFormV2", formDefinitionId: id(3),
+  jobPostingId: job, jobBoardSuperType: "External", ...overrides,
+});
 function submission(survey = false, overrides: Record<string, unknown> = {}): AshbyEnvelope {
   return envelope(survey ? "ApiSubmitMultipleFormsAction" : "ApiSubmitSingleApplicationFormAction", {
     organizationHostedJobsPageName: board, jobPostingId: job, recaptchaToken: "fixture-passive-token",
@@ -76,6 +80,48 @@ test("draft saves require the current approved field and exact tenant, form, pat
   assert.equal(protocol.authorize(request), null);
   assert.equal(protocol.review()[0].fields.find(f => f.path === "_systemfield_name")?.valueHash,
     createHash("sha256").update(JSON.stringify("Alex Candidate")).digest("hex"));
+});
+
+test("composite application definition IDs bind the exact named job, autosave echo and final review", () => {
+  const protocol = createAshbyProtocol(board, job);
+  const definition = compositeDefinition();
+  protocol.observe(postingRequest, { data: { jobPosting: { id: job,
+    applicationForm: { ...form(), sourceFormDefinitionId: definition }, surveyForms: [form(12)] } } });
+  protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+  const request = save("_systemfield_name", "Alex Candidate", { formDefinitionIdentifier: definition });
+  assert.equal(protocol.authorize(save("_systemfield_name", "Alex Candidate")), null);
+  assert.equal(protocol.authorize(request), "FIELD");
+  protocol.observe(request, { data: { setFormValue: { ...form(2, { _systemfield_name: "Alex Candidate" }), sourceFormDefinitionId: definition } } });
+  assert.equal(protocol.fieldAcknowledged(), true);
+  protocol.endField();
+  assert.equal(protocol.review()[0].definitionId, definition);
+  assert.equal(protocol.authorize(submission(true, { applicationFormDefinitionIdentifier: definition }), undefined, true), "SUBMIT");
+  assert.equal(protocol.authorize(submission(true, { applicationFormDefinitionIdentifier: compositeDefinition({ formDefinitionId: id(90) }) }), undefined, true), null);
+});
+
+test("unreviewed composite schemas, other jobs, survey composites and changed server echoes stop before submit", () => {
+  const invalid = [compositeDefinition({ jobPostingId: id(90) }), compositeDefinition({ kind: "Other" }),
+    compositeDefinition({ formDefinitionId: "invalid" }), compositeDefinition({ jobBoardSuperType: "Internal" }),
+    compositeDefinition({ extra: true }), "{}", "[1]", "null", "malformed", " ".repeat(513)];
+  for (const definition of invalid) {
+    const protocol = createAshbyProtocol(board, job);
+    assert.throws(() => protocol.observe(postingRequest, { data: { jobPosting: { id: job,
+      applicationForm: { ...form(), sourceFormDefinitionId: definition }, surveyForms: [] } } }), /FORM_DEFINITION_ID_DRIFT/u);
+    assert.equal(protocol.ready(), false);
+  }
+  const survey = createAshbyProtocol(board, job);
+  assert.throws(() => survey.observe(postingRequest, { data: { jobPosting: { id: job,
+    applicationForm: form(), surveyForms: [{ ...form(12), sourceFormDefinitionId: compositeDefinition() }] } } }), /FORM_DEFINITION_ID_DRIFT/u);
+  const protocol = createAshbyProtocol(board, job);
+  protocol.observe(postingRequest, { data: { jobPosting: { id: job,
+    applicationForm: { ...form(), sourceFormDefinitionId: compositeDefinition() }, surveyForms: [] } } });
+  protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+  const request = save("_systemfield_name", "Alex Candidate", { formDefinitionIdentifier: compositeDefinition() });
+  protocol.authorize(request);
+  assert.throws(() => protocol.observe(request, { data: { setFormValue: {
+    ...form(2, { _systemfield_name: "Alex Candidate" }), sourceFormDefinitionId: compositeDefinition({ formDefinitionId: id(90) }),
+  } } }), /FORM_DEFINITION_ID_DRIFT/u);
+  assert.equal(protocol.ready(), false);
 });
 
 test("a server echo that changes another answer or the form schema permanently stops this run", () => {

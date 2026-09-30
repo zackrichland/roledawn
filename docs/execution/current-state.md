@@ -13,9 +13,9 @@ three employer-confirmed applications across two employers, verified by hosted
 readback on 2026-09-30 UTC. Lever and Ashby have delivery adapters; live employer
 acceptance remains unproven for both. Keep the product scoped to personal use.
 
-**Published release:** `3dd97f6` (includes Claude main `0364902`), Netlify deployment
-`6abd4c43f2662a90bbd6ccf2`. Authenticated worker health verified that exact release
-at 17:52:46 UTC; the private gate returns 404 without access, all 14 checked page
+**Published release:** `c17fda7` (includes Claude main `0364902`), Netlify deployment
+`6abd66cc945a219a569f32ff`. Authenticated worker health verified that exact release
+at 19:46:32 UTC; the private gate returns 404 without access, all 14 checked page
 assets return 200 and the approved private profile/story content remains
 visible. The sole new Ashby submission occurred on `b103640`. Final readback
 still shows one attempt, zero confirmed attempts/receipts, and
@@ -122,7 +122,7 @@ cases. The final full suite and exact published-deployment readback also pass.
 |---|---|
 | Standing answers have no editor; automatic answers are not listed on the application page. | Their source and basis are persisted, but correction and inspection still need operator access. |
 | Private agent replay records can retain extracted document text after provider cleanup. | No public disclosure was found; retention cleanup must preserve active and uncertain-session recovery. |
-| Required consent, privacy and attestation fields need candidate input. | A send may pause on a valid form. O-013 remains open; automation must not invent consent. |
+| New factual qualification questions may lack an approved answer. | Saved delegation handles application acknowledgements automatically; it does not supply personal qualifications or missing facts (D-136). |
 | Two historical archived attempts remain uncertain, with no lease and reconciliation exhausted. | Preserve their retry blocks; profile changes and a different application's result do not resolve them. |
 | One additional Ashby attempt has an observed response but no receipt, raw response or retained browser. | Acceptance and rejection are both unproven. Future diagnostics cannot resolve this older attempt; preserve its resend block. |
 | Archive has no candidate button; candidate export and account deletion are incomplete. | Operator work remains; this is not a broader-user release. |
@@ -146,6 +146,8 @@ the [decision log](decision-log.md) owns decisions and reversal triggers.
 
 Verified root causes: passive Ashby automated-processing notices were rejected as posting drift; terminal writing failure release omitted `dead_letter_reason`, violating the outbox pair constraint and leaving Writing active; Greenhouse logos rejected the reviewed s5 CDN and disabled board indexes prevented extraction; daily usage joined only catalog enrollments, excluding pasted links. Local fixes and integration checks cover each. The configured OpenAI key reported credit exhaustion; a small request succeeded after the founder funded it.
 
-D-136 adds explicit saved acknowledgement delegation with worker/database rule parity and exact employer descriptor audit. Model-turn failures and writing repair counts are logged without candidate text. The 95% delivery goal remains a target, not measured product evidence. Deployment, migration readback and new live results will be recorded below.
+D-136 adds explicit saved acknowledgement delegation with worker/database rule parity and exact employer descriptor audit. Model-turn failures and writing repair counts are logged without candidate text. The 95% delivery goal remains a target, not measured product evidence. Deployment, migration readback and new live results are recorded below.
 
 **Verified repair readback:** migrations `20260930184500`, `20260930190000` and `20260930193436` are applied and recorded (98 migrations). Generated public types are unchanged. Terminal release, pasted usage, cap serialization, delegated mapping and worker/private grants read back correctly. The candidate's explicit delegation and earlier exact clearance answer are present; no profile input epoch changed. The requested Greenhouse logo cache was refreshed through the existing logo RPC. A read-only hosted Linux probe reproduced Lever's hidden hCaptcha enclave false positive, then passed inspection after the exact-path correction. No candidate fields or submission were used in that probe.
+
+**Published repair:** `c17fda7`, full-build production deploy `6abd66cc945a219a569f32ff`; GitHub CI passed. The local dashboard reads Sent today 3/24. Three failed sends with zero attempts were resumed through their owning control RPC. Ashby reached a second startup mismatch: the public form uses a reviewed composite definition ID (D-137). Greenhouse reached missing factual questions; Lever remained queued behind the one active delivery lane. These are live progress observations, not employer receipts.

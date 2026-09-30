@@ -353,3 +353,7 @@ Recheck product features, prices, model names, policies, domains, and APIs befor
 
 
 **Direct Netlify observation, 2026-09-16:** scheduled invocation logs for the currently published production deploy reported `context=production`, `published=false`, and the enabled flag true. The dispatcher therefore uses the platform's documented published-only scheduling plus the production context; the receiving background worker retains the strict published-deploy guard. A separate ordinary authenticated health invocation passed that strict guard. This observed context mismatch is not treated as a broader provider guarantee.
+
+### AB-20260930-04: composite application-form definition ID
+
+- **Primary observation**, accessed 2026-09-30: `ApiJobPosting` from [the public hosted board](https://jobs.ashbyhq.com/Ashby) returns `CompositeFormDefinitionId-JobPostingApplicationFormV2` as an opaque JSON string with UUID form-definition/job fields and `External` board scope; survey definition IDs remain UUIDs. Fresh read-only response and synthetic replay establish schema support, not submission acceptance.

@@ -130,3 +130,5 @@ Don't:
 - [Hosted form protocol and branding](../research/source-register.md) AB-20260930-01 and AB-20260930-02 — public-client and DOM observation, accessed 2026-09-30; no live employer receipt implied.
 
 - 2026-09-30 (D-136): `automatedProcessingLegalNotice` is a passive notice, including the standard null-HTML notice. Bind its observed rule ID and content hash into review and require the exact rule ID at submit; a notice alone must not stop delivery. Consent controls use the candidate's saved delegation.
+
+- 2026-09-30 (D-137): application `sourceFormDefinitionId` can be the exact JSON `CompositeFormDefinitionId-JobPostingApplicationFormV2`, bound to this job and External board scope. Surveys still use UUIDs. Preserve the opaque string in every autosave and final review.

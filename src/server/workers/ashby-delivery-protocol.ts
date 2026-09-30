@@ -61,10 +61,22 @@ export function parseAshbyEnvelope(url: string, method: string, body: Buffer | n
 
 type Field = { path: string; type: string; many: boolean; options: { label: string; value: unknown }[]; value: unknown; required: boolean; hidden: boolean };
 type Form = { id: string; definition: string; action: string; fields: Map<string, Field> };
-function readForm(value: unknown): Form {
+function definitionId(value: unknown, compositeJobId?: string): value is string {
+  if (uuid(value)) return true;
+  // Verified public client: application forms use an opaque JSON identifier;
+  // surveys still use UUIDs. Preserve the exact string for every save and seal.
+  if (!compositeJobId || typeof value !== "string" || value.length > 512) return false;
+  let composite: Obj | null;
+  try { composite = object(JSON.parse(value)); } catch { return false; }
+  return !!composite && keys(composite, ["kind", "formDefinitionId", "jobPostingId", "jobBoardSuperType"])
+    && composite.kind === "CompositeFormDefinitionId-JobPostingApplicationFormV2"
+    && uuid(composite.formDefinitionId) && composite.jobPostingId === compositeJobId
+    && composite.jobBoardSuperType === "External";
+}
+function readForm(value: unknown, compositeJobId?: string): Form {
   const form = object(value);
   if (!form || !uuid(form.id)) return fail("FORM_RENDER_ID_DRIFT");
-  if (!uuid(form.sourceFormDefinitionId)) return fail("FORM_DEFINITION_ID_DRIFT");
+  if (!definitionId(form.sourceFormDefinitionId, compositeJobId)) return fail("FORM_DEFINITION_ID_DRIFT");
   if (!Array.isArray(form.formControls) || form.formControls.length !== 1 || !uuid(object(form.formControls[0])?.identifier)) return fail("FORM_ACTION_SCHEMA_DRIFT");
   if (!Array.isArray(form.sections)) return fail("FORM_SECTION_SCHEMA_DRIFT");
   const fields = new Map<string, Field>();
@@ -110,7 +122,7 @@ export function createAshbyProtocol(board: string, jobId: string) {
     v.organizationHostedJobsPageName !== board ? "BOARD" : v.formRenderIdentifier !== form.id ? "FORM" :
     v.formDefinitionIdentifier !== form.definition ? "DEFINITION" : v.path !== field.path ? "PATH" : null;
   function updateForm(raw: unknown, expected: FieldAction | UploadAction, file: boolean) {
-    const next = readForm(raw);
+    const next = readForm(raw, uuid(expected.form.definition) ? undefined : jobId);
     if (next.id !== expected.form.id) return fail("FORM_RENDER_ID_DRIFT");
     if (next.definition !== expected.form.definition) return fail("FORM_DEFINITION_ID_DRIFT");
     const dimensions = new Set<string>();
@@ -291,7 +303,7 @@ export function createAshbyProtocol(board: string, jobId: string) {
             informationalNoticeHash = createHash("sha256").update(JSON.stringify(html)).digest("hex");
             informationalNoticeRuleId = notice.automatedProcessingLegalNoticeRuleId;
           }
-          forms = [readForm(posting.applicationForm), ...posting.surveyForms.map(readForm)];
+          forms = [readForm(posting.applicationForm, jobId), ...posting.surveyForms.map(value => readForm(value))];
           if (new Set(forms.map((form) => form.id)).size !== forms.length || forms.some((form) => [...form.fields.values()].some((field) => field.value !== null))) return fail("INITIAL_FORM_STATE_UNSUPPORTED");
         } else if (op === "ApiAutocompleteGeoLocation" && envelope.variables.text !== "" && fieldAction?.field.type === "Location") {
           const results = object(data.result)?.suggestions;
