@@ -14,6 +14,7 @@ override accepted product or safety contracts.
 
 ### Founder or investor
 
+1. [Founder directives](execution/founder-directives.md)
 1. [Application playbook](execution/application-playbook.md)
 1. [Architecture at a glance](architecture/architecture-at-a-glance.md)
 2. [Product readiness audit](execution/product-readiness-audit.md)
@@ -32,6 +33,7 @@ override accepted product or safety contracts.
 
 ### Engineering
 
+1. [Founder directives](execution/founder-directives.md)
 1. [Application playbook](execution/application-playbook.md)
 1. [Architecture at a glance](architecture/architecture-at-a-glance.md)
 2. [Product readiness audit](execution/product-readiness-audit.md)

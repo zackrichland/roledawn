@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "eslint .",
     "check:docs": "node scripts/check-markdown-links.mjs",
+    "ops:status": "node scripts/ops-status.mjs",
     "auth:check-google": "node --experimental-strip-types --env-file=.env.local scripts/check-google-oauth.ts",
     "test": "node --test --experimental-strip-types src/domain/*.test.ts src/lib/supabase/*.test.ts src/server/applications/*.test.ts src/server/auth/*.test.ts src/server/ingestion/*.test.ts src/server/mailbox/*.test.ts src/server/opportunities/*.test.ts src/server/resume/*.test.ts src/server/vault/*.test.ts src/server/workers/*.test.ts scripts/*.test.ts",
     "typecheck": "tsc --noEmit",

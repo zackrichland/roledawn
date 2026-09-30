@@ -5,7 +5,7 @@ import type { Frame, Page } from "playwright-core";
 import { AGENT_QUESTION_LIMITS, validateAgentQuestionDescriptors, type AgentQuestionDescriptor } from "../../domain/application-agent-questions.ts";
 import type { MaterializedApplicationArtifact } from "./application-fill-materializer.ts";
 import {
-  inspectAriaCombobox, inspectRemoteSearchCombobox, searchRemoteComboboxOption, selectAriaComboboxOption,
+  inspectAriaCombobox, inspectRemoteSearchCombobox, searchRemoteComboboxOption, selectAriaComboboxOption, selectAriaComboboxOptions,
   type AriaComboboxState, type RemoteSearchComboboxState,
 } from "./agents-aria-combobox.ts";
 import { chooseSearchResult, MAX_SEARCHABLE_OPTIONS, MODEL_OPTION_SAMPLE, resolveOptionValue, type OptionMatch } from "./agents-option-match.ts";
@@ -114,7 +114,9 @@ export function modelFieldView(field: AgentBrowserField): AgentBrowserField {
 }
 
 function kind(control: RawControl): AgentFieldKind {
-  if (control.role === "combobox" && control.tag !== "select") return control.aria || control.remote ? "SINGLE_SELECT" : "UNSUPPORTED";
+  if (control.role === "combobox" && control.tag !== "select") {
+    return control.aria ? control.aria.multiple ? "MULTI_SELECT" : "SINGLE_SELECT" : control.remote ? "SINGLE_SELECT" : "UNSUPPORTED";
+  }
   if (!["input", "select", "textarea"].includes(control.tag)) return "UNSUPPORTED";
   if (control.tag === "textarea") return "LONG_TEXT";
   if (control.tag === "select") return control.options.length ? control.multiple ? "MULTI_SELECT" : "SINGLE_SELECT" : "UNSUPPORTED";
@@ -270,7 +272,12 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
             if (readKey) reads.set(readKey, read);
           }
           const state = read.aria;
-          if (state) {
+          if (state?.multiple) {
+            control.aria = state;
+            control.options = state.options.map(({ value, label }) => ({ value, label }));
+            control.selected = [...(state.selectedLabels ?? [])];
+            control.valid = !control.required || control.selected.length > 0;
+          } else if (state) {
             control.aria = state;
             control.options = state.options.map(({ value, label }) => ({ value, label }));
             control.value = state.selectedValue ?? "";
@@ -419,7 +426,9 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     } else if (field.kind === "MULTI_SELECT") {
       if (!Array.isArray(answer) || answer.some((value) => typeof value !== "string")) throw new Error("AGENTS_FILL_ANSWER_TYPE_INVALID");
       expected = [...new Set(answer.map((value) => optionValue(field, value)))].sort();
-      if (field.inputType === "checkbox") {
+      if (located.aria?.multiple) {
+        await selectAriaComboboxOptions(frame, controls.nth(indexes[0]), located.aria, expected, signal, options);
+      } else if (field.inputType === "checkbox") {
         for (const [index, option] of field.options.entries()) {
           if (signal?.aborted) throw new Error("AGENTS_FILL_CANCELLED");
           await controls.nth(indexes[index]).setChecked(expected.includes(option.value), { timeout: 5_000 });

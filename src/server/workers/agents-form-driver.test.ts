@@ -617,3 +617,37 @@ test("Greenhouse React Select mode verifies selected option class and display to
     await assert.rejects(browser.fillValue(field.fieldId, "No"), /READBACK_MISMATCH/u);
   });
 });
+
+test("Greenhouse React Select multi-select chooses by label, survives re-numbered options, and reads back the chips", browserOptions, async () => {
+  const id = "question_69070645[]";
+  await fixture(`<form><label for="${id}">What were your undergrad GPAs?</label><div class="select-shell"><div class="select__control">
+    <div class="select__value-container select__value-container--is-multi"></div>
+    <input id="${id}" role="combobox" aria-haspopup="true" aria-controls="react-select-${id}-listbox" aria-expanded="false" aria-required="true">
+    </div><div id="react-select-${id}-listbox" role="listbox" aria-multiselectable="true" hidden></div></div></form>
+    <script>const all=['3.8 - 4.0','3.6 - 3.79','3.4 - 3.59','3.2 - 3.39','3.0 - 3.19','< 3.0'];let chosen=[];globalThis.tamper=false;
+      const input=document.getElementById(${JSON.stringify(id)}), menu=document.getElementById(${JSON.stringify(`react-select-${id}-listbox`)}), chips=document.querySelector('.select__value-container');
+      function render(){chips.replaceChildren(...chosen.map(label=>{const chip=document.createElement('div');chip.className='select__multi-value';const text=document.createElement('div');text.className='select__multi-value__label';text.textContent=label;chip.append(text);return chip;}));}
+      function close(){menu.hidden=true;input.setAttribute('aria-expanded','false');}
+      input.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();}if(e.key==='ArrowDown'){e.preventDefault();
+        // Like React Select: chosen options leave the menu and the rest are re-numbered.
+        menu.replaceChildren(...all.filter(label=>!chosen.includes(label)).map((label,i)=>{const option=document.createElement('div');option.id=${JSON.stringify(`react-select-${id}-option-`)}+i;option.setAttribute('role','option');option.className='select__option';option.textContent=label;
+          option.addEventListener('click',()=>{chosen.push(globalThis.tamper?'3.8 - 4.0':label);render();close();});return option;}));
+        menu.hidden=false;input.setAttribute('aria-expanded','true');}});
+    </script>`, async (page, url) => {
+    assert.equal((await createAgentBrowserTools(page, url).inspect()).fields[0].kind, "UNSUPPORTED");
+    const browser = createAgentBrowserTools(page, url, { allowReactSelectDisplay: true });
+    const field = (await browser.inspect()).fields[0];
+    assert.equal(field.kind, "MULTI_SELECT");
+    assert.equal(field.required, true);
+    assert.equal(field.hasValue, false);
+    assert.deepEqual(field.options.map((option) => option.value).sort(), ["3.8 - 4.0", "3.6 - 3.79", "3.4 - 3.59", "3.2 - 3.39", "3.0 - 3.19", "< 3.0"].sort());
+    await browser.fillValue(field.fieldId, ["3.4 - 3.59"]);
+    assert.equal(await browser.verifyValue(field.fieldId, ["3.4 - 3.59"]), true);
+    const after = (await browser.inspect()).fields[0];
+    assert.equal(after.fingerprint, field.fingerprint, "choosing an option must not change the field's identity");
+    assert.equal(after.hasValue, true);
+    // A page that records a different choice than the one clicked fails the readback.
+    await page.evaluate(() => { (globalThis as typeof globalThis & { tamper: boolean }).tamper = true; });
+    await assert.rejects(browser.fillValue(field.fieldId, ["3.4 - 3.59", "3.2 - 3.39"]), /READBACK_MISMATCH/u);
+  });
+});

@@ -58,7 +58,7 @@ The diagram is a summary; the table below is authoritative.
 
 | Site | Today | Evidence |
 |---|---|---|
-| Greenhouse | Fills, submits, and confirms | **Verified** end to end on 2026-09-30: Carvana Specialist, Inventory Quality was submitted, Greenhouse emailed its security code, RoleDawn read it from Gmail 7 seconds later, and Greenhouse confirmed. Multi-select questions (for example GPA ranges) are not supported yet. |
+| Greenhouse | Fills, submits, and confirms | **Verified** end to end on 2026-09-30: Carvana Specialist, Inventory Quality was submitted, Greenhouse emailed its security code, RoleDawn read it from Gmail 7 seconds later, and Greenhouse confirmed. Multi-select questions such as GPA ranges are supported (D-113). |
 | Lever | Fills and submits | Fixture tests only; **not yet proven live**. Passive hCaptcha is allowed; a visible challenge stops for you. |
 | Ashby | Prepares documents | You submit on the employer's site. |
 | Workday, iCIMS, SmartRecruiters, others | Not supported | See [Next: any site](#next-any-site-including-workday). |
@@ -136,7 +136,7 @@ Developer plan since 2026-09-29: 25 browsers at once and 100 browser hours a mon
 | Open sign-in | Anyone with the URL was signed into the founder's account. | Fixed 2026-09-29 (D-109). |
 | Code timeout left an application "Confirming" | The job could never be sent again. | Fixed 2026-09-29 (D-111); see below. |
 | Archive has no button yet | Archiving is a database update (`applications.archived_at`). | Open. |
-| Multi-select questions | Greenhouse `multi_value_multi_select` questions (for example Carvana's engineering forms: "What were your undergrad and grad school GPAs?" with ranges) are recognized as unsupported, so the send stops before submitting (`DELIVERY_REQUIRED_CONTROL_UNSUPPORTED`). Seen live 2026-09-29 on Carvana Data Product Engineer. | Open: support the control and store the candidate's GPA range as a profile answer. |
+| GPA has no profile fact | The first GPA multi-select a candidate meets is asked once; later ones reuse the answer (D-112, D-113). | Open: add an `education.gpa` fact collected at onboarding. |
 | Profile, story, and voice edits don't mark documents out of date | Documents made before an edit can still be sent. | Open. |
 | No notifications | Nothing outside the app tells you when a send needs you. | Open. |
 | No export or delete-account | Required by RoleDawn's own rules and by Google for wider Gmail access. | Open. |

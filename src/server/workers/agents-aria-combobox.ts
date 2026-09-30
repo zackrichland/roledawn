@@ -2,11 +2,20 @@ import type { Frame, Locator } from "playwright-core";
 
 import { MAX_SEARCHABLE_OPTIONS } from "./agents-option-match.ts";
 
-const SAFE_DOM_ID = /^[A-Za-z0-9][A-Za-z0-9_:.-]{0,255}$/u;
+// Brackets appear in Greenhouse multi-select ids ("question_123[]"). Quotes and
+// backslashes never do, so a quoted attribute selector stays injection-free.
+const SAFE_DOM_ID = /^[A-Za-z0-9][A-Za-z0-9_:.[\]-]{0,255}$/u;
 export type AriaComboboxState = Readonly<{
   listboxId: string;
   options: readonly Readonly<{ optionId: string; value: string; label: string }>[];
   selectedValue: string | null;
+  /**
+   * React Select multi-selects: options are identified by label (the library
+   * re-numbers option ids as choices move into chips), and the chosen labels
+   * are read back from the chips.
+   */
+  multiple?: true;
+  selectedLabels?: readonly string[];
 }>;
 export type AriaComboboxOptions = Readonly<{ allowReactSelectDisplay?: boolean; remoteSearch?: boolean }>;
 /** A React Select whose options come only from typed search text. */
@@ -52,8 +61,18 @@ async function closeMenu(control: Locator, wasExpanded: boolean): Promise<void> 
 }
 
 async function readMenu(menu: Locator, listboxId: string, control: Locator, options?: AriaComboboxOptions): Promise<AriaComboboxState | null> {
-  const raw = await menu.evaluate((element) => {
-    if (element.getAttribute("aria-busy") === "true" || element.getAttribute("aria-multiselectable") === "true") return null;
+  const react = options?.allowReactSelectDisplay ? await control.evaluate((element) => {
+    const shell = element.closest(".select-shell");
+    if (!shell || shell.querySelectorAll('[role="combobox"]').length !== 1 || !element.closest(".select__control")) return null;
+    const multi = Boolean(shell.querySelector(".select__value-container--is-multi"));
+    const values = [...shell.querySelectorAll(".select__single-value")];
+    if (values.length > 1 || multi && values.length > 0) return null;
+    const chips = multi ? [...shell.querySelectorAll(".select__multi-value__label")].map((node) => (node.textContent ?? "").replace(/\s+/gu, " ").trim()) : [];
+    return { listboxId: `react-select-${element.id}-listbox`, optionPrefix: `react-select-${element.id}-option-`, selectedLabel: (values[0]?.textContent ?? "").replace(/\s+/gu, " ").trim(), multi, chips };
+  }) : null;
+  const allowMultiple = Boolean(react?.multi && react.listboxId === listboxId);
+  const raw = await menu.evaluate((element, multiAllowed) => {
+    if (element.getAttribute("aria-busy") === "true" || (element.getAttribute("aria-multiselectable") === "true" && !multiAllowed)) return null;
     const options = [...element.querySelectorAll('[role="option"]')];
     return options.map((option) => ({
       optionId: option.id, value: option.getAttribute("data-value") ?? option.getAttribute("value") ?? option.id,
@@ -64,14 +83,8 @@ async function readMenu(menu: Locator, listboxId: string, control: Locator, opti
       dangerous: ["BUTTON", "INPUT", "A", "FORM"].includes(option.tagName) || Boolean(option.querySelector("button, input, a[href], form")),
       setSize: option.getAttribute("aria-setsize"),
     }));
-  });
-  const react = options?.allowReactSelectDisplay ? await control.evaluate((element) => {
-    const shell = element.closest(".select-shell");
-    if (!shell || shell.querySelectorAll('[role="combobox"]').length !== 1 || !element.closest(".select__control")) return null;
-    const values = [...shell.querySelectorAll(".select__single-value")];
-    if (values.length > 1) return null;
-    return { listboxId: `react-select-${element.id}-listbox`, optionPrefix: `react-select-${element.id}-option-`, selectedLabel: (values[0]?.textContent ?? "").replace(/\s+/gu, " ").trim() };
-  }) : null;
+  }, allowMultiple);
+  if (allowMultiple && react) return multiState(raw, listboxId, react.optionPrefix, react.chips);
   const reactMode = Boolean(react && react.listboxId === listboxId && raw?.every((option) => option.selected === null && option.optionId.startsWith(react.optionPrefix)));
   // Long static lists (countries, states, schools) are supported when every
   // option is rendered; a virtualized list fails the set-size check below.
@@ -88,6 +101,27 @@ async function readMenu(menu: Locator, listboxId: string, control: Locator, opti
   if (selected.length > 1) return null;
   if (reactMode && (selected.length === 0 ? Boolean(react!.selectedLabel) : selected[0].label !== react!.selectedLabel || enabled.filter((option) => option.label === react!.selectedLabel).length !== 1)) return null;
   return Object.freeze({ listboxId, options: enabled.map(({ optionId, value, label }) => ({ optionId, value, label })), selectedValue: selected[0]?.value ?? null });
+}
+
+type RawOption = Readonly<{ optionId: string; value: string; label: string; selected: string | null; disabled: boolean; reactSelected: boolean; visible: boolean; dangerous: boolean; setSize: string | null }>;
+
+/**
+ * A React Select multi-select. Chosen options usually leave the menu and become
+ * chips, and the library re-numbers the remaining option ids, so an option is
+ * identified by its label: the stable option list is the menu plus the chips.
+ */
+function multiState(raw: readonly RawOption[] | null, listboxId: string, optionPrefix: string, chips: readonly string[]): AriaComboboxState | null {
+  if (!raw || raw.length > MAX_SEARCHABLE_OPTIONS || chips.some((label) => !label || label.length > 1_000) || new Set(chips).size !== chips.length ||
+    raw.some((option) => !SAFE_DOM_ID.test(option.optionId) || !option.optionId.startsWith(optionPrefix) || option.selected !== null ||
+      !option.label || option.label.length > 1_000 || option.dangerous)) return null;
+  const rendered = raw.filter((option) => !option.disabled && option.visible).map((option) => option.label);
+  if (new Set(rendered).size !== rendered.length) return null;
+  const labels = [...new Set([...rendered, ...chips])].sort((left, right) => left.localeCompare(right));
+  if (labels.length < 1) return null;
+  return Object.freeze({
+    listboxId, options: labels.map((label) => ({ optionId: "", value: label, label })),
+    selectedValue: null, multiple: true, selectedLabels: Object.freeze([...chips].sort((left, right) => left.localeCompare(right))),
+  });
 }
 
 /** Missing, filtered, remote, virtualized or unverified menus remain unsupported. */
@@ -127,6 +161,50 @@ export async function selectAriaComboboxOption(
   }
   const actual = await inspectAriaCombobox(frame, control, signal, options);
   if (!actual || actual.listboxId !== expected.listboxId || JSON.stringify(actual.options) !== JSON.stringify(expected.options) || actual.selectedValue !== value) {
+    throw new Error("AGENTS_FILL_READBACK_MISMATCH");
+  }
+}
+
+/**
+ * Chooses the given labels in a React Select multi-select, one observed option
+ * click at a time, then requires the chips to equal exactly those labels.
+ * Existing unrequested chips are never removed; they fail the readback.
+ */
+export async function selectAriaComboboxOptions(
+  frame: Frame, control: Locator, expected: AriaComboboxState, labels: readonly string[], signal?: AbortSignal,
+  options?: AriaComboboxOptions,
+): Promise<void> {
+  const wanted = [...new Set(labels)].sort((left, right) => left.localeCompare(right));
+  if (!expected.multiple || wanted.length < 1 || !wanted.every((label) => expected.options.some((option) => option.value === label))) {
+    throw new Error("AGENTS_FILL_OPTION_NOT_OBSERVED");
+  }
+  for (const label of wanted) {
+    let opened: Awaited<ReturnType<typeof openMenu>> = null;
+    try {
+      opened = await openMenu(frame, control, signal, options);
+      if (!opened) throw new Error("AGENTS_FILL_COMBOBOX_UNAVAILABLE");
+      const current = await readMenu(opened.menu, opened.listboxId, control, options);
+      if (!current?.multiple || current.listboxId !== expected.listboxId || JSON.stringify(current.options) !== JSON.stringify(expected.options)) {
+        throw new Error("AGENTS_FILL_FIELD_DRIFT");
+      }
+      if (current.selectedLabels?.includes(label)) continue;
+      const optionId = await opened.menu.evaluate((element, wantedLabel) => {
+        const matches = [...element.querySelectorAll('[role="option"]')].filter((option) =>
+          (option.getAttribute("aria-label") || option.textContent || "").replace(/\s+/gu, " ").trim() === wantedLabel);
+        return matches.length === 1 ? matches[0].id : null;
+      }, label);
+      if (!optionId || !SAFE_DOM_ID.test(optionId)) throw new Error("AGENTS_FILL_OPTION_NOT_OBSERVED");
+      const locator = opened.menu.locator(`[role="option"][id="${optionId}"]`);
+      if (await locator.count() !== 1) throw new Error("AGENTS_FILL_FIELD_DRIFT");
+      assertActive(signal);
+      await locator.click({ timeout: 2_000 });
+    } finally {
+      await closeMenu(control, false);
+    }
+  }
+  const actual = await inspectAriaCombobox(frame, control, signal, options);
+  if (!actual?.multiple || actual.listboxId !== expected.listboxId || JSON.stringify(actual.options) !== JSON.stringify(expected.options) ||
+    JSON.stringify(actual.selectedLabels) !== JSON.stringify(wanted)) {
     throw new Error("AGENTS_FILL_READBACK_MISMATCH");
   }
 }
