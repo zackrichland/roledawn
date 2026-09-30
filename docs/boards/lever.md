@@ -78,6 +78,8 @@ Single page.
 
 ## Known quirks
 
+- **Verified regression, 2026-09-30:** the SDK can request a check image before the visible frame opens Live View. Only the active unsent submit admits images from the reviewed provider origin; challenge-answer POSTs still require the bounded candidate window. A live embedded browser renders, but human completion and employer acceptance remain unproven (D-145).
+
 - 2026-09-30: A visible check after the final click opens the exact guarded tab inside RoleDawn for the candidate, up to five minutes; no model challenge tools run, and exact final readback still gates submission (D-144; synthetic completion/drift/expiry/cancel coverage).
 
 - The static `/thanks` page and employer success-page redirects (above).

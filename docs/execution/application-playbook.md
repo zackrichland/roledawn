@@ -101,6 +101,7 @@ The diagram is a summary; the table below is authoritative.
 - One permission per submission, tied to the exact answers and files that were checked.
 - An uncertain result is reconciled before anything is sent again.
 - No CAPTCHA solving by an agent. A final-click visible check pauses the guarded worker for the candidate in the embedded browser, up to five minutes; exact review and one-use submission still apply (D-144).
+- Native check images can load during the unsent submit before the panel opens. Challenge answers require the active candidate window. An expired window can reopen after fresh inspection; unknown or attempted sends retain their retry blocks (D-145).
 - Your name, contact details, employers, titles, and dates always come from your profile, never from a model.
 
 ## Operating RoleDawn

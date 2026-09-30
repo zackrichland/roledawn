@@ -286,7 +286,11 @@ export function createAshbyProtocol(board: string, jobId: string) {
       if (v.sourceAttributionCode != null) return reject("SOURCE_ATTRIBUTION");
       if ((v.viewedAutomatedProcessingLegalNoticeRuleId ?? null) !== informationalNoticeRuleId) return reject("LEGAL_NOTICE");
       if (v.applicationRequestId != null) return reject("APPLICATION_REQUEST");
-      if (typeof v.recaptchaToken !== "string" || !/^[A-Za-z0-9_:.\/-]{1,12000}$/u.test(v.recaptchaToken)) return reject("RECAPTCHA_TOKEN");
+      // Reviewed public client prefixes Enterprise tokens before dispatch.
+      // Keep the opaque suffix and total size bounded; never accept an empty,
+      // invented or unreviewed envelope. The provider validates the token.
+      if (typeof v.recaptchaToken !== "string" || v.recaptchaToken.length > 12_000 ||
+          !/^(?:ENT===|UNIVERSAL_ENT===)?[A-Za-z0-9_:.\/-]+$/u.test(v.recaptchaToken)) return reject("RECAPTCHA_TOKEN");
       if (v.deviceFingerprint != null && (typeof v.deviceFingerprint !== "string" || v.deviceFingerprint.length > 32_000 || !/^W;6\.10\.0;[A-Za-z0-9+/]+={0,2};[A-Za-z0-9+/]+={0,2}$/u.test(v.deviceFingerprint))) return reject("DEVICE_FINGERPRINT");
       return "SUBMIT";
     },

@@ -55,7 +55,7 @@ document.querySelector('button').onclick = async () => { try {
  const variables = multiple ?
  {organizationHostedJobsPageName:'fixture',jobPostingId:jobId,applicationFormRenderIdentifier:formId,applicationFormDefinitionIdentifier:definition,applicationFormActionIdentifier:currentActionId,surveyIdentifiers:[{formRenderId:surveyId,actionIdentifier:actionId,sourceFormDefinitionId:definition}]} :
  {...base(),jobPostingId:jobId,actionIdentifier:currentActionId};
- Object.assign(variables,{recaptchaToken:'synthetic-passive-token',deviceFingerprint:null,sourceAttributionCode:null,viewedAutomatedProcessingLegalNoticeRuleId:null,applicationRequestId:null});
+ Object.assign(variables,{recaptchaToken:'ENT===synthetic-passive-token',deviceFingerprint:null,sourceAttributionCode:null,viewedAutomatedProcessingLegalNoticeRuleId:null,applicationRequestId:null});
  await send(op,variables,mode === 'bad-submit' ? 'mutation Wrong { deleteCandidate }' : undefined);
  document.body.innerHTML = '<div class="ashby-application-form-success-container" role="status">Success! Thank you.</div>';
 } catch {} };

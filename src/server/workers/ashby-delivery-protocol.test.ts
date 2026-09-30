@@ -46,6 +46,20 @@ function submission(survey = false, overrides: Record<string, unknown> = {}): As
   });
 }
 
+test("final requests admit only the reviewed standard and Enterprise token envelopes", () => {
+  for (const survey of [false, true]) {
+    const protocol = initialized(survey);
+    for (const token of ["fixture-passive-token", "ENT===fixture-passive-token", "UNIVERSAL_ENT===fixture-passive-token", "a".repeat(12_000)]) {
+      assert.equal(protocol.authorize(submission(survey, { recaptchaToken: token }), undefined, true), "SUBMIT");
+    }
+    for (const token of [null, undefined, 42, "", "ENT===", "UNIVERSAL_ENT===", "OTHER===fixture", "ENT==fixture", "ENT====fixture",
+      "ENT===ENT===fixture", "fixture=", "private spaces", "fixture\n", "a".repeat(12_001), "ENT===" + "a".repeat(12_000)]) {
+      assert.equal(protocol.authorize(submission(survey, { recaptchaToken: token }), undefined, true), null);
+      assert.equal(protocol.authorizationFailure(), `DELIVERY_ASHBY_REQUEST_SUBMIT_${survey ? "MULTIPLE" : "SINGLE"}_RECAPTCHA_TOKEN`);
+    }
+  }
+});
+
 test("reviewed Ashby operation documents cannot be spoofed by name, URL, extra arguments or a different query", () => {
   for (const operation of Object.keys(ASHBY_QUERY_HASHES) as AshbyOperation[]) {
     const data = { operationName: operation, variables: {}, query: queries[operation] };

@@ -20,18 +20,21 @@ async function fixture(mode: AshbyFixtureMode, run: (data: {
  browserTools: ReturnType<typeof createAgentBrowserTools>;
  requests: Awaited<ReturnType<typeof startSyntheticAshby>>["requests"];
  checkpoints: Readonly<Record<string, unknown>>[];
+ captchaReads: string[];
  begins: () => number;
 }) => Promise<void>, browserVerification?: DeliverySubmissionHooks["browserVerification"]) {
  const server = await startSyntheticAshby(mode);
  const browser = await chromium.launch({ executablePath: chrome, headless: true });
  let begins = 0;
  const checkpoints: Readonly<Record<string, unknown>>[] = [];
+ const captchaReads: string[] = [];
  try {
   const page = await browser.newPage({ serviceWorkers: "block" });
   const runtime = await createApplicationDeliveryBrowser({ page, policy: server.policy, timeoutMs: 1500,
    hooks: { browserVerification, async begin() { assert.equal(server.requests.submits, 0); begins++; return { attemptId: "fixture-attempt", idempotencyKey: "once" }; }, async checkpoint(state) { checkpoints.push(state); } },
    requestTransport: async (route) => {
     if (new URL(route.request().url()).origin === "https://www.recaptcha.net") {
+      captchaReads.push(new URL(route.request().url()).pathname);
       // Synthetic provider document only; these tests never run a CAPTCHA SDK.
       await route.fulfill({ status: 200, contentType: "text/html", headers: { "access-control-allow-origin": "*" }, body: "<!doctype html><html><body></body></html>" });
     } else if (route.request().url() === "https://fixture-bucket.s3.amazonaws.com/") {
@@ -42,7 +45,7 @@ async function fixture(mode: AshbyFixtureMode, run: (data: {
   });
   await runtime.open();
   const browserTools = createAgentBrowserTools(page, server.policy.startUrl, { ashbyLabels: true });
-  await run({ page, runtime, browserTools, requests: server.requests, checkpoints, begins: () => begins });
+  await run({ page, runtime, browserTools, requests: server.requests, checkpoints, captchaReads, begins: () => begins });
   await runtime.dispose();
  } finally { await browser.close(); await server.close(); }
 }
@@ -330,11 +333,20 @@ test("embedded human check preserves exact review, expiry and once-only dispatch
   await fixture("normal", async data => {
    page = data.page;
    await fill(data);
+   await page.evaluate(async () => {
+    await fetch("https://www.recaptcha.net/recaptcha/api.js?render=6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y");
+    await fetch("https://www.recaptcha.net/recaptcha/api2/payload?k=6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y").catch(() => {});
+   });
+   assert.equal(data.captchaReads.filter(path => path.endsWith("/payload")).length, 0, "check presentation is blocked outside submit");
    await page.evaluate(() => {
     const button = document.querySelector('.ashby-application-form-submit-button')!;
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
      if (document.getElementById("fixture-human-done")) return;
      event.preventDefault(); event.stopImmediatePropagation();
+     await new Promise(resolve => {
+      const image = new Image(); image.onload = image.onerror = resolve;
+      image.src = "https://www.recaptcha.net/recaptcha/api2/payload?k=6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y";
+     });
      const iframe = document.createElement("iframe"); iframe.id = "fixture-human-check";
      iframe.src = "https://www.recaptcha.net/recaptcha/api2/bframe?k=6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y";
      iframe.style.cssText = "width:400px;height:400px"; document.body.append(iframe);
@@ -345,6 +357,7 @@ test("embedded human check preserves exact review, expiry and once-only dispatch
    });
    if (candidate) await candidate;
    assert.equal(opens, 1); assert.equal(closes, 1);
+   assert.equal(data.captchaReads.filter(path => path.endsWith("/payload")).length, 1, "the native check renders before its human window opens");
    if (scenario === "complete") {
     assert.equal(result.kind, "CONFIRMED", JSON.stringify(result)); assert.equal(data.begins(), 1); assert.equal(data.requests.submits, 1);
     assert.equal((await data.runtime.submit("a".repeat(64), {})).kind, "UNCERTAIN");

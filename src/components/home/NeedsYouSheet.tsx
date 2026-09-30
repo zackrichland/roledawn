@@ -17,7 +17,7 @@ type Loaded = Readonly<{ state: "loading" }> | Readonly<{ state: "ready"; view: 
 
 /**
  * Resolves whatever a stalled application needs (an emailed code, missing
- * answers, a retry, or the way to finish on the employer's site) without
+ * answers, a retry, or embedded employer verification) without
  * leaving Home. It shows the same controls as the application page, so both
  * places behave identically.
  */

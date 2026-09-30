@@ -186,6 +186,8 @@ test("a CAPTCHA challenge that appears after the submit click hands over before 
   assert.equal(observed.submits, 0);
   assert.equal(state.begins, 0);
   assert.equal(observed.captchaScores, 0);
+  assert.equal(observed.requests.filter(request => request === "GET https://imgs.hcaptcha.com/fixture-check.png").length, 1, "only the active submit can render the check before the human window opens");
+  assert.equal(observed.requests.some(request => request.includes("/checkcaptcha/")), false, "presentation never permits an answer");
 });
 
 test("the CAPTCHA detector treats hidden, zero-size and off-page widgets as passive and anything asking the person as a challenge", options, async () => {

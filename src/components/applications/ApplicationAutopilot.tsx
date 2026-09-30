@@ -15,7 +15,7 @@ import guidanceStyles from "./StopGuidance.module.css";
 type Props = Readonly<{
   applicationId: string; aggregateVersion: number; revisionId: string; packetHash: string;
   view: ApplicationAutopilotView | null; canStart: boolean; startBlockedReason?: string;
-  /** The employer's own page for this job: the fallback when RoleDawn can't finish the form. */
+  /** The employer's posting URL identifies the delivery adapter; recovery stays inside RoleDawn. */
   employerUrl?: string | null;
   /** Retry and reconcile counters for this send request. */
   summary?: AutopilotSummary | null;

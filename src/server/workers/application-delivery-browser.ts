@@ -357,9 +357,10 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     if (request.method() === "GET" && ["/recaptcha/enterprise/webworker.js", ...(ashby ? ["/recaptcha/api2/webworker.js"] : [])].includes(url.pathname)) return recaptchaKeys.size > 0;
     if (!recaptchaKeys.has(url.searchParams.get("k") ?? "")) return false;
     if (request.method() === "GET" && ["/recaptcha/enterprise/anchor", "/recaptcha/enterprise/bframe", ...(ashby ? ["/recaptcha/api2/anchor", "/recaptcha/api2/bframe"] : [])].includes(url.pathname)) return true;
-    // Challenge traffic is admitted only while the candidate's Live View is
-    // open. The model has no challenge tools, and final sends still read back.
-    if (action?.humanVerification && !action.error && !action.signal?.aborted && request.method() === "GET" &&
+    // The SDK loads check images before the visible-frame observer can open
+    // Live View. Read-only presentation needs the active, unsent submit;
+    // answering still needs the candidate's bounded human window below.
+    if (action?.kind === "SUBMIT" && !action.admitted && !action.error && !action.signal?.aborted && request.method() === "GET" &&
         ["/recaptcha/enterprise/payload", "/recaptcha/api2/payload"].includes(url.pathname)) return true;
     return action?.kind === "SUBMIT" && request.method() === "POST" &&
       ["/recaptcha/enterprise/reload", "/recaptcha/enterprise/clr", ...(ashby ? ["/recaptcha/api2/reload", "/recaptcha/api2/clr"] : []),
@@ -371,7 +372,8 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     if (!policy.lever?.invisibleHcaptcha) return false;
     const url = new URL(request.url());
     if (request.method() === "GET") {
-      if (action?.humanVerification && !action.error && !action.signal?.aborted && url.origin === "https://imgs.hcaptcha.com" && request.resourceType() === "image") return true;
+      if (action?.kind === "SUBMIT" && !action.admitted && !action.error && !action.signal?.aborted && hcaptchaKeys.size > 0 &&
+          url.origin === "https://imgs.hcaptcha.com" && request.resourceType() === "image") return true;
       // Live Lever forms load the `secure-api.js` loader (observed 2026-09-28).
       return ["https://js.hcaptcha.com", "https://hcaptcha.com"].includes(url.origin) && ["/1/api.js", "/1/secure-api.js"].includes(url.pathname) ||
         url.origin === "https://newassets.hcaptcha.com" && /^\/(?:captcha\/v1|c)\/[A-Za-z0-9._-]{1,80}\//u.test(url.pathname) ||
@@ -744,6 +746,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         await waitFor(async () => Boolean(current.error || current.submission && await receipt(current.submission) || await challenged() ||
           current.challenge && await verificationShown()), signal, () => verificationDeadline);
         await drain();
+        if (verificationOpened && !current.beginStarted && Date.now() >= verificationDeadline) current.error ??= "DELIVERY_BROWSER_VERIFICATION_TIMEOUT";
         if (current.submission) {
           const observed = await receipt(current.submission);
           if (observed && !current.error) return { kind: "CONFIRMED", receipt: observed, submission: current.submission };

@@ -32,10 +32,11 @@ function hcaptchaScript(mode: SyntheticLeverMode) {
       // Neither an early score request nor a challenge answer may leave the browser.
       fetch('https://api.hcaptcha.com/getcaptcha/${SITEKEY}', { method: 'POST', body: 'early=1' }).catch(() => {});
       fetch('https://api.hcaptcha.com/checkcaptcha/${SITEKEY}/fixture', { method: 'POST', body: 'answers=guessed' }).catch(() => {});
+      ${mode === "captcha-on-submit" ? "const earlyImage=new Image();earlyImage.src='https://imgs.hcaptcha.com/fixture-check.png';" : ""}
       return 0;
     },
     async execute() {
-      ${mode === "captcha-on-submit" ? "challenge.parentElement.style.cssText = 'visibility:visible;position:absolute;top:20px;left:20px;opacity:1'; return;" : ""}
+      ${mode === "captcha-on-submit" ? "await new Promise(resolve=>{const image=new Image();image.onload=image.onerror=resolve;image.src='https://imgs.hcaptcha.com/fixture-check.png';}); challenge.parentElement.style.cssText = 'visibility:visible;position:absolute;top:20px;left:20px;opacity:1'; return;" : ""}
       const result = await fetch('https://api.hcaptcha.com/getcaptcha/${SITEKEY}', { method: 'POST', body: 'v=fixture&host=jobs.lever.co' }).then((r) => r.json());
       if (result.pass) { document.querySelector('[name="h-captcha-response"]').value = result.generated_pass_UUID; callback(result.generated_pass_UUID); }
     },
@@ -81,6 +82,7 @@ export function syntheticLeverDelivery(mode: SyntheticLeverMode = "normal") {
     if(r.method()==="GET" && r.url()===policy.receipt.url) return route.fulfill({status:200,contentType:"text/html",body:'<h3 data-qa="msg-submit-success">Application submitted!</h3>'});
     if(hcaptcha && r.method()==="GET" && r.url()==="https://js.hcaptcha.com/1/secure-api.js?render=explicit") return route.fulfill({status:200,contentType:"text/javascript",body:hcaptchaScript(mode)});
     if(hcaptcha && r.method()==="GET" && r.url()===HCAPTCHA_FRAME) return route.fulfill({status:200,contentType:"text/html",body:"<!doctype html><html><body>synthetic hCaptcha frame</body></html>"});
+    if(hcaptcha && r.method()==="GET" && r.url()==="https://imgs.hcaptcha.com/fixture-check.png") return route.fulfill({status:200,contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2mJ0AAAAASUVORK5CYII=","base64")});
     if(hcaptcha && r.method()==="POST" && r.url().startsWith("https://api.hcaptcha.com/checksiteconfig?")) return route.fulfill({status:200,contentType:"application/json",headers:cors,body:'{"pass":true}'});
     if(hcaptcha && r.method()==="POST" && r.url()===`https://api.hcaptcha.com/getcaptcha/${SITEKEY}`) {observed.captchaScores+=1;return route.fulfill({status:200,contentType:"application/json",headers:cors,body:'{"pass":true,"generated_pass_UUID":"P1_synthetic-pass"}'});}
     throw new Error("SYNTHETIC_LEVER_UNEXPECTED_REQUEST");

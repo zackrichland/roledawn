@@ -373,3 +373,7 @@ Recheck product features, prices, model names, policies, domains, and APIs befor
 ### BB-20260930-02: embedded live verification
 
 - **Vendor documentation**, read 2026-09-30: [Browserbase Session Live View](https://docs.browserbase.com/platform/browser/observability/session-live-view) supports interactive iframe embedding and a URL per tab in `pages`. Its sandbox example permits scripts and same-origin; mobile keyboards are not officially supported. D-144 uses the exact candidate tab with owned active-lease checks. These vendor capabilities do not prove live employer acceptance.
+
+### AB-20260930-07: native Enterprise token envelope
+
+- **Primary public-client observation**, accessed 2026-09-30: the [Ashby client bundle](https://cdn.ashbyprd.com/frontend_non_user/37472b76d4cf7d336351b40ebc3f98ff75edc350/assets/index-BQbfVskg.js), selected from the public board's Vite manifest, prefixes Enterprise tokens with `ENT===` or `UNIVERSAL_ENT===` before the final GraphQL mutation. The regression covers both exact prefixes, a standard token and malformed/empty/oversized envelopes. Client code establishes the observed request shape, not independent evidence of employer acceptance; tokens themselves are neither recorded nor committed.

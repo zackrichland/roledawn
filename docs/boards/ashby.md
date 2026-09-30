@@ -65,7 +65,7 @@ Single page.
 ## Verification and anti-bot
 
 - Spam protection levels per employer: Strict, Less Permissive, Permissive (default), No Protection (vendor docs).
-- The reviewed public form uses standard reCAPTCHA. RoleDawn admits its passive invisible badge and native scoring requests. Any visible challenge stops delivery; it never solves, suppresses or retries a challenge to improve its score.
+- Reviewed forms use standard or Enterprise reCAPTCHA. RoleDawn admits the passive invisible badge and native scoring requests. A visible final-click challenge opens in RoleDawn for the candidate; the agent never solves, suppresses or retries it to improve its score.
 - The page's own device fingerprint is an opaque, bounded vendor-format field on the final request. It supplies no application authority.
 - No account sign-in or employer API key is used.
 
@@ -80,6 +80,8 @@ Single page.
 - **Not yet verified:** a live employer-confirmed Ashby application. Fixture acceptance is separate from that proof.
 
 ## Known quirks
+
+- **Verified public client and regression, 2026-09-30:** Enterprise final tokens carry exact `ENT===` or `UNIVERSAL_ENT===` prefixes. The request guard accepts those bounded envelopes, rejects malformed prefixes and preserves exact form/answer/file binding. This is a protocol rule, not model guidance or employer acceptance (D-145).
 
 - 2026-09-30: A visible check after the final click opens the exact guarded tab inside RoleDawn for the candidate, up to five minutes; no model challenge tools run, and exact final readback still gates submission (D-144; synthetic completion/drift/expiry/cancel coverage).
 

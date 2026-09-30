@@ -80,6 +80,35 @@ begin
  select count(*) into n from public.get_application_browser_check_binding((run->>'application')::uuid,(who->>'user')::uuid);
  if n<>0 then raise exception 'CHECK_STALE_LEASE_EXPOSES_BROWSER'; end if;
  if (select count(*) from public.application_attempts where application_id=(run->>'application')::uuid)<>0 then raise exception 'CHECK_CREATED_ATTEMPT'; end if;
+ -- Reopen an unsent check even when an obsolete question remains OPEN.
+ update private.application_autopilot_runtime set runtime_lease=(run->>'lease')::uuid where autopilot_id=(run->>'autopilot')::uuid;
+ insert into public.application_autopilot_questions(autopilot_id,fingerprint,descriptor,status)
+ values((run->>'autopilot')::uuid,repeat('f',64),'{}','OPEN');
+ update public.application_autopilots set status='FAILED_SAFE',failure_code='APPLICATION_FILL_CAPTCHA_TAKEOVER',lease_token=null,lease_owner=null,lease_expires_at=null where id=(run->>'autopilot')::uuid;
+ perform set_config('request.jwt.claim.sub',who->>'user',true);
+ execute 'set local role authenticated';
+ perform public.control_application_autopilot(gen_random_uuid(),(run->>'autopilot')::uuid,(select version from public.application_autopilots where id=(run->>'autopilot')::uuid),'RESUME');
+ execute 'reset role';
+ if (select status from public.application_autopilots where id=(run->>'autopilot')::uuid)<>'QUEUED' then raise exception 'CHECK_OBSOLETE_QUESTIONS_BLOCK_REOPEN'; end if;
+ -- An unrelated repaired form stop also needs fresh inspection, not stale questions.
+ update public.application_autopilots set status='FAILED_SAFE',failure_code='DELIVERY_ASHBY_REQUEST_SUBMIT_MULTIPLE_RECAPTCHA_TOKEN' where id=(run->>'autopilot')::uuid;
+ execute 'set local role authenticated';
+ perform public.control_application_autopilot(gen_random_uuid(),(run->>'autopilot')::uuid,(select version from public.application_autopilots where id=(run->>'autopilot')::uuid),'RESUME');
+ execute 'reset role';
+ if (select status from public.application_autopilots where id=(run->>'autopilot')::uuid)<>'QUEUED' then raise exception 'CHECK_REPAIRED_FORM_STOP_LOST_INSPECTION'; end if;
+ -- Ordinary missing-answer pauses still wait; an unknown outcome never resumes.
+ update public.application_autopilots set status='PAUSED' where id=(run->>'autopilot')::uuid;
+ execute 'set local role authenticated';
+ perform public.control_application_autopilot(gen_random_uuid(),(run->>'autopilot')::uuid,(select version from public.application_autopilots where id=(run->>'autopilot')::uuid),'RESUME');
+ execute 'reset role';
+ if (select status from public.application_autopilots where id=(run->>'autopilot')::uuid)<>'WAITING_ANSWERS' then raise exception 'CHECK_ORDINARY_PAUSE_LOST_QUESTIONS'; end if;
+ update public.application_autopilots set status='UNCERTAIN' where id=(run->>'autopilot')::uuid;
+ execute 'set local role authenticated';
+ begin
+  perform public.control_application_autopilot(gen_random_uuid(),(run->>'autopilot')::uuid,(select version from public.application_autopilots where id=(run->>'autopilot')::uuid),'RESUME');
+  raise exception 'CHECK_UNKNOWN_RESENT';
+ exception when sqlstate '55000' then null; end;
+ execute 'reset role';
  insert into browser_verification_checks values('owned_live_check_private_binding_pause_expiry_stale_lease_and_no_attempt',true);
 end $check$;
 select * from browser_verification_checks;

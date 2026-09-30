@@ -13,9 +13,9 @@ three employer-confirmed applications across two employers, verified by hosted
 readback on 2026-09-30 UTC. Lever and Ashby have delivery adapters; live employer
 acceptance remains unproven for both. Keep the product scoped to personal use.
 
-**Published release:** `e34806b` (includes Claude main `0364902`), Netlify deployment
-`6abd8afe989d2ecbcd140314`. Authenticated worker health verified that exact release
-at 22:38:38 UTC; the private gate returns 404 without access, all 14 checked page
+**Published release:** `5676aa2` (includes Claude main `0364902`), Netlify deployment
+`6abd965f350d491aa8174ab7`. Authenticated worker health verified that exact release
+at 23:09:08 UTC; the private gate returns 404 without access, all 14 checked page
 assets return 200 and the approved private profile/story content remains
 visible. The sole new Ashby submission occurred on `b103640`. Final readback
 still shows one attempt, zero confirmed attempts/receipts, and
@@ -172,4 +172,6 @@ Greenhouse rejected two unsupported narrative proposals, then a validated propos
 
 **D-143 live readback:** the fresh Ashby form reused the original candidate sponsorship reply, filled the saved city and experience answers, and passed complete review before a visible verification check stopped it with zero attempts. Greenhouse wrote the bounded narrative successfully and now waits only on three missing factual choices; no new application receipt is claimed.
 
-**D-144 in progress:** final-click human verification retains the guarded worker/browser and opens the exact tab in Home or the application page. An owned metadata RPC exposes only the expiry; the provider binding stays service-only. Pausing, stale leases, expiry, wrong candidate or an existing attempt deny access. Synthetic completion sends once; drift, cancel and expiry send nothing. Migration `20260930230000` is applied; deployment and live panel proof are pending.
+**Verified D-144 rollout:** final-click human verification retains the guarded worker/browser and opens the exact tab in Home or the application page. An owned metadata RPC exposes only the expiry; the provider binding stays service-only. Pausing, stale leases, expiry, wrong candidate or an existing attempt deny access. Synthetic completion sends once; drift, cancel and expiry send nothing. Migrations `20260930230000` and `20260930231000` are applied. All 905 tests, typecheck, lint, docs links, 19 SQL checks across 101 migrations and full builds pass. GitHub CI passed on rerun after an unchanged Chrome startup test failed; its isolated local rerun also passed. The live Lever browser rendered inside Home at 23:24 UTC and closed after five minutes, with no attempt. A usable challenge and human completion are not yet proven.
+
+**D-145 diagnosis and local verification:** a fresh Ashby send passed answers and complete review, then rejected its final token envelope before any attempt. The current public client uses exact Enterprise prefixes that the existing regex excluded; both form-count variants now cover those prefixes and reject malformed/empty/oversized envelopes. A synthetic Lever replay reproduces a check-image request preceding the visible-frame observer; read-only images are now admitted during the active unsent submit, while answer requests still require the candidate's bounded window. Expiry receives its specific timeout code. Resuming an unsent FAILED_SAFE send rereads the form instead of waiting on stale OPEN descriptors; ordinary question pauses and unknown-outcome blocks remain. All 906 tests, typecheck, lint and documentation links pass; all 19 SQL checks pass across 102 migrations. Hosted rollout and new live results follow below.

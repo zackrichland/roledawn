@@ -363,7 +363,7 @@ export function HomeView({ data }: Readonly<{ data: HomeData }>) {
           key={openRow.application.applicationRouteKey}
           onClose={closeSheet}
           presentation={openRow.presentation}
-          refreshKey={`${openRow.application.status}:${openRow.application.updatedAt}:${openRow.application.need?.kind ?? ""}`}
+          refreshKey={`${openRow.application.status}:${openRow.application.updatedAt}:${openRow.application.autopilot?.status ?? ""}:${openRow.application.autopilot?.version ?? ""}:${openRow.application.need?.kind ?? ""}`}
         />
       ) : null}
     </main>
