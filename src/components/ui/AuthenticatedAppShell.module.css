@@ -1,15 +1,31 @@
 .appShell {
-  background: var(--canvas);
+  background: var(--hero-tint), var(--canvas);
   min-height: 100vh;
 }
 
+/* A translucent bar that lets the page show through as it scrolls. */
 .header {
-  backdrop-filter: saturate(160%) blur(12px);
-  background: rgb(247 248 252 / 86%);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  background: rgb(245 245 247 / 74%);
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   z-index: 30;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .header {
+    background: rgb(245 245 247 / 96%);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .header {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--canvas);
+  }
 }
 
 .inner {
@@ -27,9 +43,9 @@
   color: var(--ink);
   display: inline-flex;
   font-size: 17px;
-  font-weight: 800;
+  font-weight: 600;
   gap: 10px;
-  letter-spacing: -0.03em;
+  letter-spacing: var(--tracking-heading);
   text-decoration: none;
 }
 
@@ -48,14 +64,22 @@
   border-radius: 999px;
   color: var(--muted);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 500;
   padding: 9px 14px;
   text-decoration: none;
-  transition: background 140ms ease, color 140ms ease;
+  transition:
+    background var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
 }
 
 .navigation a:hover {
   color: var(--ink);
+}
+
+.navigation a:active {
+  transform: scale(0.97);
 }
 
 .navigation a[aria-current="page"] {
@@ -78,10 +102,20 @@
   color: var(--muted);
   display: inline-flex;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   gap: 8px;
   padding: 7px 12px 7px 10px;
   text-decoration: none;
+  transition:
+    background var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+.autopilot:active {
+  transform: scale(0.97);
 }
 
 .autopilot i {
@@ -89,19 +123,30 @@
   border-radius: 50%;
   display: inline-block;
   height: 8px;
+  position: relative;
+  transition: background-color var(--dur-base) var(--ease-out);
   width: 8px;
 }
 
 .autopilot[data-state="ON"] {
-  background: var(--midnight);
+  background: var(--gradient-ink);
   border-color: var(--midnight);
+  box-shadow: var(--btn-ink-shadow);
   color: #fff;
 }
 
 .autopilot[data-state="ON"] i {
-  animation: glow 2.4s ease-in-out infinite;
   background: var(--first-light);
-  box-shadow: 0 0 0 0 rgb(255 209 102 / 70%);
+}
+
+/* A ring that swells and fades: transform and opacity only. */
+.autopilot[data-state="ON"] i::after {
+  animation: glow 2.4s var(--ease-out) infinite;
+  background: var(--first-light);
+  border-radius: 50%;
+  content: "";
+  inset: 0;
+  position: absolute;
 }
 
 .autopilot[data-state="PAUSED"] i {
@@ -109,8 +154,8 @@
 }
 
 @keyframes glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(255 209 102 / 55%); }
-  50% { box-shadow: 0 0 0 5px rgb(255 209 102 / 0%); }
+  0% { opacity: 0.6; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(2.6); }
 }
 
 .account {
@@ -119,18 +164,30 @@
 
 .account summary {
   align-items: center;
-  background: var(--paper);
+  background: var(--surface-sheen), var(--paper);
   border: 1px solid var(--line-strong);
   border-radius: 50%;
+  box-shadow: var(--shadow-xs);
   color: var(--ink);
   cursor: pointer;
   display: flex;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   height: 34px;
   justify-content: center;
   list-style: none;
+  transition:
+    box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
   width: 34px;
+}
+
+.account summary:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.account summary:active {
+  transform: scale(0.95);
 }
 
 .account summary::-webkit-details-marker {
@@ -138,9 +195,11 @@
 }
 
 .accountMenu {
-  background: var(--paper);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  background: rgb(255 255 255 / 88%);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   display: grid;
   gap: 14px;
@@ -149,7 +208,26 @@
   position: absolute;
   right: 0;
   top: 44px;
+  transform-origin: top right;
   width: min(240px, calc(100vw - 32px));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .account[open] .accountMenu {
+    animation: menuIn var(--dur-base) var(--ease-spring) backwards;
+  }
+}
+
+@keyframes menuIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .accountMenu {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--paper);
+  }
 }
 
 .accountMenu span {
@@ -165,8 +243,19 @@
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   min-height: 36px;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+.accountMenu button:hover {
+  background: rgb(11 16 32 / 9%);
+}
+
+.accountMenu button:active {
+  transform: scale(0.98);
 }
 
 .workspace {

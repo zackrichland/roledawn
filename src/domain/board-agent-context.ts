@@ -78,7 +78,7 @@ export const BOARD_CONTEXT: Readonly<Record<BoardId, BoardContext>> = Object.fre
     "The chosen location label renders up to two seconds after the single option click (aria-selected there is only keyboard focus); wait for it, never click again.",
     "Submitting disables every input before the request is sent; final checks still read the values. Never re-enable or refill.",
     "Leave \"Autofill from resume\" alone; it sits outside the form.",
-    "Security-clearance and no-AI instruction questions need the candidate's own saved answer.",
+    "Security-clearance and no-AI questions need the candidate's own saved answer.",
   ]),
   workday: board("workday", "Workday", "unsupported", "unverified", [
     "Multi-step wizard with a per-employer account; any password field hands over today.",
