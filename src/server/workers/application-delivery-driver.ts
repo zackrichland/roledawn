@@ -382,7 +382,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           submitStarted = Date.now();
           let result = await runtime.submit(hash(review), review, input.signal, async () => {
             await active();
-            const actual = await browser.verifyWrites(input.signal);
+            const actual = await browser.verifySubmitReadback(input.signal);
             await runtime.verifyCurrentUploads();
             // A challenge that appears with the final request is handed over as a CAPTCHA, unsent.
             if (actual.takeoverReason === APPLICATION_FILL_CAPTCHA_TAKEOVER) throw new Error(APPLICATION_FILL_CAPTCHA_TAKEOVER);

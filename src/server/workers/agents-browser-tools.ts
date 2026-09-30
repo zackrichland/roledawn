@@ -23,7 +23,7 @@ type RawControl = {
   index: number; tag: string; type: string; role: string; name: string; id: string; label: string; optionLabel: string;
   autocomplete: string; placeholder: string; required: boolean; readOnly: boolean;
   form: string; value: string; checked: boolean; selected: string[];
-  valid: boolean; accept: string; multiple: boolean;
+  valid: boolean; accept: string; multiple: boolean; disabled: boolean;
   options: { value: string; label: string }[];
   files: { name: string; size: number; type: string }[];
   /** React Select only: the closed control's visible state (selection, placeholder, search text). */
@@ -133,7 +133,7 @@ function kind(control: RawControl): AgentFieldKind {
   return "TEXT";
 }
 
-async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = false): Promise<RawControl[]> {
+async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = false, includeDisabledForReview = false): Promise<RawControl[]> {
   return frame.locator(CONTROL_SELECTOR).evaluateAll((elements, flags) => elements.flatMap((element, index) => {
     const native = element as HTMLInputElement;
     const ashbyEntry = flags.ashbyLabels ? element.closest('.ashby-application-form-field-entry[data-field-path][data-field-entry-id]') : null;
@@ -145,7 +145,8 @@ async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = fals
     if (flags.ashbyLabels && type === "file" && !ashbyEntry) return [];
     const style = getComputedStyle(element);
     const bounds = element.getBoundingClientRect();
-    if (native.disabled || element.getAttribute("aria-disabled") === "true" || ["hidden", "submit", "reset", "button", "image"].includes(type) ||
+    const disabled = Boolean(native.disabled) || element.getAttribute("aria-disabled") === "true";
+    if (disabled && !flags.includeDisabledForReview || ["hidden", "submit", "reset", "button", "image"].includes(type) ||
       (type !== "file" && (element.closest('[hidden], [aria-hidden="true"]') || style.display === "none" ||
         style.visibility === "hidden" || bounds.width === 0 || bounds.height === 0))) return [];
     // A label wrapping a select or textarea must not absorb its option or
@@ -167,7 +168,7 @@ async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = fals
     const yesNoButtons = yesNo ? [...element.querySelectorAll(":scope > button[data-option]")] : [];
     const yesNoValid = yesNoButtons.length === 2 && ["yes", "no"].every(option =>
       yesNoButtons.filter(button => button.getAttribute("data-option") === option &&
-        button.textContent?.trim().toLowerCase() === option && !button.hasAttribute("disabled") &&
+        button.textContent?.trim().toLowerCase() === option && (flags.includeDisabledForReview || !button.hasAttribute("disabled")) &&
         ["true", "false"].includes(button.getAttribute("aria-pressed") ?? "")).length === 1);
     const yesNoSelected = yesNoButtons.filter(button => button.getAttribute("aria-pressed") === "true");
     let uploadHeading = "";
@@ -203,7 +204,7 @@ async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = fals
       form: ashbyEntry ? ashbyEntry.getAttribute("data-field-entry-id")!.slice(0, -(ashbyPath.length + 1)) : form ? JSON.stringify([form.id, form.getAttribute("name"), form.getAttribute("action"), form.method]) : "outside-form",
       value: yesNo ? yesNoSelected.length === 1 ? String(yesNoSelected[0].getAttribute("data-option") === "yes") : "" : native.value ?? "", checked: Boolean(native.checked),
       selected: element instanceof HTMLSelectElement ? [...element.selectedOptions].map((option) => option.value) : [],
-      valid: yesNo ? yesNoValid && yesNoSelected.length <= 1 && (!ashbyRequired || yesNoSelected.length === 1) : element.getAttribute("aria-invalid") !== "true" && (native.validity ? native.validity.valid : false), accept: native.accept ?? "", multiple: Boolean(native.multiple),
+      valid: yesNo ? yesNoValid && yesNoSelected.length <= 1 && (!ashbyRequired || yesNoSelected.length === 1) : element.getAttribute("aria-invalid") !== "true" && (native.validity ? native.validity.valid : false), accept: native.accept ?? "", multiple: Boolean(native.multiple), disabled,
       options, files: native.files ? [...native.files].map((file) => ({ name: file.name, size: file.size, type: file.type })) : [],
       menuState: (() => {
         const shell = element.getAttribute("role") === "combobox" && element.getAttribute("aria-expanded") === "false" ? element.closest(".select-shell") : null;
@@ -213,7 +214,7 @@ async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = fals
             .map((node) => `${node.className}:${(node.textContent ?? "").replace(/\s+/gu, " ").trim()}`)]);
       })(),
     }];
-  }), { leverLabels, ashbyLabels });
+  }), { leverLabels, ashbyLabels, includeDisabledForReview });
 }
 
 /** Fixed browser operations only. No model-supplied script, selector, URL or click. */
@@ -262,7 +263,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     if (new URL(page.url()).origin !== expectedOrigin) throw new Error("AGENTS_FILL_ORIGIN_MISMATCH");
   }
 
-  async function inspect(signal?: AbortSignal): Promise<AgentBrowserSnapshot> {
+  async function inspect(signal?: AbortSignal, includeDisabledForReview = false): Promise<AgentBrowserSnapshot> {
     if (signal?.aborted) throw new Error("AGENTS_FILL_CANCELLED");
     assertOrigin();
     const next = new Map<string, LocatedField>();
@@ -305,7 +306,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
           return bounds.width > 0 && bounds.height > 0 &&
             /^(?:next|continue|save and continue|next step)\b/iu.test((element.textContent || (element as HTMLInputElement).value || "").trim());
         }));
-      const controls = await rawControls(frame, options?.leverLabels, options?.ashbyLabels);
+      const controls = await rawControls(frame, options?.leverLabels, options?.ashbyLabels, includeDisabledForReview);
       const containsIdentityGate = controls.some((control) => control.type === "password" || control.autocomplete === "one-time-code");
       const structure = hash(controls.map((control) => [control.tag, control.type, control.role, control.id, control.name, control.label, control.required, control.form]));
       const frameKey = `${frameIndex}:${frame.url()}`;
@@ -315,13 +316,15 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
         for (const control of controls) {
           if (control.role !== "combobox" || control.tag === "select" || control.readOnly) continue;
           if (options?.ashbyLabels && options.remoteSearch && control.id === "_systemfield_location") {
-            const remote = await readAshbyLocation(frame.locator(CONTROL_SELECTOR).nth(control.index));
+            const remote = await readAshbyLocation(frame.locator(CONTROL_SELECTOR).nth(control.index), includeDisabledForReview);
             if (remote) {
               control.remote = remote; control.options = []; control.value = remote.selectedLabel;
               control.valid = !control.required || remote.selectedLabel.length > 0;
             }
             continue;
           }
+          // Final review never opens or selects a disabled custom control.
+          if (control.disabled) continue;
           const readKey = options?.allowReactSelectDisplay && control.menuState !== null ? `${control.index}:${control.id}:${control.menuState}` : null;
           let read = readKey ? reads.get(readKey) : undefined;
           if (!read) {
@@ -427,6 +430,9 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
             field = Object.freeze({ ...field, kind: "UNSUPPORTED", searchable: false });
           }
         }
+        // The employer may lock already-reviewed fields while submitting. A
+        // disabled field never creates new authority or hides schema changes.
+        if (includeDisabledForReview && control.disabled && !latest.has(field.fieldId)) throw new Error("AGENTS_FILL_FIELD_DRIFT");
         next.set(field.fieldId, { field, frame, indexes: group.map((item) => item.index), value, files: control.files, aria: control.aria, remote: Boolean(control.remote) });
       }
     }
@@ -533,8 +539,8 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     await verifyWrites(signal);
   }
 
-  async function verifyWrites(signal?: AbortSignal): Promise<AgentBrowserSnapshot> {
-    const snapshot = await inspect(signal);
+  async function verifyWrites(signal?: AbortSignal, includeDisabledForReview = false): Promise<AgentBrowserSnapshot> {
+    const snapshot = await inspect(signal, includeDisabledForReview);
     for (const [id, priorHash] of initialValues ?? []) {
       const current = latest.get(id);
       if (!current || hash({ value: current.value, files: current.files }) !== priorHash) throw new Error("AGENTS_FILL_CANDIDATE_VALUE_CHANGED");
@@ -563,7 +569,11 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   }
 
   return Object.freeze({
-    inspect, fillValue, upload, verifyWrites,
+    inspect: (signal?: AbortSignal) => inspect(signal), fillValue, upload,
+    verifyWrites: (signal?: AbortSignal) => verifyWrites(signal),
+    // Ashby disables its controls after the click, before its final request is
+    // intercepted. Read their exact values/schema here without enabling writes.
+    verifySubmitReadback: (signal?: AbortSignal) => verifyWrites(signal, ashbyLabels),
     async verifyValue(fieldId: string, answer: AgentFieldValue, signal?: AbortSignal, match?: OptionMatch): Promise<boolean> {
       const prior = latest.get(fieldId);
       if (!prior) return false;

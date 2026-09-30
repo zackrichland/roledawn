@@ -104,7 +104,7 @@ for (const mode of ["fake-receipt", "survey-missing"] as const) test("Ashby " + 
  });
 });
 
-for (const mode of ["multiple", "rotating-action", "public-refetches"] as const) test("Ashby delivery driver seals " + mode + " autosave readbacks with the exact approved package", options, async () => {
+for (const mode of ["multiple", "rotating-action", "public-refetches", "submit-disabled", "submit-disabled-value", "submit-disabled-label", "submit-disabled-removed", "submit-disabled-foreign"] as const) test("Ashby delivery driver seals " + mode + " autosave readbacks with the exact approved package", options, async () => {
  const server = await startSyntheticAshby(mode);
  const browser = await chromium.launch({ executablePath: chrome, headless: true });
  try {
@@ -115,7 +115,7 @@ for (const mode of ["multiple", "rotating-action", "public-refetches"] as const)
    harness: { async run() {} },
    submissionHooks: { async begin(input) {
     const readback = (input.review.readbacks as { savedFields: { actionId: string }[] }[])[0];
-    assert.equal(readback.savedFields.length, 2);
+    assert.equal(readback.savedFields.length, mode.startsWith("submit-disabled") ? 1 : 2);
     if (mode === "rotating-action") assert.equal(readback.savedFields[0].actionId, ASHBY_FIXTURE_FINAL_ACTION);
     assert.equal(server.requests.submits, 0);
     sealed = true;
@@ -130,6 +130,14 @@ for (const mode of ["multiple", "rotating-action", "public-refetches"] as const)
    executionPackage: { schemaRelease: "application-fill-execution-package/1", authorityScope: "FILL_ONLY_NO_SUBMIT", submitAuthorized: false, binding, destinationUrl: server.policy.startUrl,
     facts: [{ factVersionId: "fixture-name", factKey: "identity.legal_name", value: "Alex Fixture", valueHash: createHash("sha256").update("Alex Fixture").digest("hex") }], artifacts: [artifact] },
   });
+  if (mode.startsWith("submit-disabled-")) {
+   assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
+   if (result.kind === "TAKEOVER") assert.equal(result.reasonCode, mode === "submit-disabled-value" ? "AGENTS_FILL_READBACK_MISMATCH"
+    : mode === "submit-disabled-foreign" ? "DELIVERY_FINAL_REVIEW_DRIFT" : "AGENTS_FILL_FIELD_DRIFT");
+   assert.equal(sealed, false);
+   assert.equal(server.requests.submits, 0);
+   return;
+  }
   assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
   assert.equal(sealed, true);
   assert.equal(server.requests.submits, 1);

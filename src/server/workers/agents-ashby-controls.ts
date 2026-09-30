@@ -5,14 +5,14 @@ const DOM_ID = /^[A-Za-z0-9_:.-]{1,256}$/u;
 
 /** Ashby's reviewed location control displays its saved result in the input.
  * Its highlighted menu option (aria-selected) is only keyboard focus. */
-export async function readAshbyLocation(control: Locator): Promise<RemoteSearchComboboxState | null> {
-  return control.evaluate(element => {
-    if (!(element instanceof HTMLInputElement) || element.disabled ||
+export async function readAshbyLocation(control: Locator, includeDisabledForReview = false): Promise<RemoteSearchComboboxState | null> {
+  return control.evaluate((element, includeDisabled) => {
+    if (!(element instanceof HTMLInputElement) || element.disabled && !includeDisabled ||
       !element.matches('.ashby-application-form-input-autocomplete[role="combobox"][aria-autocomplete="list"]') ||
       element.closest(".ashby-application-form-field-entry")?.getAttribute("data-field-path") !== "_systemfield_location" ||
       element.getAttribute("aria-expanded") !== "false") return null;
     return { selectedLabel: element.value.trim() };
-  });
+  }, includeDisabledForReview);
 }
 
 export async function selectAshbyLocation(

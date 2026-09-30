@@ -41,6 +41,16 @@ document.querySelector('#_systemfield_resume').onchange = async (e) => { try {
  document.querySelector('.ashby-application-form-input-file-item-name').textContent = file.name;
 } catch {} };
 document.querySelector('button').onclick = async () => { try {
+ if (mode.startsWith('submit-disabled')) {
+  document.querySelectorAll('input').forEach(input => { input.disabled = true; });
+  if (mode === 'submit-disabled-value') document.querySelector('#_systemfield_name').value = 'Unapproved Other Person';
+  if (mode === 'submit-disabled-label') document.querySelector('label[for="_systemfield_name"]').textContent = 'Manager name';
+  if (mode === 'submit-disabled-removed') document.querySelector('#_systemfield_name').remove();
+  if (mode === 'submit-disabled-foreign') {
+   const frame = document.createElement('iframe'); frame.src = 'data:text/html,foreign';
+   await new Promise(resolve => { frame.onload = resolve; document.body.append(frame); });
+  }
+ }
  const op = multiple ? 'ApiSubmitMultipleFormsAction' : 'ApiSubmitSingleApplicationFormAction';
  const variables = multiple ?
  {organizationHostedJobsPageName:'fixture',jobPostingId:jobId,applicationFormRenderIdentifier:formId,applicationFormDefinitionIdentifier:definition,applicationFormActionIdentifier:currentActionId,surveyIdentifiers:[{formRenderId:surveyId,actionIdentifier:actionId,sourceFormDefinitionId:definition}]} :

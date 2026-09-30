@@ -10,7 +10,7 @@ const actionId = "44444444-4444-4444-8444-444444444444";
 export const ASHBY_FIXTURE_FINAL_ACTION = "88888888-8888-4888-8888-888888888888";
 const surveyId = "55555555-5555-4555-8555-555555555555";
 const field = (path: string, type: string) => ({ id: formId + "_" + path, field: { path, type, isMany: false, selectableValues: null }, fieldValue: null as unknown, isRequired: true, isHidden: false });
-export type AshbyFixtureMode = "normal" | "multiple" | "bad-submit" | "wrong-value" | "fake-receipt" | "survey-missing" | "upload-corrupt" | "rotating-action" | "stale-action" | "wrong-handle-length" | "late-field-save" | "public-refetches";
+export type AshbyFixtureMode = "normal" | "multiple" | "bad-submit" | "wrong-value" | "fake-receipt" | "survey-missing" | "upload-corrupt" | "rotating-action" | "stale-action" | "wrong-handle-length" | "late-field-save" | "public-refetches" | "submit-disabled" | "submit-disabled-value" | "submit-disabled-label" | "submit-disabled-removed" | "submit-disabled-foreign";
 export async function startSyntheticAshby(mode: AshbyFixtureMode = "normal") {
   const application = { id: formId, sourceFormDefinitionId: definition, formControls: [{ identifier: actionId, title: "Submit" }], sections: [{ isHidden: false, fieldEntries: [field("_systemfield_name", "String"), field("_systemfield_resume", "File")] }] };
   const survey = { id: surveyId, sourceFormDefinitionId: definition, formControls: [{ identifier: actionId, title: "Submit" }], sections: [] };

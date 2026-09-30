@@ -184,6 +184,12 @@ test("Ashby Yes/No buttons retain the question, requiredness, form identity and 
     const after = await tools.verifyWrites();
     assert.equal(after.fields[0].fieldId, field.fieldId); assert.equal(after.fields[0].hasValue, true); assert.equal(after.fields[0].valid, true);
     assert.equal(await page.locator('button[data-option="no"]').getAttribute("aria-pressed"), "true");
+    const reviewedHash = tools.readbackHash();
+    await page.locator('button[data-option]').evaluateAll(buttons => buttons.forEach(button => { (button as HTMLButtonElement).disabled = true; }));
+    assert.equal((await tools.verifySubmitReadback()).fields[0].fieldId, field.fieldId);
+    assert.equal(tools.readbackHash(), reviewedHash);
+    await assert.rejects(tools.fillValue(field.fieldId, "Yes"), /AGENTS_FILL_FIELD_DRIFT/u);
+    assert.equal(await page.locator('button[data-option="no"]').getAttribute("aria-pressed"), "true");
     assert.equal(requests(), 0);
   });
 });
@@ -216,6 +222,12 @@ test("Ashby city lookup waits for one delayed confirmed result and keeps identit
     assert.equal(await page.locator("body").getAttribute("data-clicks"), "1");
     const after = (await tools.verifyWrites()).fields[0];
     assert.equal(after.fieldId, field.fieldId); assert.equal(after.valid, true); assert.equal(after.hasValue, true);
+    const reviewedHash = tools.readbackHash();
+    await page.locator("input").evaluate(input => { (input as HTMLInputElement).disabled = true; });
+    assert.equal((await tools.verifySubmitReadback()).fields[0].fieldId, field.fieldId);
+    assert.equal(tools.readbackHash(), reviewedHash);
+    await assert.rejects(tools.fillValue(field.fieldId, "Springfield", undefined, match), /AGENTS_FILL_FIELD_DRIFT/u);
+    assert.equal(await page.locator("body").getAttribute("data-clicks"), "1");
   });
 });
 
