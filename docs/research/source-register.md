@@ -357,3 +357,7 @@ Recheck product features, prices, model names, policies, domains, and APIs befor
 ### AB-20260930-04: composite application-form definition ID
 
 - **Primary observation**, accessed 2026-09-30: `ApiJobPosting` from [the public hosted board](https://jobs.ashbyhq.com/Ashby) returns `CompositeFormDefinitionId-JobPostingApplicationFormV2` as an opaque JSON string with UUID form-definition/job fields and `External` board scope; survey definition IDs remain UUIDs. Fresh read-only response and synthetic replay establish schema support, not submission acceptance.
+
+### LV-20260930-02: parser edit tracking
+
+- **Primary observation**, accessed 2026-09-30: [Lever public parser client](https://jobs.lever.co/js/parseResume.js) protects nonempty inputs after native change/paste events; an input event alone does not mark the last focused field as edited. Replayed with synthetic fields and mocked parsing, without employer upload or submission.

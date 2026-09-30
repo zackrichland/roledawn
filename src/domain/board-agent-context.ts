@@ -62,7 +62,7 @@ export const BOARD_CONTEXT: Readonly<Record<BoardId, BoardContext>> = Object.fre
   ]),
   lever: board("lever", "Lever", "fills-only", "repo", [
     "The resume upload runs Lever's parser, which may fill or change other fields (current location too). Parsed values are not approved: re-check every field afterwards.",
-    "Fill approved facts before uploading, then verify all values again.",
+    "Fill approved facts before uploading, complete edits with blur, then verify all values again.",
     "Question text sits in each card's label; judge sensitivity from the question, never the option.",
     "The required marker, not a native required attribute, signals a required field (the file input may lack it).",
     "hCaptcha has a hidden enclave bootstrap; it is passive. Any visible challenge, checkbox or prompt means stop.",

@@ -2,7 +2,7 @@ import type { Route } from "playwright-core";
 import { resolveLeverDeliveryPolicy } from "../server/workers/application-delivery-browser.ts";
 
 export type SyntheticLeverMode = "normal" | "bad-upload" | "uncertain" | "duplicate" | "altered-file" | "upload-extra-field" | "parser-autofill" | "captcha" | "form-drift"
-  | "invisible-captcha" | "captcha-on-submit" | "foreign-captcha";
+  | "invisible-captcha" | "captcha-on-submit" | "foreign-captcha" | "parser-change-events";
 const SITEKEY = "a0000000-0000-4000-8000-00000000000b";
 const HCAPTCHA_FRAME = "https://newassets.hcaptcha.com/captcha/v1/fixture/static/hcaptcha.html";
 const HCAPTCHA_MODES = new Set<SyntheticLeverMode>(["captcha", "invisible-captcha", "captcha-on-submit"]);
@@ -57,10 +57,11 @@ export function syntheticLeverDelivery(mode: SyntheticLeverMode = "normal") {
     ${mode === "foreign-captcha" ? '<iframe title="reCAPTCHA" src="https://www.google.com/recaptcha/api2/anchor?k=fixture&size=invisible" style="display:none"></iframe>' : ""}
     <button type="button" id="btn-submit">Submit application</button></form><script>
     const form=document.getElementById('application-form'),file=document.getElementById('resume-upload-input');
+    ${mode === "parser-change-events" ? "let nameEdited=false;form.elements.name.addEventListener('change',()=>{nameEdited=true;});" : ""}
     file.addEventListener('change',async()=>{const data=new FormData();data.append('resume',file.files[0]);data.append('accountId',form.elements.accountId.value);${mode === "upload-extra-field" ? "data.append('unauthorized','LEAK');" : ""}
       document.querySelector('.filename').textContent=file.files[0].name;
       const result=await fetch('/parseResume',{method:'POST',body:data});
-      if(result.ok){document.querySelector('.resume-upload-success').style.display='block';${mode === "parser-autofill" ? "form.elements.org.value='Unverified employer';" : ""}}
+      if(result.ok){document.querySelector('.resume-upload-success').style.display='block';${mode === "parser-autofill" ? "form.elements.org.value='Unverified employer';" : mode === "parser-change-events" ? "if(!nameEdited)form.elements.name.value='Unapproved parser name';" : ""}}
     });
     async function send(){const data=new FormData(form);${mode === "altered-file" ? "data.set('resume',new File(['wrong bytes'],'resume.pdf',{type:'application/pdf'}));" : ""}
       const result=await fetch(form.action,{method:'POST',body:data,redirect:'manual'});

@@ -162,6 +162,33 @@ test("city autosave must be the one result confirmed by the approved city, regio
   assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "city-il" })), "FIELD");
 });
 
+test("mixed location widgets bind their reviewed lookup types and still accept only an approved city result", () => {
+  const mixedForm = form();
+  const location = mixedForm.sections[0].fieldEntries.find(entry => entry.field.path === "_systemfield_location")!;
+  Object.assign(location.field, { locationTypes: ["Country", "Region", "City"] });
+  const protocol = createAshbyProtocol(board, job);
+  const empty = envelope("ApiAutocompleteGeoLocation", { text: "", locationTypes: ["Country", "Region", "City"] });
+  assert.equal(protocol.authorize(empty), "READ", "mount can precede the posting response");
+  protocol.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: mixedForm, surveyForms: [] } } });
+  protocol.beginField(field("_systemfield_location", "SINGLE_SELECT"), "Springfield", { semantic: "CITY", source: "FACT", hints: { region: "IL", country: "US" } });
+  const search = envelope("ApiAutocompleteGeoLocation", { text: "Springfield", locationTypes: ["Country", "Region", "City"] });
+  assert.equal(protocol.authorize(search, "Springfield"), "SEARCH");
+  assert.equal(protocol.authorize({ ...search, variables: { ...search.variables, locationTypes: ["City"] } }, "Springfield"), null);
+  protocol.observe(search, { data: { result: { suggestions: [
+    { name: "Springfield", geoLocationPath: [{ type: "Region", providerLocationId: "region-il" }] },
+    { name: "Springfield, Illinois, United States", geoLocationPath: [{ type: "City", providerLocationId: "city-il" }] },
+  ] } } });
+  assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield", providerLocationId: "region-il" })), null);
+  assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "city-il" })), "FIELD");
+  const changed = structuredClone(mixedForm);
+  Object.assign(changed.sections[0].fieldEntries.find(entry => entry.field.path === "_systemfield_location")!.field, { locationTypes: ["City"] });
+  assert.throws(() => protocol.observe(save("_systemfield_location", {}),
+    { data: { setFormValue: changed } }), /LOCATION_TYPES_DRIFT/u);
+  for (const types of [["Country"], ["Region", "City"], ["Country", "Region", "City", "Other"], ["City", "Country", "Region"]]) {
+    assert.equal(createAshbyProtocol(board, job).authorize(envelope("ApiAutocompleteGeoLocation", { text: "", locationTypes: types })), null);
+  }
+});
+
 test("a file handle cannot attach before byte acknowledgement or to another form field", () => {
   const protocol = initialized();
   const bytes = Buffer.from("%PDF-1.7 synthetic approved resume");

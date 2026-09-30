@@ -117,3 +117,5 @@ Don't:
 - [ATS delivery expansion acceptance](../execution/ats-delivery-expansion-acceptance.md); [source register](../research/source-register.md) ATS-D01 to ATS-D04; [decision log](../execution/decision-log.md) D-086, D-104; `tmp/form-audit/` (5 live forms, 2026-09-28, not committed)
 
 - 2026-09-30 (D-136): the hosted Linux browser loads a full-page, `visibility:hidden` hCaptcha enclave at the exact reviewed `newassets.hcaptcha.com/captcha/v1/<revision>/static/hcaptcha-enclave.html` path. Treat that hidden bootstrap as passive; a visible enclave, widget, prompt or unreviewed origin/path still stops. No challenge interaction is admitted.
+
+- 2026-09-30 (D-138): the public résumé parser tracks native change/paste events. Complete approved text edits with blur before upload; otherwise the last focused field can be overwritten. Real public-client replay with a mocked parser response preserves exact values after the correction; this is field-mechanics proof, not employer acceptance.

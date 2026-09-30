@@ -59,7 +59,10 @@ export function parseAshbyEnvelope(url: string, method: string, body: Buffer | n
   return inspectAshbyEnvelope(url, method, body, origin).envelope;
 }
 
-type Field = { path: string; type: string; many: boolean; options: { label: string; value: unknown }[]; value: unknown; required: boolean; hidden: boolean };
+const CITY_LOOKUP = ["City"];
+const MIXED_LOCATION_LOOKUP = ["Country", "Region", "City"];
+const reviewedLocationTypes = (value: unknown) => equal(value, CITY_LOOKUP) || equal(value, MIXED_LOCATION_LOOKUP);
+type Field = { path: string; type: string; many: boolean; options: { label: string; value: unknown }[]; value: unknown; required: boolean; hidden: boolean; locationTypes: unknown };
 type Form = { id: string; definition: string; action: string; fields: Map<string, Field> };
 function definitionId(value: unknown, compositeJobId?: string): value is string {
   if (uuid(value)) return true;
@@ -93,7 +96,9 @@ function readForm(value: unknown, compositeJobId?: string): Form {
       }) : [];
       const raw = object(e.fieldValue);
       const stored = raw?.__typename === "JSONBox" ? raw.value : raw?.__typename === "File" ? { fileId: raw.id, filename: raw.filename } : e.fieldValue == null ? null : fail("FIELD_VALUE_SCHEMA_DRIFT");
-      fields.set(f.path, { path: f.path, type: f.type, many: f.isMany === true, options, value: stored, required: e.isRequired === true, hidden: s.isHidden === true || e.isHidden === true });
+      const locationTypes = f.type === "Location" ? f.locationTypes ?? CITY_LOOKUP : null;
+      if (f.type === "Location" && !reviewedLocationTypes(locationTypes)) return fail("LOCATION_TYPES_SCHEMA_DRIFT");
+      fields.set(f.path, { path: f.path, type: f.type, many: f.isMany === true, options, value: stored, required: e.isRequired === true, hidden: s.isHidden === true || e.isHidden === true, locationTypes });
     }
   }
   return { id: form.id, definition: form.sourceFormDefinitionId, action: String(object(form.formControls[0])!.identifier), fields };
@@ -138,10 +143,11 @@ export function createAshbyProtocol(board: string, jobId: string) {
       if (!equal(actual.options, prior.options)) dimensions.add("OPTIONS");
       if (actual.required !== prior.required) dimensions.add("REQUIRED");
       if (actual.hidden !== prior.hidden) dimensions.add("HIDDEN");
+      if (!equal(actual.locationTypes, prior.locationTypes)) dimensions.add("LOCATION_TYPES");
     }
     // Bounded static dimensions reveal simultaneous schema changes without
     // logging field paths, labels, answers, identifiers or response content.
-    if ([...dimensions].some(key => key !== "ACTION")) return fail("FORM_SCHEMA_" + ["ACTION", "SET", "ORDER", "TYPE", "MULTI", "OPTIONS", "REQUIRED", "HIDDEN"].filter(key => dimensions.has(key)).join("_") + "_DRIFT");
+    if ([...dimensions].some(key => key !== "ACTION")) return fail("FORM_SCHEMA_" + ["ACTION", "SET", "ORDER", "TYPE", "MULTI", "OPTIONS", "REQUIRED", "HIDDEN", "LOCATION_TYPES"].filter(key => dimensions.has(key)).join("_") + "_DRIFT");
     for (const [path, prior] of expected.form.fields) {
       const actual = next.fields.get(path)!.value;
       if (path === expected.field.path) {
@@ -218,13 +224,13 @@ export function createAshbyProtocol(board: string, jobId: string) {
       if (op === "ApiAutocompleteGeoLocation") {
         // The public widget reads this constant query on mount and after saves.
         // It carries no candidate text, and its response cannot seed a choice.
-        if (keys(v, ["text", "locationTypes"]) && v.text === "" && equal(v.locationTypes, ["City"])) return "READ";
+        if (keys(v, ["text", "locationTypes"]) && v.text === "" && reviewedLocationTypes(v.locationTypes)) return "READ";
         if (!fieldAction) return reject("NO_FIELD_ACTION");
         if (fieldAction.field.type !== "Location") return reject("FIELD_TYPE");
         if (!search) return reject("NO_SEARCH_ACTION");
         if (!keys(v, ["text", "locationTypes"])) return reject("VARIABLE_KEYS");
         if (typeof v.text !== "string" || !v.text.length || !search.startsWith(v.text)) return reject("TEXT");
-        if (!equal(v.locationTypes, ["City"])) return reject("LOCATION_TYPES");
+        if (!equal(v.locationTypes, fieldAction.field.locationTypes)) return reject("LOCATION_TYPES");
         return "SEARCH";
       }
       if (op === "ApiSetFormValue") {

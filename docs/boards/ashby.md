@@ -132,3 +132,5 @@ Don't:
 - 2026-09-30 (D-136): `automatedProcessingLegalNotice` is a passive notice, including the standard null-HTML notice. Bind its observed rule ID and content hash into review and require the exact rule ID at submit; a notice alone must not stop delivery. Consent controls use the candidate's saved delegation.
 
 - 2026-09-30 (D-137): application `sourceFormDefinitionId` can be the exact JSON `CompositeFormDefinitionId-JobPostingApplicationFormV2`, bound to this job and External board scope. Surveys still use UUIDs. Preserve the opaque string in every autosave and final review.
+
+- 2026-09-30 (D-138): a Location widget can request the exact `Country, Region, City` list, including an empty mount read. Bind nonempty lookups to the observed widget types; only approved-text, server-returned City results can become saved location values.

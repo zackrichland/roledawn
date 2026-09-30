@@ -72,6 +72,14 @@ test("Lever parser cannot add unapproved optional company answers", options, asy
   assert.equal(state.begins, 0);
 });
 
+test("Lever completes the native field change before upload so its parser preserves approved values", options, async () => {
+  const { result, observed, state } = await run("parser-change-events");
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.uploads.length, 1);
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+});
+
 test("Lever CAPTCHA and changed employer form contract fail before uploads or submission", options, async () => {
   // "captcha" renders a visible checkbox widget; "foreign-captcha" is another provider.
   for (const mode of ["captcha", "foreign-captcha", "form-drift"] as const) {

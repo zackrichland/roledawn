@@ -478,6 +478,10 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       if (typeof answer !== "string" || answer.length > 8_000) throw new Error("AGENTS_FILL_ANSWER_TYPE_INVALID");
       expected = answer;
       await controls.nth(indexes[0]).fill(answer, { timeout: 5_000 });
+      // Lever's parser protects inputs on native change/paste, not input.
+      // Complete the normal edit with blur before a later resume upload can
+      // reset the still-focused field. Re-read the exact approved value below.
+      if (options?.leverLabels) await controls.nth(indexes[0]).blur({ timeout: 5_000 });
     } else if (field.kind === "BOOLEAN") {
       if (typeof answer !== "boolean") throw new Error("AGENTS_FILL_ANSWER_TYPE_INVALID");
       expected = answer;
