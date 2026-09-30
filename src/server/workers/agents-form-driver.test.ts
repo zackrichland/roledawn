@@ -188,7 +188,7 @@ test("Ashby Yes/No buttons retain the question, requiredness, form identity and 
   });
 });
 
-test("Ashby city lookup selects one confirmed result and keeps identity after selection", browserOptions, async () => {
+test("Ashby city lookup waits for one delayed confirmed result and keeps identity after selection", browserOptions, async () => {
   await fixture(`<div class="ashby-application-form-field-entry" data-field-path="_systemfield_location" data-field-entry-id="form-one__systemfield_location">
     <label class="ashby-application-form-question-title _required_fixture_1">Location</label>
     <input class="ashby-application-form-input-autocomplete" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox">
@@ -198,7 +198,10 @@ test("Ashby city lookup selects one confirmed result and keeps identity after se
       document.getElementById(':r0:')?.remove();
       const list = document.createElement('div'); list.id = ':r0:'; list.setAttribute('role', 'listbox');
       list.innerHTML = '<div class="ashby-application-form-input-autocomplete-popup"><div class="ashby-application-form-input-autocomplete-popup-result" role="option" id=":r1:" aria-selected="true">Springfield, Missouri, United States</div><div class="ashby-application-form-input-autocomplete-popup-result" role="option" id=":r2:" aria-selected="false">Springfield, Illinois, United States</div></div>';
-      list.querySelectorAll('[role=option]').forEach(option => option.onclick = () => { input.value = option.textContent; input.setAttribute('aria-expanded', 'false'); list.remove(); });
+      list.querySelectorAll('[role=option]').forEach(option => option.onclick = () => {
+        document.body.dataset.clicks = String(Number(document.body.dataset.clicks || 0) + 1);
+        setTimeout(() => { input.value = option.textContent; input.setAttribute('aria-expanded', 'false'); list.remove(); }, 250);
+      });
       document.body.append(list); input.setAttribute('aria-controls', ':r0:'); input.setAttribute('aria-expanded', 'true');
     };</script>`, async (page, url) => {
     let approvedSearch = "";
@@ -210,10 +213,40 @@ test("Ashby city lookup selects one confirmed result and keeps identity after se
     await tools.fillValue(field.fieldId, "Springfield", undefined, match);
     assert.equal(approvedSearch, "Springfield");
     assert.equal(await page.locator("input").inputValue(), "Springfield, Illinois, United States");
+    assert.equal(await page.locator("body").getAttribute("data-clicks"), "1");
     const after = (await tools.verifyWrites()).fields[0];
     assert.equal(after.fieldId, field.fieldId); assert.equal(after.valid, true); assert.equal(after.hasValue, true);
   });
 });
+
+for (const mode of ["mismatch", "cancelled"] as const) {
+  test(`Ashby city ${mode} after selection cannot cause a repeated click or accepted readback`, browserOptions, async () => {
+    await fixture(`<div class="ashby-application-form-field-entry" data-field-path="_systemfield_location" data-field-entry-id="form-one__systemfield_location">
+      <label class="ashby-application-form-question-title _required_fixture_1">Location</label>
+      <input class="ashby-application-form-input-autocomplete" role="combobox" aria-autocomplete="list" aria-expanded="false">
+      </div><script>
+      const input = document.querySelector('input');
+      input.oninput = () => {
+        const list = document.createElement('div'); list.id = ':r0:'; list.setAttribute('role', 'listbox');
+        list.innerHTML = '<div class="ashby-application-form-input-autocomplete-popup-result" role="option" id=":r1:">Springfield, Illinois, United States</div>';
+        list.firstChild.onclick = () => {
+          document.body.dataset.clicks = String(Number(document.body.dataset.clicks || 0) + 1);
+          window.afterCityClick();
+          setTimeout(() => { input.value = 'Springfield, Missouri, United States'; input.setAttribute('aria-expanded', 'false'); list.remove(); }, 100);
+        };
+        document.body.append(list); input.setAttribute('aria-controls', ':r0:'); input.setAttribute('aria-expanded', 'true');
+      };</script>`, async (page, url) => {
+      const controller = new AbortController();
+      await page.exposeFunction("afterCityClick", () => { if (mode === "cancelled") controller.abort(); });
+      const tools = createAgentBrowserTools(page, url, { ashbyLabels: true, remoteSearch: true, remoteSearchSemantic: "CITY" });
+      const field = (await tools.inspect()).fields[0];
+      const match = optionMatchForField(field, "location.city", [{ factKey: "location.region", value: "IL" }, { factKey: "location.country_code", value: "US" }]);
+      await assert.rejects(tools.fillValue(field.fieldId, "Springfield", controller.signal, match),
+        mode === "cancelled" ? /AGENTS_FILL_CANCELLED/u : /AGENTS_FILL_READBACK_MISMATCH/u);
+      assert.equal(await page.locator("body").getAttribute("data-clicks"), "1");
+    });
+  });
+}
 
 test("Ashby ambiguous button state is unsupported and cannot hide a required question", browserOptions, async () => {
   await fixture(`<div class="ashby-application-form-field-entry" data-field-path="clearance" data-field-entry-id="form-one_clearance">

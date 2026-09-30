@@ -71,7 +71,15 @@ export async function selectAshbyLocation(
       await control.press("Escape", { timeout: 1_000 }).catch(() => undefined);
     }
   }
-  const after = await readAshbyLocation(control);
-  if (!after || after.selectedLabel !== chosen) throw new Error("AGENTS_FILL_READBACK_MISMATCH");
-  return chosen!;
+  // Ashby's click starts an async save; React can leave the menu open or the
+  // search text visible briefly. Wait only for exact readback, never click again.
+  const settledBy = Date.now() + 2_000;
+  while (Date.now() < settledBy) {
+    active();
+    const after = await readAshbyLocation(control);
+    active();
+    if (after?.selectedLabel === chosen) return chosen!;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  throw new Error("AGENTS_FILL_READBACK_MISMATCH");
 }
