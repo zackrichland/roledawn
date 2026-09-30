@@ -7,6 +7,12 @@ accessed_at: 2026-08-06 unless otherwise stated; backend architecture, Supabase,
 
 # Source register
 
+## Greenhouse city lookup constants — checked 2026-09-29
+
+| ID | Primary source | Evidence class and observed use | Limit |
+|---|---|---|---|
+| GH-20260929-01 | [Official embedded Instawork form](https://job-boards.greenhouse.io/embed/job_app?for=instawork&token=4709125006), [Carvana form](https://job-boards.greenhouse.io/embed/job_app?for=carvana&token=8238431), [Hudl form](https://job-boards.greenhouse.io/embed/job_app?for=hudl&token=8179063), [public location client](https://job-boards.cdn.greenhouse.io/assets/vendor-Ann2cuF6.js), [form component](https://job-boards.cdn.greenhouse.io/assets/entry.client-D-8RNsZm.js) | **Verified read-only:** all three public form bootstraps expose the same public client location key. The location library constructs the lookup with that key, `layers=locality` and literal `lang=en`; the form supplies no language or layer override. D-120 pins those exact constants, instead of patterns that could carry other data. | Public vendor client code, not independent delivery proof. No form values, lookups or submissions were sent. A changed vendor key or protocol fails closed until re-reviewed; this does not establish support for other regions or locales. |
+
 ## OpenAI Agents API computer use — checked 2026-09-29
 
 | ID | Primary source | Evidence class and observed use | Limit |

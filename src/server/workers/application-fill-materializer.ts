@@ -68,7 +68,7 @@ function uploadFilenamePart(value: string): string {
 
 /**
  * The name an employer sees for an uploaded document. Uses the reviewed
- * artifact display name (for example "Zack-Richland-Anthropic-Resume.pdf"),
+ * artifact display name (for example "Alex-Example-Anthropic-Resume.pdf"),
  * restricted to [A-Za-z0-9._-], at most 80 characters, with the extension the
  * immutable bytes actually have. Falls back to "<First>-<Last>-Resume.pdf".
  */

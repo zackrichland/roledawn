@@ -26,21 +26,25 @@ export type DeliveryStepPolicy = Readonly<{
   forward?: DeliveryMoveRule; back?: DeliveryMoveRule;
   submit?: Readonly<{ selector: string; request: DeliveryRequestRule }>;
 }>;
-/** A page's own type-to-search lookup (for example a location autocomplete): GET, exact origin/path, one query key. */
 /**
  * One permitted type-to-search lookup. `query` carries the approved typed text;
- * `params` are the page's own fixed parameters, each a pattern its value must
- * match in full. Any other parameter blocks the request.
+ * `params` are reviewed literal values for the page's own fixed parameters.
+ * Patterns would let page code encode other data in those values. Any other
+ * parameter or changed fixed value blocks the request.
  */
 export type DeliverySearchRule = Readonly<{ origin: string; path: string; query: string; params?: Readonly<Record<string, string>> }>;
 
-function searchPermitted(url: URL, rule: DeliverySearchRule): boolean {
+function searchPermitted(url: URL, rule: DeliverySearchRule, approvedQuery: string): boolean {
   const params = rule.params ?? {};
   if (url.origin !== rule.origin || url.pathname !== rule.path) return false;
   if ([...url.searchParams.keys()].some((key) => key !== rule.query && !Object.hasOwn(params, key))) return false;
   if (url.searchParams.getAll(rule.query).length !== 1 || (url.searchParams.get(rule.query) ?? "").length > 200) return false;
-  return Object.entries(params).every(([name, pattern]) =>
-    url.searchParams.getAll(name).length === 1 && new RegExp(`^(?:${pattern})$`, "u").test(url.searchParams.get(name) ?? ""));
+  // Typing may request each prefix. No page-selected text can leave through
+  // this lookup, even while a legitimate search is in progress.
+  const query = url.searchParams.get(rule.query) ?? "";
+  if (!query || !approvedQuery.startsWith(query)) return false;
+  return Object.entries(params).every(([name, value]) =>
+    url.searchParams.getAll(name).length === 1 && url.searchParams.get(name) === value);
 }
 export type DeliverySitePolicy = Readonly<{
   release: string; startUrl: string;
@@ -240,9 +244,8 @@ function validatePolicy(policy: DeliverySitePolicy): void {
     if (url.origin !== rule.origin || url.pathname !== rule.path || !/^[A-Za-z][A-Za-z0-9_-]{0,39}$/u.test(rule.query) ||
       !(url.protocol === "https:" || url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname)) ||
       sideEffects.has(canonical(url.href).split("?")[0])) throw new Error("DELIVERY_POLICY_SEARCH_INVALID");
-    for (const [name, pattern] of Object.entries(rule.params ?? {})) {
-      if (name === rule.query || !/^[A-Za-z][A-Za-z0-9_-]{0,39}$/u.test(name) || typeof pattern !== "string" || !pattern || pattern.length > 120) throw new Error("DELIVERY_POLICY_SEARCH_INVALID");
-      new RegExp(`^(?:${pattern})$`, "u");
+    for (const [name, value] of Object.entries(rule.params ?? {})) {
+      if (name === rule.query || !/^[A-Za-z][A-Za-z0-9_-]{0,39}$/u.test(name) || typeof value !== "string" || !value || value.length > 120 || /[\u0000-\u001f\u007f]/u.test(value)) throw new Error("DELIVERY_POLICY_SEARCH_INVALID");
     }
   }
   new RegExp(policy.receipt.textPattern, "iu");
@@ -275,6 +278,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   let submittedRequests = 0;
   let closed = false;
   let pendingVerification: PendingVerification | null = null;
+  let activeSearch: Readonly<{ query: string; signal?: AbortSignal }> | null = null;
   const presigns = new Map<string, Presign>();
   const recaptchaKeys = new Set<string>();
   const pending = new Set<Promise<void>>();
@@ -389,7 +393,8 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         /^\/locales\/[A-Za-z-]{2,20}\/(?:job_post|common|confirmation)\.[A-Za-z0-9_-]{20,100}\.json$/u.test(url.pathname);
       const bootstrap = loading && request.method() === "GET" && canonical(request.url()) === canonical(policy.startUrl) ||
         isPresign(request) || policy.bootstrapRequests?.some((rule) => requestMatches(request, rule));
-      const search = request.method() === "GET" && ["fetch", "xhr"].includes(request.resourceType()) && Boolean(policy.searches?.some((rule) => searchPermitted(url, rule)));
+      const search = activeSearch && !activeSearch.signal?.aborted && request.method() === "GET" && ["fetch", "xhr"].includes(request.resourceType()) &&
+        Boolean(policy.searches?.some((rule) => searchPermitted(url, rule, activeSearch!.query)));
       const receiptNavigation = current?.kind === "SUBMIT" && current.admitted && request.method() === "GET" && canonical(request.url()) === canonical(policy.receipt.url);
       const moveNavigation = current?.kind === "MOVE" && current.admitted && request.method() === "GET" && policy.steps.some((step) => canonical(step.url) === canonical(request.url()));
       if (asset || translation || bootstrap || search || recaptcha || hcaptcha || receiptNavigation || moveNavigation) { await dispatch(route); return; }
@@ -481,6 +486,15 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   }
   return Object.freeze({
     policy, currentStep,
+    /** Opened only around a server-approved field fill, never by the page or model. */
+    async withSearch<T>(query: string, work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+      assertActive(signal);
+      if (closed || action || submitConsumed || activeSearch || !policy.searches?.length || !query.trim() || query.length > 200 || /[\u0000-\u001f\u007f]/u.test(query)) {
+        throw new Error("DELIVERY_SEARCH_NOT_AUTHORIZED");
+      }
+      activeSearch = { query, signal };
+      try { return await work(); } finally { activeSearch = null; }
+    },
     passiveFrameUrls() {
       if (!policy.greenhouse) return [];
       return page.frames().map((frame) => frame.url()).filter((value) => {
@@ -635,12 +649,17 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         const observed = current.submission ? await receipt(current.submission) : null;
         if (observed && !current.error) { pendingVerification = null; return { kind: "CONFIRMED", receipt: observed, submission: current.submission! }; }
         if (!current.admitted && !current.error) return again("DELIVERY_VERIFICATION_NOT_SENT");
-        if (!current.error && current.response && current.response.status >= 400 && await verificationShown()) {
+        // Only Greenhouse's explicit 428 captcha-failed response proves this
+        // resend was refused. A 5xx or unknown response may follow acceptance;
+        // the still-visible code form cannot authorize another send.
+        if (!current.error && current.challenge && await verificationShown()) {
           pending.submission = current.submission ?? pending.submission;
           return again("DELIVERY_VERIFICATION_CODE_REJECTED");
         }
+        pendingVerification = null;
         return { kind: "UNCERTAIN", reasonCode: current.error || "DELIVERY_RECEIPT_UNVERIFIED", submission: current.submission ?? pending.submission };
       } catch (error) {
+        pendingVerification = null;
         return { kind: "UNCERTAIN", reasonCode: safeError(error), submission: current.submission ?? pending.submission };
       } finally { await drain(); action = null; }
     },
@@ -706,8 +725,11 @@ export function resolveGreenhouseDeliveryPolicy(destinationUrl: string): Deliver
     // Greenhouse presigns an upload to the bucket nearest the browser: us-east-1
     // (legacy endpoint) or us-west-2 (regional endpoint), both observed 2026-09-28.
     greenhouse: { presignOrigin: "https://boards.greenhouse.io", uploadOrigins: ["https://grnhse-prod-jben-us-east-1.s3.amazonaws.com", "https://grnhse-prod-jben-us-west-2.s3.us-west-2.amazonaws.com"] },
+    // Public client constants, read from Greenhouse's own form/bootstrap and
+    // location library (source register GH-20260929-01). Never copy values from
+    // the active candidate-bearing page; a vendor change must be re-reviewed.
     searches: [{ origin: "https://api-geocode-earth-proxy.greenhouse.io", path: "/v1/autocomplete", query: "text",
-      params: { api_key: "ge-[0-9a-f]{16}", layers: "locality", lang: "[a-z]{2}(?:-[A-Za-z]{2})?" } }],
+      params: { api_key: "ge-39f1178289d5d0c5", layers: "locality", lang: "en" } }],
     steps: [{ id: "application", url: startUrl, readySelector: "#application-form",
       uploads: ["resume", "cover_letter"].map((fieldId) => ({ fieldId, selector: `input[type="file"][id="${fieldId}"]`, acknowledgementSelector: `.file-upload:has(#upload-label-${fieldId}) .file-upload__filename` })),
       submit: { selector: '#application-form button[type="submit"]', request: { method: "POST" as const, url: submitUrl } },

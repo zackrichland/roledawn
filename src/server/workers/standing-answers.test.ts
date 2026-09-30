@@ -24,8 +24,10 @@ const draft = (choices: string[], ids: string[], text = "") => ({ questionId: "q
 test("demographic, legal, consent and optional questions always stay with the candidate", () => {
   assert.equal(standingAnswerEligible(gpa), true);
   assert.equal(standingAnswerEligible(onsite), true);
-  for (const label of ["Gender", "Are you a protected veteran?", "Have you ever been convicted of a felony?", "I agree to the privacy policy", "Signature", "Are you a U.S. citizen?"]) {
+  for (const label of ["Gender", "Are you a protected veteran?", "Have you ever been convicted of a felony?", "I agree to the privacy policy", "Signature", "Are you a U.S. citizen?",
+    "Do you accept binding arbitration?", "Please confirm that all information provided is true", "Are you bound by a non-compete?", "Do you identify as a person of color?"]) {
     assert.equal(standingAnswerEligible(question(label, "SINGLE_SELECT", ["Yes", "No"])), false, label);
+    assert.equal(acceptStandingAnswer(question(label, "BOOLEAN"), draft(["Yes"], ["s2"]), basis), null, label);
   }
   assert.equal(standingAnswerEligible({ ...gpa, required: false }), false);
 });

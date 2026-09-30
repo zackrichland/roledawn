@@ -148,10 +148,10 @@ function executionPackage(
   const resumeBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]);
   const coverBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x32]);
   const facts = [
-    { factVersionId: "b0000000-0000-4000-8000-00000000000b", factKey: "identity.given_name", value: "Zack", valueHash: "5".repeat(64) },
-    { factVersionId: "c0000000-0000-4000-8000-00000000000c", factKey: "identity.family_name", value: "Richland", valueHash: "6".repeat(64) },
-    { factVersionId: IDS.workspace, factKey: "identity.legal_name", value: "Zack Richland", valueHash: "a".repeat(64) },
-    { factVersionId: IDS.candidate, factKey: "contact.application_email", value: "zack@example.com", valueHash: "b".repeat(64) },
+    { factVersionId: "b0000000-0000-4000-8000-00000000000b", factKey: "identity.given_name", value: "Alex", valueHash: "5".repeat(64) },
+    { factVersionId: "c0000000-0000-4000-8000-00000000000c", factKey: "identity.family_name", value: "Example", valueHash: "6".repeat(64) },
+    { factVersionId: IDS.workspace, factKey: "identity.legal_name", value: "Alex Example", valueHash: "a".repeat(64) },
+    { factVersionId: IDS.candidate, factKey: "contact.application_email", value: "alex@example.com", valueHash: "b".repeat(64) },
     { factVersionId: IDS.application, factKey: "contact.phone", value: "+12025550123", valueHash: "c".repeat(64) },
     { factVersionId: IDS.revision, factKey: "contact.linkedin_url", value: "https://linkedin.com/in/zack", valueHash: "d".repeat(64) },
     { factVersionId: IDS.fill, factKey: "contact.website_url", value: "https://example.com", valueHash: "e".repeat(64) },
@@ -227,10 +227,10 @@ test("real Chromium fills only exact standard values and authorized files, then 
     assert.equal(result.uploadedArtifactCount, 2);
     assert.equal(result.blockedFieldCount, 1);
     assert.match(result.readbackHash ?? "", /^[0-9a-f]{64}$/u);
-    assert.equal(await evaluateValue(page, 'input[name="first_name"]'), "Zack");
-    assert.equal(await evaluateValue(page, 'input[name="last_name"]'), "Richland");
-    assert.equal(await evaluateValue(page, 'input[name="full_name"]'), "Zack Richland");
-    assert.equal(await evaluateValue(page, 'input[name="email"]'), "zack@example.com");
+    assert.equal(await evaluateValue(page, 'input[name="first_name"]'), "Alex");
+    assert.equal(await evaluateValue(page, 'input[name="last_name"]'), "Example");
+    assert.equal(await evaluateValue(page, 'input[name="full_name"]'), "Alex Example");
+    assert.equal(await evaluateValue(page, 'input[name="email"]'), "alex@example.com");
     assert.equal(await evaluateValue(page, 'input[name="website_url"]'), "");
     assert.equal(await evaluateValue(page, 'input[name="region"]'), "DC");
     assert.equal(await evaluateValue(page, 'select[name="country"]'), "US");
@@ -272,7 +272,7 @@ test("look-alike referral, emergency, employer, salary and name-variant question
     });
     assert.equal(result.kind, "FILLED_TO_REVIEW");
     assert.equal(result.filledFieldCount, 9);
-    assert.equal(await evaluateValue(page, 'input[name="email"]'), "zack@example.com");
+    assert.equal(await evaluateValue(page, 'input[name="email"]'), "alex@example.com");
     assert.equal(await evaluateValue(page, 'input[name="phone"]'), "+12025550123");
     for (const [name] of TRAP_FIELDS) {
       assert.equal(await page.locator(`[name="${name}"]`).inputValue(), "", name);
@@ -469,7 +469,7 @@ test("continues the same guarded page after the candidate answers a protected re
 
     assert.equal(continued.kind, "FILLED_TO_REVIEW");
     assert.equal(await evaluateValue(page, 'select[name="citizenship"]'), "yes");
-    assert.equal(await evaluateValue(page, 'input[name="full_name"]'), "Zack Richland");
+    assert.equal(await evaluateValue(page, 'input[name="full_name"]'), "Alex Example");
     assert.equal(await page.getByRole("button", { name: "Submit application" }).isDisabled(), true);
     await page.locator("form").evaluate((form) => (form as HTMLFormElement).requestSubmit());
     await page.waitForTimeout(100);

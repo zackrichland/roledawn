@@ -1,13 +1,17 @@
 ---
 title: Product readiness audit
-status: verified founder-alpha snapshot; not a production-readiness claim
+status: historical founder-alpha assessment; superseded by the current review
 owner: product and engineering
-last_updated: 2026-09-16
+last_updated: 2026-09-30
 ---
 
 # Product readiness audit
 
-## Current assessment — 2026-09-16
+This is the historical September 16 assessment and its August evidence. Read
+[the independent review](codex-review-2026-09-30.md) and
+[current state](current-state.md) for the present readiness assessment.
+
+## Historical assessment — 2026-09-16
 
 **Verified:** the 25-source catalog holds 5,879 fresh open roles; stream pagination and mobile layout were checked in the browser. Hosted Supabase plus real OpenAI Agents and Browserbase completed one synthetic application, saved one receipt and acknowledged all test-session cleanup. The flow now includes missing-answer continuation, upload acknowledgment, multi-page navigation, single-use dispatch and receipt capture.
 

@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "check:docs": "node scripts/check-markdown-links.mjs",
     "ops:status": "node scripts/ops-status.mjs",
+    "deploy": "NEXT_DEPLOYMENT_ID=\"$(git rev-parse --short HEAD)-$(date +%s)\" npx --yes netlify-cli@latest deploy --build --prod",
     "auth:check-google": "node --experimental-strip-types --env-file=.env.local scripts/check-google-oauth.ts",
     "test": "node --test --test-concurrency=3 --experimental-strip-types 'src/**/*.test.ts' 'scripts/*.test.ts'",
     "typecheck": "tsc --noEmit",

@@ -5,7 +5,7 @@ import { errorCode, errorDetail, recordWorkerEvent } from "./worker-events.ts";
 
 test("event details keep codes and browser timeouts but never raw provider or candidate text", () => {
   assert.deepEqual(errorDetail(new Error("OPENAI_AGENTS_ABORTED")), { error: "Error", message: "OPENAI_AGENTS_ABORTED" });
-  assert.equal(errorDetail(new Error("locator.click: Timeout 2000ms exceeded.\nCall log: waiting for 'Zack Richland'")).message, "locator.click: Timeout 2000ms exceeded");
+  assert.equal(errorDetail(new Error("locator.click: Timeout 2000ms exceeded.\nCall log: waiting for 'Alex Example'")).message, "locator.click: Timeout 2000ms exceeded");
   assert.equal(errorDetail(new Error("page.goto: net::ERR_NAME_NOT_RESOLVED at https://example.test/?email=a@b.c")).message, "net::ERR_NAME_NOT_RESOLVED");
   const leaky = errorDetail(new Error("provider error with private candidate text and credentials"));
   assert.equal("message" in leaky, false);

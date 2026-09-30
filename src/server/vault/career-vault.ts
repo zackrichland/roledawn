@@ -13,12 +13,9 @@ import type { AuthenticatedActor } from "@/server/auth/session";
 import { bootstrapPersonalWorkspace } from "@/server/dashboard/queue";
 import {
   DOCX_MEDIA_TYPE,
-  extractResumeText,
-  MAX_RESUME_FILE_BYTES,
   MAX_RESUME_TEXT_CHARACTERS,
   normalizeResumeText,
   PDF_MEDIA_TYPE,
-  type ResumeExtractionFailureCode,
   type SupportedResumeMediaType,
 } from "@/server/resume/extract-resume";
 import { cleanupResumeUploadReservation } from "@/server/vault/resume-upload-cleanup";
@@ -51,12 +48,6 @@ type UntypedQuery = {
 } & UntypedQueryResult;
 
 type RpcRow = Record<string, unknown>;
-
-export type ResumeUploadCommand = Readonly<{
-  filename: string;
-  mediaType: SupportedResumeMediaType;
-  bytes: Uint8Array;
-}>;
 
 export type ResumeReviewCommand = Readonly<{
   documentId: string;
@@ -112,25 +103,6 @@ function isResumeMediaType(value: string): value is SupportedResumeMediaType {
   return value === PDF_MEDIA_TYPE || value === DOCX_MEDIA_TYPE;
 }
 
-function formatExtractionMessage(code: ResumeExtractionFailureCode): string {
-  switch (code) {
-    case "OCR_REQUIRED":
-      return "That PDF appears to be scanned. Upload a text-based PDF or DOCX for now.";
-    case "ENCRYPTED_DOCUMENT":
-      return "Password-protected résumés are not supported.";
-    case "FILE_TOO_LARGE":
-      return "Choose a résumé smaller than 10 MB.";
-    case "PDF_PAGE_LIMIT_EXCEEDED":
-      return "Choose a résumé with 25 pages or fewer.";
-    case "UNSUPPORTED_MEDIA_TYPE":
-    case "FILE_EXTENSION_MISMATCH":
-    case "CONTENT_SIGNATURE_MISMATCH":
-      return "Choose a valid PDF or DOCX résumé.";
-    default:
-      return "We could not read that résumé safely. Try exporting it as a fresh PDF or DOCX.";
-  }
-}
-
 function mapDatabaseError(
   error: { code?: string; message?: string } | null,
   fallbackCode: string,
@@ -179,34 +151,6 @@ async function cancelReservation(
       "RESUME_UPLOAD_CLEANUP_FAILED",
       "The upload stopped before it was ready. Finish removing it before trying again.",
     );
-  }
-}
-
-async function recordExtractionFailure(
-  documentVersionId: string,
-  sourceSha256: string,
-  code: ResumeExtractionFailureCode,
-  startedAt: string,
-): Promise<void> {
-  const admin = createSupabaseAdminClient("resume-extraction/0.1");
-  const result = await asUntyped(admin).rpc("record_resume_extraction", {
-    p_attempt_number: 1,
-    p_document_version_id: documentVersionId,
-    p_extracted_text: null,
-    p_extractor_kind: "LOCAL_DETERMINISTIC",
-    p_extractor_release: "resume-intake-validation/1",
-    p_failure_code: code,
-    p_language_code: null,
-    p_output_schema_version: "resume-text/1",
-    p_page_count: null,
-    p_source_sha256: sourceSha256,
-    p_started_at: startedAt,
-    p_status: "FAILED",
-    p_text_sha256: null,
-    p_warnings: [] as Json[],
-  });
-  if (result.error) {
-    mapDatabaseError(result.error, "EXTRACTION_RECORD_FAILED", "The résumé could not be prepared.");
   }
 }
 
@@ -360,118 +304,6 @@ export async function getCareerVault(
     deletionTarget,
     errorMessage: null,
   });
-}
-
-export async function uploadResume(
-  actor: AuthenticatedActor,
-  command: ResumeUploadCommand,
-): Promise<void> {
-  if (command.bytes.byteLength === 0 || command.bytes.byteLength > MAX_RESUME_FILE_BYTES) {
-    throw new CareerVaultError("RESUME_SIZE_INVALID", "Choose a résumé between 1 byte and 10 MB.");
-  }
-
-  const startedAt = new Date().toISOString();
-  const extraction = await extractResumeText({
-    bytes: command.bytes,
-    filename: command.filename,
-    declaredMediaType: command.mediaType,
-  });
-  if (!extraction.ok) {
-    throw new CareerVaultError(extraction.error.code, formatExtractionMessage(extraction.error.code));
-  }
-
-  const supabase = await createSupabaseServerClient();
-  await bootstrapPersonalWorkspace(supabase, actor, actorLabel(actor));
-  const reserved = await asUntyped(supabase).rpc("reserve_resume_upload", {
-    p_byte_size: command.bytes.byteLength,
-    p_command_id: randomUUID(),
-    p_display_name: extraction.value.source.filename,
-    p_mime_type: extraction.value.source.mediaType,
-  });
-  if (reserved.error) {
-    mapDatabaseError(reserved.error, "RESUME_RESERVATION_FAILED", "The résumé upload could not be started.");
-  }
-  const reservation = firstRpcRow(reserved.data);
-  const documentVersionId = requiredString(reservation, "document_version_id");
-  const storageBucket = requiredString(reservation, "storage_bucket");
-  const storagePath = requiredString(reservation, "storage_object_path");
-
-  let objectUploaded = false;
-  let uploadFinalized = false;
-  try {
-    const uploaded = await supabase.storage.from(storageBucket).upload(
-      storagePath,
-      command.bytes,
-      {
-        cacheControl: "3600",
-        contentType: extraction.value.source.mediaType,
-        upsert: false,
-      },
-    );
-    if (uploaded.error) {
-      throw new CareerVaultError("RESUME_STORAGE_FAILED", "The private résumé file could not be stored.");
-    }
-    objectUploaded = true;
-
-    const admin = createSupabaseAdminClient("resume-intake/0.1");
-    const finalized = await asUntyped(admin).rpc("finalize_resume_upload", {
-      p_actor_id: actor.userId,
-      p_byte_size: extraction.value.source.byteSize,
-      p_command_id: randomUUID(),
-      p_document_version_id: documentVersionId,
-      p_sha256: extraction.value.source.sha256,
-    });
-    if (finalized.error) {
-      mapDatabaseError(finalized.error, "RESUME_FINALIZE_FAILED", "The résumé upload could not be finalized.");
-    }
-    uploadFinalized = true;
-
-    const recorded = await asUntyped(admin).rpc("record_resume_extraction", {
-      p_attempt_number: 1,
-      p_document_version_id: documentVersionId,
-      p_extracted_text: extraction.value.extraction.normalizedText,
-      p_extractor_kind: "LOCAL_DETERMINISTIC",
-      p_extractor_release: extraction.value.extraction.parserRelease,
-      p_failure_code: null,
-      p_language_code: null,
-      p_output_schema_version: `resume-text/${extraction.value.schemaVersion}`,
-      p_page_count: extraction.value.extraction.pageCount,
-      p_source_sha256: extraction.value.source.sha256,
-      p_started_at: startedAt,
-      p_status: "SUCCEEDED",
-      p_text_sha256: extraction.value.extraction.sha256,
-      p_warnings: [...extraction.value.extraction.warnings] as Json[],
-    });
-    if (recorded.error) {
-      mapDatabaseError(recorded.error, "EXTRACTION_RECORD_FAILED", "The résumé text could not be saved for review.");
-    }
-  } catch (error) {
-    if (!uploadFinalized) {
-      try {
-        await cancelReservation(documentVersionId, objectUploaded ? storagePath : null);
-      } catch (cleanupError) {
-        throw cleanupError instanceof CareerVaultError
-          ? cleanupError
-          : new CareerVaultError(
-              "RESUME_UPLOAD_CLEANUP_FAILED",
-              "The upload stopped before it was ready. Finish removing it before trying again.",
-            );
-      }
-    } else {
-      try {
-        await recordExtractionFailure(
-          documentVersionId,
-          extraction.value.source.sha256,
-          "PARSER_FAILED",
-          startedAt,
-        );
-      } catch {
-        // The finalized immutable source version remains visible to operations
-        // for recovery; never silently delete a committed source on this path.
-      }
-    }
-    throw error;
-  }
 }
 
 export async function reviewResumeText(

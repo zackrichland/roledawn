@@ -62,8 +62,3 @@ export function parseVoiceProfileContent(value: unknown): VoiceProfileContent {
     signOff: optionalText(record.signOff, "signOff", 40),
   });
 }
-
-export function isVoiceProfileEmpty(profile: VoiceProfileContent | null): boolean {
-  return !profile || (!profile.selfDescription && !profile.writingSample && !profile.toneNotes
-    && profile.preferredPhrases.length === 0 && profile.avoidPhrases.length === 0 && !profile.signOff);
-}

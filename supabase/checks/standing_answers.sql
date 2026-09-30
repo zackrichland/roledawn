@@ -145,6 +145,42 @@ begin
   execute 'reset role';
   insert into standing_answer_checks values('sensitive_unknown_foreign_or_unsupported_answers_are_refused', true);
 
+  -- The SQL boundary must enforce the worker's candidate-only and required
+  -- rules, even when the basis is a valid answer owned by this candidate.
+  execute 'set local role service_role';
+  for v_result in select value from jsonb_array_elements(jsonb_build_array(
+    sensitive,
+    pg_temp.question('I agree to the privacy policy', 'BOOLEAN', '[]'),
+    pg_temp.question('Do you accept binding arbitration?', 'BOOLEAN', '[]'),
+    pg_temp.question('Please confirm that all information provided is true', 'BOOLEAN', '[]'),
+    pg_temp.question('Are you bound by a non-compete?', 'BOOLEAN', '[]'),
+    pg_temp.question('Do you identify as a person of color?', 'BOOLEAN', '[]'),
+    pg_temp.question('Optional on-site question', 'BOOLEAN', '[]', false),
+    pg_temp.question('Select an answer', 'SINGLE_SELECT', '[{"label":"Man","value":"s-0"},{"label":"Prefer not to disclose gender","value":"s-1"}]')
+  )) loop
+    begin
+      perform public.record_application_autopilot_standing_answers((run->>'autopilot')::uuid,(run->>'lease')::uuid,
+        jsonb_build_array(jsonb_build_object('descriptor',v_result,
+          'value',case when v_result->>'kind' = 'BOOLEAN' then 'true'::jsonb else '"s-0"'::jsonb end,
+          'basis',jsonb_build_array(v_onsite))));
+      raise exception 'CHECK_CANDIDATE_ONLY_OR_OPTIONAL_ACCEPTED %', v_result->>'label';
+    exception when invalid_parameter_value then null; end;
+  end loop;
+  begin
+    perform public.record_application_autopilot_standing_answers((run->>'autopilot')::uuid,(run->>'lease')::uuid,
+      jsonb_build_array(jsonb_build_object('descriptor',pg_temp.question('GPA', 'TEXT', '[]'),
+        'value','"3.5"'::jsonb,'basis',jsonb_build_array('fact:identity.legal_name'))));
+    raise exception 'CHECK_DISALLOWED_FACT_BASIS_ACCEPTED';
+  exception when invalid_parameter_value then null; end;
+  begin
+    perform public.record_application_autopilot_standing_answers((run->>'autopilot')::uuid,(run->>'lease')::uuid,
+      jsonb_build_array(jsonb_build_object('descriptor',pg_temp.question('GPA', 'TEXT', '[]'),
+        'value',to_jsonb(repeat('x',1001)),'basis',jsonb_build_array(v_gpa))));
+    raise exception 'CHECK_OVERSIZED_STANDING_TEXT_ACCEPTED';
+  exception when invalid_parameter_value then null; end;
+  execute 'reset role';
+  insert into standing_answer_checks values('database_enforces_worker_eligibility_and_fact_allowlist', true);
+
   -- Standing-derived answers are never remembered: an edited standing answer takes effect next time.
   later:=pg_temp.running(who);
   execute 'set local role service_role';
@@ -152,6 +188,24 @@ begin
   execute 'reset role';
   if jsonb_array_length(v_result)<>0 then raise exception 'CHECK_STANDING_ANSWER_REMEMBERED %', v_result; end if;
   insert into standing_answer_checks values('standing_answers_are_not_remembered', true);
+
+  -- A candidate's exact legal/consent/demographic answer belongs to the send
+  -- where it was given. Cross-application recall must not bypass that boundary.
+  for v_result in select value from jsonb_array_elements(jsonb_build_array(
+    sensitive,
+    pg_temp.question('I agree to the privacy policy', 'BOOLEAN', '[]'),
+    pg_temp.question('Do you accept binding arbitration?', 'BOOLEAN', '[]'),
+    pg_temp.question('Please confirm that all information provided is true', 'BOOLEAN', '[]'),
+    pg_temp.question('Are you bound by a non-compete?', 'BOOLEAN', '[]'),
+    pg_temp.question('Do you identify as a person of color?', 'BOOLEAN', '[]')
+  )) loop
+    perform pg_temp.answer_earlier(run,v_result,case when v_result->>'kind' = 'BOOLEAN' then 'true'::jsonb else '"s-0"'::jsonb end);
+    execute 'set local role service_role';
+    if jsonb_array_length(public.prefill_application_autopilot_answers((later->>'autopilot')::uuid,(later->>'lease')::uuid,jsonb_build_array(v_result))) <> 0 then
+      raise exception 'CHECK_CANDIDATE_ONLY_ANSWER_REMEMBERED %', v_result->>'label'; end if;
+    execute 'reset role';
+  end loop;
+  insert into standing_answer_checks values('candidate_only_answers_are_not_reused_across_applications', true);
 
   -- A sensitive work-authorization question may rest on the work-authorization fact or the candidate's own standing answer.
   later:=pg_temp.running(who);

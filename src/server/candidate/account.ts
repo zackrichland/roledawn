@@ -28,14 +28,3 @@ export async function readCandidateAccountState(
   const displayName = data.display_name.trim().replace(/\s+/gu, " ").slice(0, 80) || candidateFallbackLabel(actor);
   return Object.freeze({ displayName, status: data.status });
 }
-
-/**
- * Reads the candidate-owned display label through the normal authenticated RLS
- * boundary. This label is presentation-only; exact legal identity continues to
- * live in the versioned candidate-fact ledger.
- */
-export async function readCandidateDisplayName(
-  actor: AuthenticatedActor,
-): Promise<string> {
-  return (await readCandidateAccountState(actor))?.displayName ?? candidateFallbackLabel(actor);
-}

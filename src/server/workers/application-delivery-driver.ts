@@ -145,7 +145,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           if (!step || visited.has(step.id)) return { ...counts(), kind: "TAKEOVER", reasonCode: "DELIVERY_STEP_UNSUPPORTED_OR_LOOP" };
           visited.add(step.id);
           const browser = createAgentBrowserTools(page, step.url, { permittedPassiveFrameUrls: runtime.passiveFrameUrls(), allowReactSelectDisplay: Boolean(policy.greenhouse), leverLabels: Boolean(policy.lever),
-            remoteSearch: Boolean(policy.searches?.length), invisibleHcaptcha: Boolean(policy.lever?.invisibleHcaptcha) });
+            remoteSearch: Boolean(policy.searches?.length), remoteSearchSemantic: "CITY", withRemoteSearch: runtime.withSearch, invisibleHcaptcha: Boolean(policy.lever?.invisibleHcaptcha) });
           let snapshot = await browser.inspect(input.signal);
           if (snapshot.takeoverReason) return { ...counts(), kind: "TAKEOVER", reasonCode: snapshot.takeoverReason };
           const requiredUploads = snapshot.fields.filter((field) => field.kind === "FILE" && field.required).map((field) => field.fieldId);

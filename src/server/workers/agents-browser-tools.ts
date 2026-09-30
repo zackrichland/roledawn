@@ -8,7 +8,7 @@ import {
   inspectAriaCombobox, inspectRemoteSearchCombobox, readRemoteSearchCombobox, searchRemoteComboboxOption, selectAriaComboboxOption, selectAriaComboboxOptions,
   type AriaComboboxState, type RemoteSearchComboboxState,
 } from "./agents-aria-combobox.ts";
-import { chooseSearchResult, MAX_SEARCHABLE_OPTIONS, MODEL_OPTION_SAMPLE, resolveOptionValue, type OptionMatch } from "./agents-option-match.ts";
+import { chooseSearchResult, MAX_SEARCHABLE_OPTIONS, MODEL_OPTION_SAMPLE, resolveOptionValue, type OptionMatch, type OptionSemantic } from "./agents-option-match.ts";
 import { APPLICATION_FILL_CAPTCHA_TAKEOVER, frameShowsCaptchaChallenge, isHcaptchaFrameUrl } from "./agents-captcha.ts";
 
 const CONTROL_SELECTOR = 'input, select, textarea, [role="combobox"], [role="textbox"], [role="checkbox"], [role="radio"]';
@@ -195,6 +195,10 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   permittedPassiveFrameUrls?: readonly string[]; allowReactSelectDisplay?: boolean; leverLabels?: boolean;
   /** Only when the delivery policy permits the page's own search lookups. */
   remoteSearch?: boolean;
+  /** The approved field semantic whose value this site's lookup may receive. */
+  remoteSearchSemantic?: OptionSemantic;
+  /** Delivery opens an egress window for this exact approved text and its typed prefixes. */
+  withRemoteSearch?: <T>(query: string, work: () => Promise<T>, signal?: AbortSignal) => Promise<T>;
   /**
    * The site's invisible hCaptcha only scores the browser on submit. Continue
    * while nothing asks the person to act; any visible challenge, checkbox
@@ -420,9 +424,11 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       await controls.nth(indexes[0]).setChecked(answer, { timeout: 5_000 });
     } else if (field.kind === "SINGLE_SELECT" && located.remote) {
       if (typeof answer !== "string") throw new Error("AGENTS_FILL_ANSWER_TYPE_INVALID");
+      if (options?.remoteSearchSemantic && match?.semantic !== options.remoteSearchSemantic) throw new Error("AGENTS_FILL_OPTION_AMBIGUOUS");
       // Type the approved value; select only a result that equals it or starts
       // with it and is confirmed by the candidate's own region/country facts.
-      expected = await searchRemoteComboboxOption(frame, controls.nth(indexes[0]), answer, (labels) => chooseSearchResult(labels, answer, match), signal, options);
+      const search = () => searchRemoteComboboxOption(frame, controls.nth(indexes[0]), answer, (labels) => chooseSearchResult(labels, answer, match), signal, options);
+      expected = options?.withRemoteSearch ? await options.withRemoteSearch(answer, search, signal) : await search();
     } else if (field.kind === "SINGLE_SELECT") {
       if (typeof answer !== "string") throw new Error("AGENTS_FILL_ANSWER_TYPE_INVALID");
       expected = optionValue(field, answer, match);

@@ -82,20 +82,20 @@ select * from public.start_candidate_interview('c0000000-0000-4000-8000-00000000
 do $$ declare v_session uuid; v_story record; v_turns record; begin
   select id into strict v_session from public.candidate_interview_sessions where status = 'ACTIVE';
   select * into strict v_turns from public.append_candidate_interview_exchange('c0000000-0000-4000-8000-000000000002',
-    v_session, 1, 'I rebuilt the intake workflow and cut scheduling time in half.', 'What was the number before and after?', '{"focus":"p-1"}');
+    v_session, 1, 'I rebuilt the synthetic intake workflow and reduced scheduling from 10 steps to 8.', 'What was the number before and after?', '{"focus":"p-1"}');
   assert v_turns.turn_count = 3 and v_turns.status = 'ACTIVE', 'exchange appended';
   select * into strict v_story from public.save_candidate_story('c0000000-0000-4000-8000-000000000003', null, null,
-    jsonb_build_object('title','Rebuilt scheduling intake','positionKey','p-1','organization','Human Touch Home Health',
-      'roleTitle','Head of Business Development','situation','Scheduling lived in group texts.',
+    jsonb_build_object('title','Rebuilt scheduling intake','positionKey','p-1','organization','Example Logistics',
+      'roleTitle','Operations Lead','situation','Scheduling lived in group texts.',
       'task','Own the staffing workflow.','action','Mapped the workflow and shipped an app.',
-      'result','Cut time-to-staff roughly in half.','metrics', jsonb_build_array(jsonb_build_object('value','~50%','label','time to staff','confidence','ESTIMATED')),
+      'result','Reduced the synthetic scheduling workflow from 10 steps to 8.','metrics', jsonb_build_array(jsonb_build_object('value','2','label','steps removed','confidence','ESTIMATED')),
       'themes', jsonb_build_array('process design','zero-to-one'), 'storyText','Rebuilt scheduling intake: ...'),
     'PROPOSED', 'RESUME_AND_COVER_LETTER', 'INTERVIEW', v_session);
   assert v_story.version_number = 1 and not v_story.replayed, 'story proposed';
   perform public.save_candidate_story('c0000000-0000-4000-8000-000000000004', v_story.story_id, 1,
     jsonb_build_object('title','Rebuilt scheduling intake','positionKey','p-1','situation','Scheduling lived in group texts.',
       'task','Own the staffing workflow.','action','Mapped the workflow and shipped an app.',
-      'result','Cut time-to-staff roughly in half.','storyText','Rebuilt scheduling intake: approved.'),
+      'result','Reduced the synthetic scheduling workflow from 10 steps to 8.','storyText','Rebuilt scheduling intake: approved.'),
     'APPROVED', 'RESUME_AND_COVER_LETTER', 'INTERVIEW', v_session);
   begin
     perform public.save_candidate_story('c0000000-0000-4000-8000-000000000005', v_story.story_id, 1,

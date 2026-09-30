@@ -40,11 +40,6 @@ export type VaultActionState = Readonly<{
   }>;
 }>;
 
-export type VaultFormAction = (
-  previousState: VaultActionState,
-  formData: FormData,
-) => Promise<VaultActionState>;
-
 export const EMPTY_VAULT_ACTION_STATE: VaultActionState = {
   outcome: "idle",
   message: "",

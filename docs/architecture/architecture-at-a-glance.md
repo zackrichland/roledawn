@@ -1,12 +1,18 @@
 ---
 title: RoleDawn architecture at a glance
-status: canonical architecture overview
+status: historical architecture snapshot; current behavior is in the application playbook
 owner: founder, product, and engineering
-last_updated: 2026-08-18
-scope: current system, end-to-end data flow, stack, assumptions, and build order
+last_updated: 2026-09-30
+scope: historical 2026-08-18 system, data flow, stack, assumptions, and build order
 ---
 
 # RoleDawn architecture at a glance
+
+This diagram and its implementation labels describe the 2026-08-18 snapshot.
+Submission, story, catalog, and hosting status have changed since then. Read
+[the application playbook](../execution/application-playbook.md) and
+[current state](../execution/current-state.md) before using this historical
+architecture as implementation guidance.
 
 RoleDawn is a modular application, not one permanent agent per user. Two
 independent systems build trustworthy inputs—what the candidate has approved

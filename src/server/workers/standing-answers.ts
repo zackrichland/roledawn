@@ -27,8 +27,8 @@ export type StandingAnswerResolver = Readonly<{
   }>): Promise<readonly StandingAnswerProposal[]>;
 }>;
 
-/** Questions only the candidate answers, whatever their saved answers say. */
-const CANDIDATE_ONLY = /\b(?:gender|sex|sexual|race|racial|ethnic\w*|hispanic|latin[aeox]|veteran\w*|disabilit\w*|pronouns?|transgender|religio\w*|marital|pregnan\w*|citizen\w*|nationality|passport|social security|ssn|criminal|convict\w*|felon\w*|misdemeanor\w*|arrest\w*|background check|drug|medical|health|signature|sign|consent|agree\w*|acknowledg\w*|certify|attest\w*|terms|privacy|eeo)\b/iu;
+/** Questions only the candidate answers. Keep in step with SQL's autopilot_standing_answer_eligible; the parity test exercises both. */
+const CANDIDATE_ONLY = /\b(?:gender|sex|sexual|race|racial|ethnic\w*|hispanic|latin[aeox]|veteran\w*|disabilit\w*|pronouns?|transgender|religio\w*|marital|pregnan\w*|citizen\w*|nationality|passport|social security|ssn|criminal|convict\w*|felon\w*|misdemeanor\w*|arrest\w*|background check|drug|medical|health|signature|sign|consent|agree\w*|acknowledg\w*|certify|attest\w*|terms|privacy|eeo|arbitrat\w*|non[\s-]*compet\w*|(?:person|people) of colou?r|(?:confirm|declare)\b[\s\S]*\b(?:information|statements?)\b[\s\S]*\b(?:true|accurate|complete))\b/iu;
 /** Profile facts the resolver may read; never identity, contact details or self-identification. */
 const FACT_KEYS = /^(?:work_authorization\.(?:us|ca)\.(?:authorized|sponsorship_required)|education\.highest_degree|application\.heard_about|preferences\.willing_to_relocate|availability\.start_date|compensation\.expected_salary|location\.(?:city|region|country_code))$/u;
 const MAX_TEXT = 1_000;

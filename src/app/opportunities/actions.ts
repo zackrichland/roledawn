@@ -6,7 +6,6 @@ import { isUuid } from "@/domain/opportunity-catalog";
 import { readSupabasePublicConfig } from "@/lib/supabase/config";
 import { getOptionalActor } from "@/server/auth/session";
 import {
-  enqueueCatalogJobApplication,
   setCatalogJobSaved,
 } from "@/server/opportunities/catalog";
 
@@ -17,10 +16,6 @@ type OpportunityActionError = Readonly<{
 
 export type SaveCatalogJobActionResult =
   | Readonly<{ ok: true; value: Readonly<{ replayed: boolean; saved: boolean }> }>
-  | Readonly<{ ok: false; error: OpportunityActionError }>;
-
-export type QueueCatalogJobActionResult =
-  | Readonly<{ ok: true; value: Readonly<{ replayed: boolean; applicationId: string }> }>
   | Readonly<{ ok: false; error: OpportunityActionError }>;
 
 type CatalogJobActionInput = Readonly<{
@@ -85,29 +80,6 @@ export async function saveCatalogJobAction(
     return {
       ok: false,
       error: actionError(error, "SAVE_CATALOG_JOB_FAILED", "That job could not be updated. Try again."),
-    };
-  }
-}
-
-export async function queueCatalogJobAction(
-  input: CatalogJobActionInput,
-): Promise<QueueCatalogJobActionResult> {
-  const validationError = validateInput(input);
-  if (validationError) return { ok: false, error: validationError };
-
-  const actorResult = await requireOpportunityActor();
-  if (!actorResult.ok) return actorResult;
-
-  try {
-    const result = await enqueueCatalogJobApplication(actorResult.actor, input);
-    revalidatePath("/search");
-    revalidatePath("/saved");
-    revalidatePath("/dashboard");
-    return { ok: true, value: result };
-  } catch (error) {
-    return {
-      ok: false,
-      error: actionError(error, "CATALOG_APPLICATION_ENQUEUE_FAILED", "That job could not be added. Try again."),
     };
   }
 }

@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 
-export const APPLICATION_RESEARCH_SCHEMA_RELEASE = "application-research/1";
-
 export type ApplicationResearchSourceType =
   | "JOB_POSTING"
   | "EMPLOYER_WEBSITE"

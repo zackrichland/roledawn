@@ -197,7 +197,7 @@ export function jobSourceText(job: DraftingContextV2["job"]): string {
 }
 
 /**
- * "Role: Head of Business Development & AI Engineering, Human Touch Home Health
+ * "Role: Engineering Manager, Example Health
  * (2024 – Present)". Résumé bullets rarely name their employer; the
  * candidate-reviewed career profile establishes which role each belongs to,
  * so the writer and the checker both see that relationship explicitly.
@@ -702,10 +702,6 @@ export function documentContact(facts: DocumentExactFacts): DocumentContact {
   });
 }
 
-function positionForKey(career: CareerProfileContent, key: string): CareerPosition | undefined {
-  return career.positions.find((position) => position.positionKey === key);
-}
-
 export function assembleResumeModel(
   context: DraftingContextV2,
   proposal: DraftingProposalV2,
@@ -783,10 +779,6 @@ export function displayRoleTitle(title: string): string {
     .replace(/\s*\((?:remote|hybrid|on-?site)[^)]*\)\s*$/iu, "")
     .trim();
   return cleaned.length >= 3 ? cleaned : title;
-}
-
-export function positionForSegment(context: DraftingContextV2, positionKey: string | null): CareerPosition | null {
-  return positionKey ? positionForKey(context.career, positionKey) ?? null : null;
 }
 
 export { resumePlainText, coverLetterPlainText };

@@ -3,7 +3,6 @@ import "server-only";
 import {
   CANDIDATE_ANSWER_FACT_KEYS,
   candidateFactDefinition,
-  CANDIDATE_FACT_DEFINITIONS,
   type CandidateFactKey,
   type CandidateFactValue,
   type CandidateProfileFactView,
@@ -153,11 +152,4 @@ export async function saveCandidateFact(
     : CANDIDATE_ANSWER_FACT_KEYS.has(command.key) ? "save_candidate_answer_fact" : "save_candidate_fact";
   const { error } = await supabase.rpc(rpc, rpcArguments);
   if (error) databaseMessage(error);
-}
-
-export function candidateProfileMissingKeys(
-  profile: CandidateProfileViewModel,
-): readonly CandidateFactKey[] {
-  const present = new Set(profile.facts.filter((fact) => fact.resolved).map((fact) => fact.key));
-  return CANDIDATE_FACT_DEFINITIONS.map((definition) => definition.key).filter((key) => !present.has(key));
 }

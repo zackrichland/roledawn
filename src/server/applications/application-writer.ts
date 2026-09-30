@@ -13,8 +13,6 @@ import {
 import { modelFor } from "../ai/models.ts";
 import { structuredResponse } from "../ai/structured-response.ts";
 import { loadApplicationWritingPolicy } from "./application-writing-policy-loader.ts";
-
-export const APPLICATION_WRITER_RELEASE = "roledawn-writer/1";
 export const APPLICATION_VERIFIER_RELEASE = "roledawn-verifier/1";
 
 const WRITER_RULES = `You write one job application: the content of a tailored résumé, the body of a cover letter, and up to three short answers for common form questions. Return JSON in the given schema. Follow the owned writing policy below; these hard rules are enforced by the application after you return:

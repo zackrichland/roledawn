@@ -149,19 +149,3 @@ export type CandidateProfileViewModel = Readonly<{
   accountEmail: string | null;
   facts: readonly CandidateProfileFactView[];
 }>;
-
-export type CandidateProfileActionState = Readonly<{
-  outcome: "idle" | "success" | "error";
-  message: string;
-  fieldErrors?: Readonly<Record<string, string>>;
-}>;
-
-export type CandidateProfileFormAction = (
-  previousState: CandidateProfileActionState,
-  formData: FormData,
-) => Promise<CandidateProfileActionState>;
-
-export const EMPTY_CANDIDATE_PROFILE_ACTION_STATE: CandidateProfileActionState = Object.freeze({
-  outcome: "idle",
-  message: "",
-});

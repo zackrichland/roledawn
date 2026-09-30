@@ -8,7 +8,6 @@ import { getOptionalActor } from "@/server/auth/session";
 import {
   CareerVaultError,
   deleteResume,
-  reviewResumeText,
   reserveDirectResumeUpload,
   finishDirectResumeUpload,
 } from "@/server/vault/career-vault";
@@ -53,42 +52,6 @@ export async function finishDirectResumeUploadAction(documentVersionId: string):
   } catch (error) {
     revalidatePath("/vault"); revalidatePath("/onboarding");
     return { ok: false, message: error instanceof CareerVaultError || error instanceof ResumeDirectUploadError ? error.message : "The upload could not be confirmed. Retry to check the same file." };
-  }
-}
-
-export async function saveResumeReviewAction(
-  _previousState: VaultActionState,
-  formData: FormData,
-): Promise<VaultActionState> {
-  const actor = await getOptionalActor();
-  if (!actor) return requiredActorMessage();
-  const documentId = String(formData.get("documentId") ?? "");
-  const extractionId = String(formData.get("extractionId") ?? "");
-  const expectedAggregateVersion = parsePositiveInteger(formData.get("expectedAggregateVersion"));
-  const reviewedText = String(formData.get("extractedText") ?? "");
-  if (!UUID_PATTERN.test(documentId) || !UUID_PATTERN.test(extractionId) || !expectedAggregateVersion) {
-    return { outcome: "error", message: "Reload before saving this résumé." };
-  }
-  if (!reviewedText.trim()) {
-    return {
-      outcome: "error",
-      message: "The reviewed résumé text cannot be empty.",
-      fieldErrors: { extractedText: "Add the résumé text you want to save." },
-    };
-  }
-
-  try {
-    await reviewResumeText(actor, {
-      documentId,
-      extractionId,
-      expectedAggregateVersion,
-      reviewedText,
-    });
-    revalidatePath("/vault");
-    revalidatePath("/onboarding");
-    return { outcome: "success", message: "Reviewed résumé text saved." };
-  } catch (error) {
-    return actionError(error, "The reviewed résumé text could not be saved.");
   }
 }
 

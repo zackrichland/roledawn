@@ -1,7 +1,4 @@
 import type { ApplicationPreparationStage } from "@/domain/application-input-snapshot";
-import type { AutoApplyState } from "./account-auto-apply.ts";
-import type { CandidateSearchProfileViewModel } from "./candidate-onboarding.ts";
-import type { MatchedJob } from "./candidate-matching.ts";
 
 export type ApplicationStatus =
   | "DRAFTING"
@@ -137,19 +134,4 @@ export type PersistentQueueApplication = Readonly<{
   location: string | null;
   preparationStage: ApplicationPreparationStage | null;
   autoApplySelected?: boolean;
-}>;
-
-export type AuthenticatedDashboardData = Readonly<{
-  mode: "authenticated";
-  actorLabel: string;
-  backendStatus: "available" | "unavailable";
-  applications: readonly PersistentQueueApplication[];
-  autoApply?: AutoApplyState | null;
-  searchProfile?: CandidateSearchProfileViewModel | null;
-  preferencesCommandId?: string;
-  recommendations?: Readonly<{
-    scannedJobs: number;
-    complete: boolean;
-    items: readonly Pick<MatchedJob, "jobId" | "jobVersionId" | "title" | "employerName" | "location" | "canonicalUrl" | "queuedApplicationId" | "matching">[];
-  }> | null;
 }>;

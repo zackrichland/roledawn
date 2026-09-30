@@ -1,7 +1,7 @@
 ---
 title: RoleDawn documentation map
 status: active
-last_updated: 2026-09-29
+last_updated: 2026-09-30
 ---
 
 # Documentation map
@@ -14,52 +14,62 @@ override accepted product or safety contracts.
 
 ### Founder or investor
 
-1. [Founder directives](execution/founder-directives.md)
-1. [Application playbook](execution/application-playbook.md)
-1. [Architecture at a glance](architecture/architecture-at-a-glance.md)
-2. [Product readiness audit](execution/product-readiness-audit.md)
-3. [Current state](execution/current-state.md)
-4. [Founder brief](00-founder-brief.md)
-5. [Positioning and ICP](strategy/positioning-and-icp.md)
-6. [Roadmap](execution/roadmap.md)
+1. [Independent review and readiness](execution/codex-review-2026-09-30.md)
+2. [Current state](execution/current-state.md)
+3. [Application playbook](execution/application-playbook.md)
+4. [Founder directives](execution/founder-directives.md)
+5. [Founder brief](00-founder-brief.md)
+6. [Positioning and ICP](strategy/positioning-and-icp.md)
+7. [Roadmap](execution/roadmap.md)
 
 ### Product or design
 
-1. [Current state](execution/current-state.md)
-2. [PRD](product/prd.md)
-3. [Dashboard and responsive experience](product/dashboard-and-responsive-experience.md)
-4. [Onboarding and messaging](product/onboarding-and-messaging.md)
-5. [Brand kit](brand/brand-kit.md)
+1. [Independent review and readiness](execution/codex-review-2026-09-30.md)
+2. [Current state](execution/current-state.md)
+3. [Application playbook](execution/application-playbook.md)
+4. [PRD](product/prd.md)
+5. [Dashboard and responsive experience](product/dashboard-and-responsive-experience.md)
+6. [Onboarding and messaging](product/onboarding-and-messaging.md)
+7. [Brand kit](brand/brand-kit.md)
 
 ### Engineering
 
 1. [AGENTS.md](../AGENTS.md): commands, repo map, invariants and gotchas
-1. [Review brief, 2026-09-28 to 2026-09-30](execution/review-brief-2026-09-30.md)
-1. [Founder directives](execution/founder-directives.md)
-1. [Application playbook](execution/application-playbook.md)
-1. [ATS board templates](boards/README.md)
-1. [Architecture at a glance](architecture/architecture-at-a-glance.md)
-2. [Product readiness audit](execution/product-readiness-audit.md)
-3. [Current state](execution/current-state.md)
-4. [Backend build status](execution/backend-build-status.md)
-5. [Implementation handoff](execution/implementation-handoff.md)
-6. [Career Vault hosted acceptance](execution/career-vault-hosted-acceptance.md)
-7. [Candidate-profile hosted acceptance](execution/candidate-profile-hosted-acceptance.md)
-8. [Application drafting foundation hosted acceptance](execution/application-drafting-foundation-hosted-acceptance.md)
-9. [Live Terra drafting acceptance](execution/live-terra-drafting-acceptance.md)
-10. [Application Kit hosted acceptance](execution/application-kit-hosted-acceptance.md)
-11. [Application fill-to-review foundation acceptance](execution/application-fill-foundation-acceptance.md)
-12. [Browserbase live synthetic-session acceptance](execution/browserbase-live-acceptance.md)
-13. [Backend architecture operating model](architecture/backend-operating-model.md)
-14. [Three-system product architecture](architecture/three-system-product-architecture.md)
-15. [Application quality system](architecture/application-quality-system.md)
-16. [Frontend-to-backend contract](architecture/frontend-backend-contract.md)
+2. [Founder directives](execution/founder-directives.md)
+3. [Application playbook](execution/application-playbook.md)
+4. [Current state](execution/current-state.md)
+5. [Independent review and readiness](execution/codex-review-2026-09-30.md)
+6. [Decision log](execution/decision-log.md): read the latest rows
+7. [ATS board templates](boards/README.md)
+8. [Backend architecture operating model](architecture/backend-operating-model.md)
+9. [Three-system product architecture](architecture/three-system-product-architecture.md)
+10. [Application quality system](architecture/application-quality-system.md)
+11. [Frontend-to-backend contract](architecture/frontend-backend-contract.md)
+
+### Historical snapshots and acceptance
+
+These retain the scope and dates of the original observations. They establish
+past evidence, not current release state or current operating instructions.
+
+- [Review brief, 2026-09-28 to 2026-09-30](execution/review-brief-2026-09-30.md)
+- [State history through 2026-09-30](execution/state-history-through-2026-09-30.md)
+- [Architecture snapshot, 2026-08-18](architecture/architecture-at-a-glance.md)
+- [Product readiness assessment, 2026-09-16](execution/product-readiness-audit.md)
+- [Backend build status](execution/backend-build-status.md)
+- [Implementation handoff](execution/implementation-handoff.md)
+- [Career Vault hosted acceptance](execution/career-vault-hosted-acceptance.md)
+- [Candidate-profile hosted acceptance](execution/candidate-profile-hosted-acceptance.md)
+- [Application drafting foundation hosted acceptance](execution/application-drafting-foundation-hosted-acceptance.md)
+- [Live Terra drafting acceptance](execution/live-terra-drafting-acceptance.md)
+- [Application Kit hosted acceptance](execution/application-kit-hosted-acceptance.md)
+- [Application fill-to-review foundation acceptance](execution/application-fill-foundation-acceptance.md)
+- [Browserbase live synthetic-session acceptance](execution/browserbase-live-acceptance.md)
 
 Use these routed references when working on a subsystem:
 
 | Subsystem | Specification |
 |---|---|
-| Executive system, stack, data flow, status, assumptions, and build order | [Architecture at a glance](architecture/architecture-at-a-glance.md) |
+| Current workflow, support and operating state | [Application playbook](execution/application-playbook.md), [current state](execution/current-state.md) |
 | Candidate, opportunity, and application system boundaries | [Three-system product architecture](architecture/three-system-product-architecture.md) |
 | Pasted-link product slice | [Pasted-link application engine](architecture/pasted-link-application-engine.md) |
 | Current resolver/worker | [Job-ingestion runtime](architecture/job-ingestion-runtime.md) |
@@ -87,6 +97,9 @@ Use these routed references when working on a subsystem:
 ## Status, history, and authority
 
 - [Current state](execution/current-state.md) is the dated project snapshot.
+- [State history through 2026-09-30](execution/state-history-through-2026-09-30.md)
+  preserves the older observations formerly accumulated in that snapshot;
+  superseded statements there are not current instructions.
 - [Backend build status](execution/backend-build-status.md) is the database and
   worker recovery record.
 - [Decision log](execution/decision-log.md) records consequential choices and
@@ -95,10 +108,11 @@ Use these routed references when working on a subsystem:
 - Removed sample-runtime documents are preserved by Git history, not in the
   active documentation set.
 
-If documents conflict, follow the newest accepted decision, then current state,
-then the implementation handoff, then the specialized specification. Never turn
-a repository implementation or previous tool report into a claim of current
-hosted deployment without fresh evidence.
+If sources conflict, code and database establish what exists; founder directives
+establish what should exist. Then follow the newest accepted decision, the
+application playbook, current state, and other specifications, in that order.
+Never turn a repository implementation or previous tool report into a claim of
+current hosted deployment without fresh evidence.
 
 ## Agents API execution — 2026-09-16
 

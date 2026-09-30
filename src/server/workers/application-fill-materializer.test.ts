@@ -53,16 +53,16 @@ const FACTS = Object.freeze([
     versionId: IDS.legalNameVersion,
     factId: IDS.legalNameFact,
     key: "identity.legal_name",
-    value: "Zack Richland",
-    normalizedText: "Zack Richland",
+    value: "Alex Example",
+    normalizedText: "Alex Example",
     sensitivity: "STANDARD",
   }),
   Object.freeze({
     versionId: IDS.emailVersion,
     factId: IDS.emailFact,
     key: "contact.application_email",
-    value: "zack@example.com",
-    normalizedText: "zack@example.com",
+    value: "alex@example.com",
+    normalizedText: "alex@example.com",
     sensitivity: "STANDARD",
   }),
   Object.freeze({
@@ -240,8 +240,8 @@ test("materializes only the exact approved facts and verified private artifact b
   assert.equal(executionPackage.authorityScope, "FILL_ONLY_NO_SUBMIT");
   assert.equal(executionPackage.submitAuthorized, false);
   assert.deepEqual(executionPackage.facts.map((fact) => [fact.factKey, fact.value]), [
-    ["contact.application_email", "zack@example.com"],
-    ["identity.legal_name", "Zack Richland"],
+    ["contact.application_email", "alex@example.com"],
+    ["identity.legal_name", "Alex Example"],
     ["work_authorization.us.authorized", "Yes"],
   ]);
   assert.deepEqual(executionPackage.artifacts.map((artifact) => artifact.variant), [
@@ -374,8 +374,8 @@ test("materializes the approved self-identification answers and salary expectati
   const executionPackage = await createApplicationFillExecutionMaterializer(new FixtureSource(value)).materialize({ context, binding: binding() });
   assert.deepEqual(executionPackage.facts.map((fact) => [fact.factKey, fact.value]), [
     ["compensation.expected_salary", "$150,000–$170,000 base"],
-    ["contact.application_email", "zack@example.com"],
-    ["identity.legal_name", "Zack Richland"],
+    ["contact.application_email", "alex@example.com"],
+    ["identity.legal_name", "Alex Example"],
     ["location.postal_code", "20001"],
     ["self_id.gender", "Decline to self-identify"],
     ["self_id.veteran_status", "I am not a protected veteran"],
@@ -467,17 +467,17 @@ test("rejects a cross-binding request and mismatched disclosed artifact set", as
 
 test("upload filenames use the reviewed display name, sanitized and bounded, with the artifact's own extension", async () => {
   const cases: readonly [Parameters<typeof applicationArtifactUploadFilename>[0], string][] = [
-    [{ displayName: "Zack-Richland-Anthropic-Resume.pdf", variant: "RESUME_PDF" }, "Zack-Richland-Anthropic-Resume.pdf"],
-    [{ displayName: "Zack Richland – Anthropic Résumé.pdf", variant: "RESUME_PDF" }, "Zack-Richland-Anthropic-Resume.pdf"],
+    [{ displayName: "Alex-Example-Anthropic-Resume.pdf", variant: "RESUME_PDF" }, "Alex-Example-Anthropic-Resume.pdf"],
+    [{ displayName: "Alex Example – Anthropic Résumé.pdf", variant: "RESUME_PDF" }, "Alex-Example-Anthropic-Resume.pdf"],
     [{ displayName: "José Núñez / Acme, Inc. Cover Letter.docx", variant: "COVER_LETTER_DOCX" }, "Jose-Nunez-Acme-Inc.-Cover-Letter.docx"],
-    [{ displayName: "Zack-Richland-Anthropic-Application.pdf", variant: "APPLICATION_PDF" }, "Zack-Richland-Anthropic-Application.pdf"],
+    [{ displayName: "Alex-Example-Anthropic-Application.pdf", variant: "APPLICATION_PDF" }, "Alex-Example-Anthropic-Application.pdf"],
     // The bytes decide the extension; a mismatched or missing suffix is replaced.
     [{ displayName: "Resume.docx", variant: "RESUME_PDF" }, "Resume.pdf"],
     [{ displayName: "Resume", variant: "RESUME_DOCX" }, "Resume.docx"],
     [{ displayName: "../../etc/passwd", variant: "RESUME_PDF" }, "etc-passwd.pdf"],
     // No usable characters: "<First>-<Last>-Resume.pdf", then the legal name, then a plain role name.
-    [{ displayName: "📄.pdf", variant: "RESUME_PDF", givenName: "Zack", familyName: "Richland", legalName: "Zachary Richland" }, "Zack-Richland-Resume.pdf"],
-    [{ displayName: "   ", variant: "COVER_LETTER_PDF", legalName: "Zack Richland" }, "Zack-Richland-Cover-Letter.pdf"],
+    [{ displayName: "📄.pdf", variant: "RESUME_PDF", givenName: "Alex", familyName: "Example", legalName: "Alexander Example" }, "Alex-Example-Resume.pdf"],
+    [{ displayName: "   ", variant: "COVER_LETTER_PDF", legalName: "Alex Example" }, "Alex-Example-Cover-Letter.pdf"],
     [{ displayName: null, variant: "APPLICATION_PDF" }, "Application.pdf"],
     [{ displayName: "履歴書.pdf", variant: "RESUME_PDF", givenName: "Zoë", familyName: "O'Neil" }, "Zoe-O-Neil-Resume.pdf"],
   ];
@@ -490,7 +490,7 @@ test("upload filenames use the reviewed display name, sanitized and bounded, wit
 
 test("materialized artifacts fall back to the candidate's approved name when a display name is unusable", async () => {
   const value = fixture();
-  const renamed = new Map([["RESUME_PDF", "✓✓✓.pdf"], ["COVER_LETTER_PDF", "Zack Richland — Northstar Cover Letter.pdf"]]);
+  const renamed = new Map([["RESUME_PDF", "✓✓✓.pdf"], ["COVER_LETTER_PDF", "Alex Example — Northstar Cover Letter.pdf"]]);
   const rename = (item: Json) => {
     const entry = item as Record<string, Json | undefined>;
     return renamed.has(String(entry.variant)) ? { ...entry, display_name: renamed.get(String(entry.variant))! } : entry;
@@ -502,7 +502,7 @@ test("materialized artifacts fall back to the candidate's approved name when a d
   const source = new FixtureSource(value);
   source.artifacts = source.artifacts.map((row) => renamed.has(row.variant) ? { ...row, display_name: renamed.get(row.variant)! } : row);
   const executionPackage = await createApplicationFillExecutionMaterializer(source).materialize({ context, binding: binding() });
-  assert.equal(executionPackage.artifacts.find((artifact) => artifact.variant === "RESUME_PDF")?.filename, "Zack-Richland-Resume.pdf");
-  assert.equal(executionPackage.artifacts.find((artifact) => artifact.variant === "COVER_LETTER_PDF")?.filename, "Zack-Richland-Northstar-Cover-Letter.pdf");
+  assert.equal(executionPackage.artifacts.find((artifact) => artifact.variant === "RESUME_PDF")?.filename, "Alex-Example-Resume.pdf");
+  assert.equal(executionPackage.artifacts.find((artifact) => artifact.variant === "COVER_LETTER_PDF")?.filename, "Alex-Example-Northstar-Cover-Letter.pdf");
   eraseApplicationFillExecutionPackage(executionPackage);
 });

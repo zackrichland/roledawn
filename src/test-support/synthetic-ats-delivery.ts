@@ -139,7 +139,7 @@ export async function startSyntheticAtsDelivery(mode: SyntheticDeliveryMode = "n
   const origin = `http://127.0.0.1:${address.port}`;
   const policy: DeliverySitePolicy = { release: "synthetic-delivery/1", startUrl: `${origin}/step1`,
     ...(greenhouse ? { greenhouse: { presignOrigin: origin, uploadOrigins: [origin] } } : {}),
-    ...(location ? { searches: [{ origin, path: "/locations", query: "q", params: { api_key: "ge-[0-9a-f]{16}", layers: "locality", lang: "[a-z]{2}" } }] } : {}),
+    ...(location ? { searches: [{ origin, path: "/locations", query: "q", params: { api_key: "ge-0123456789abcdef", layers: "locality", lang: "en" } }] } : {}),
     steps: [{ id: "first", url: `${origin}/step1`, readySelector: "#first", uploads: [{ fieldId: "resume", selector: "#resume", ...(greenhouse ? {} : { request: { method: "POST" as const, url: `${origin}/upload` } }), acknowledgementSelector: ".file-upload:has(#upload-label-resume) .file-upload__filename" }], forward: { selector: "#next", request: { method: "POST", url: `${origin}/next` }, nextStepId: "second" } },
       { id: "second", url: `${origin}/step2`, readySelector: "#second", back: { selector: "#back", request: { method: "POST", url: `${origin}/back` }, nextStepId: "first" }, submit: { selector: "#submit", request: { method: "POST", url: `${origin}/submit` } } }],
     receipt: { url: `${origin}/receipt`, selector: "#receipt", textPattern: "Application received", receiptIdAttribute: "data-receipt-id" } };

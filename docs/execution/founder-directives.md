@@ -19,30 +19,31 @@ These are the founder's standing instructions, recorded as he gave them. When on
 
 ## Accounts and email
 
-5. **Each user applies with their own email.** The founder uses zackrichland@gmail.com. A read-only Gmail connection reads employer verification codes (D-106). (2026-09-29)
+5. **Each user applies with their own email.** The selected address comes from the candidate's private profile. A read-only Gmail connection reads employer verification codes (D-106). (2026-09-29)
 6. **Board accounts** (Workday and similar): use the user's application email. The founder asked for one shared, memorable password; the recommendation on record is a unique generated password per site, stored encrypted and viewable in RoleDawn. **Open decision** for the founder when account-based boards are built. (2026-09-29)
 7. **Single account first.** Everything is tuned on the founder's account; sign-up for other people comes later. Single-account sign-in needs the private access key (D-109). (2026-09-29)
 
-## Standing answers (saved in the database for the founder)
+## Standing answers
 
-Saved on 2026-09-30. This repository is public, so exact personal details (employers, for example) live only in the database. Profile facts are matched by exact label rules; standing answers (`candidate_standing_answers`, D-117) are matched to any wording by the worker and filled without asking. A future onboarding flow must collect the same answers from every user.
+The founder supplied routine answers on 2026-09-30. Exact values, employers,
+contact details, education, GPA, and eligibility answers belong in the private
+candidate records, not this public repository. Do not reconstruct answers from
+this document or apply the founder's answers to another candidate. Profile
+facts use anchored label rules; standing answers use the worker/database
+eligibility rules in D-117. A future onboarding flow must collect each user's
+own answers.
 
-| Question | Answer | Where it lives |
-|---|---|---|
-| Authorized to work in the US | Yes | Fact `work_authorization.us.authorized` |
-| Needs visa sponsorship now or later | No | Fact `work_authorization.us.sponsorship_required` |
-| Highest degree | Bachelor's degree (B.S. Business Management, Virginia Tech, 2017) | Fact `education.highest_degree` |
-| How did you hear about this job | The company's careers website; "Other" when the choices don't include it | Fact `application.heard_about`; standing answer for the fallback |
-| Undergraduate GPA | 3.5; GPA ranges take the one containing 3.5 ("3.4 - 3.59"); no graduate degree | Standing answer |
-| Able to work on-site or commute | Yes, including five days a week | Standing answer |
-| Ever worked for the company applied to | No (never directly, through a staffing agency, or as a contractor), except the employers in his profile's work history (listed in the saved answer) | Standing answer |
-| Referred by a current employee | No | Standing answer |
-| Currently employed | Yes (per his profile; never at the company applied to) | Standing answer |
-| Phone country code | United States (+1) | Standing answer |
-| Compensation, when a form requires it | Open to discussion (left blank when optional) | Standing answer |
-| Portfolio or personal website | None | Standing answer |
-| Preferred AI tool | ChatGPT | Standing answer |
-| At least 18 years old | Yes | Standing answer |
+| Topic | Private source |
+|---|---|
+| Work authorization and sponsorship | Country-scoped `work_authorization.*` facts |
+| Education | `education.highest_degree` and reviewed career profile |
+| How the candidate heard about the job | `application.heard_about` and a candidate-approved option fallback |
+| GPA and degree-specific follow-ups | Candidate standing answer |
+| On-site work and commuting | Candidate standing answer |
+| Previous or current employment with the employer | Candidate standing answer reconciled with structured work history |
+| Referral, current employment and phone country | Candidate standing answers |
+| Required compensation response | Candidate standing answer; optional fields follow the saved preference |
+| Portfolio, preferred AI tool and minimum-age question | Candidate standing answers |
 
 ## Engineering
 

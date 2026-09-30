@@ -23,7 +23,7 @@ npm run typecheck && npm run lint && npm run check:docs
 npm run build                                 # stop the dev server first
 node scripts/migration-harness.mjs supabase/checks/<name>.sql   # migrations + one SQL check in local PGlite
 npm run ops:status                            # read-only production snapshot; -- --watch, -- --app <id>
-npx --yes netlify-cli@latest deploy --build --prod   # repo root, no dev server; never without --build
+npm run deploy                               # sets deployment ID, then deploy --build --prod; no dev server
 ```
 
 `npm test -- --test-concurrency=3` does nothing: Node ignores test flags placed after the file list.
@@ -68,13 +68,14 @@ Words: **auto-apply** chooses jobs; **autopilot** delivers one named application
 
 ### Legacy: do not extend
 
+- Legacy does not mean unused: `eval:writing`, full-stack acceptance, and `worker:service` still import these modules. Check scripts, tests, cleanup and recovery callers before deleting them.
 - Scripts only, not reached from any production entry point: v1 drafting (`application-drafting-pipeline.ts`, `openai-drafting-adapter.ts`, `application-kit-renderer.ts`) and the no-submit fill runner (`application-fill-resume.ts`, `application-fill-runtime-supervisor.ts`, `browserbase-runtime.node.ts`, `npm run worker:fill`).
 - Reachable but off in production (`ROLEDAWN_FORM_DRIVER=agents`): the deterministic no-submit fill path (`application-fill.ts`, `greenhouse-no-submit-driver.ts`, `ApplicationFillAuthorization`, `/applications/[id]/live-view`).
 - Live writing path: `application-writing-pipeline.ts`, `application-writer.ts`, `drafting-context-v2.ts`, `application-documents-render.ts`.
 
 ## Where form answers come from
 
-In order: (1) profile facts through anchored label rules (`application-field-facts.ts`); (2) remembered answers, the candidate's earlier answer to the same wording (D-112, D-115); (3) standing answers, the candidate's saved answers to routine questions, which one model call maps to new wordings (`standing-answers.ts`, table `candidate_standing_answers`, D-117); (4) the candidate, through "Answer N questions" on Home. Every stored answer is labeled `CANDIDATE`, `REMEMBERED` or `STANDING`, with its basis. Saving a standing answer (`save_candidate_standing_answer`) re-queues the candidate's sends that wait on questions. The worker and the database apply the same rule for which questions a standing answer may take; change them together.
+In order: (1) profile facts through anchored label rules (`application-field-facts.ts`); (2) remembered candidate answers to the same wording and candidate input version, bound to the same frozen job except explicit GPA/degree questions (D-122); (3) standing answers, the candidate's saved answers to routine questions, which one model call maps to new wordings (`standing-answers.ts`, table `candidate_standing_answers`, D-117); (4) the candidate, through "Answer N questions" on Home. Every stored answer is labeled `CANDIDATE`, `REMEMBERED` or `STANDING`, with its basis. Saving a standing answer (`save_candidate_standing_answer`) re-queues the candidate's sends that wait on questions. The worker and the database apply the same rule for which questions a standing answer may take; change them together.
 
 ## Invariants
 
@@ -99,7 +100,7 @@ In order: (1) profile facts through anchored label rules (`application-field-fac
 - The hosted browser is Linux Chrome. Page scripts differ by platform: React Select marks options `aria-selected` on Linux but not on a Mac, which hid a required GPA field only in production (2026-09-30). Reproduce form bugs with a Linux user agent and a `navigator.platform` override.
 - Greenhouse answers every cloud-browser submission with HTTP 428 and emails an 8-character code; the worker reads it from the candidate's read-only Gmail within about 8 minutes, or Home shows "Enter code". Testing-mode Google tokens expire about weekly (Inference).
 - Opening React Select menus is slow (about 22 s per full inspection); menu reads are cached while a control's visible state is unchanged (D-104).
-- Saving a candidate fact, résumé or evidence item bumps `candidates.application_input_version`: in-flight sends built on the old snapshot go stale, and account auto-apply pauses. Standing answers don't bump it. Don't edit facts during a live run.
+- Saving a candidate fact, résumé or evidence item bumps `candidates.application_input_version`, invalidates older sends and pauses auto-apply. D-121 includes published career/voice/story edits; extraction/interview metadata and standing answers do not bump it. Don't edit facts during a live run.
 - Single-account sign-in: `https://roledawn.netlify.app/auth/test-session?key=<ROLEDAWN_TEST_ACCESS_KEY>`. Without the key: "This RoleDawn workspace is private."
 - `.env.local` points at the hosted database. Local `dev:full` and `worker:*` compete with production lanes and can send real applications; keep `ROLEDAWN_AUTOPILOT_ENABLED=false` locally unless you mean to send.
 - Workers, scripts and tests run under `node --experimental-strip-types`: use relative imports with `.ts` extensions there. `@/` imports and `import "server-only"` belong only in code that Next alone loads.

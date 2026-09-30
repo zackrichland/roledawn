@@ -75,6 +75,7 @@ Single page; the form sits under the posting.
 - Final request: `POST https://boards.greenhouse.io/embed/<board>/jobs/<job_id>` with a JSON body carrying `g-recaptcha-enterprise-token`.
 - Proof = this attempt's observed response (2xx, or 302/303 to the receipt URL) **and** `job-boards.greenhouse.io/embed/job_app/confirmation?for=<board>&token=<job_id>` showing `.confirmation__content`.
 - After a 428, the resend must equal the first body except `security_code` (and the dropped token); at most three resends with a code.
+- Only another explicit 428 `captcha-failed` with a recipient proves a resend was refused. Unknown 4xx/5xx responses remain uncertain and must not trigger another send (D-120; verified with local fixtures, not deployed).
 - A fresh GET of the confirmation URL is never proof.
 - Confirmation emails are optional per employer (template "Thank you for applying"); senders include `no-reply@greenhouse.io` and `no-reply@us.greenhouse-mail.io`, or the employer's own domain.
 

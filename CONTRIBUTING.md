@@ -1,31 +1,33 @@
 # Contributing to RoleDawn
 
-RoleDawn is currently a founder-led architecture and product prototype. Contributions should increase clarity, safety, or testable product value without making the repository look more complete than the system actually is.
+RoleDawn is a private-account job-application tool with recorded Greenhouse delivery evidence. Contributions should increase clarity, safety, or testable product value without extending those claims beyond the verified path.
 
 ## Before changing anything
 
-Read these in order:
-
-1. [`AGENTS.md`](AGENTS.md) for evidence and safety rules.
-2. [`docs/00-founder-brief.md`](docs/00-founder-brief.md) for the current product decision.
-3. [`docs/execution/decision-log.md`](docs/execution/decision-log.md) for accepted and rejected choices.
-4. The specialized product or architecture document for the area being changed.
-
-The newest accepted decision wins when documents conflict. Research informs decisions; it does not silently override them.
+Start with [`AGENTS.md`](AGENTS.md), then follow its reading order and source-authority rules. It links the current founder directives, application playbook, state, decisions and board-specific guides. Research informs decisions; it does not silently override them.
 
 ## Local setup
 
 ```bash
-npm install
-npm run dev
+npm install  # Node >= 22
+npm run dev -- --port 3001 --hostname 127.0.0.1
 ```
 
 Before opening a pull request:
 
 ```bash
+npm test
+npm run typecheck
 npm run lint
+npm run check:docs
+node scripts/migration-harness.mjs supabase/checks/*.sql
 npm run build
 ```
+
+Stop the dev server before the build. Read the local-environment warning in
+[`AGENTS.md`](AGENTS.md) before starting workers: `.env.local` points at the
+hosted database, and local lanes can send real applications. The SQL harness
+above runs in local PGlite without hosted access.
 
 ## Change standards
 
@@ -45,4 +47,3 @@ Keep a change small enough to explain in one sentence and complete enough to ver
 ## Security issues
 
 Do not open a public issue for a suspected vulnerability, exposed credential, privacy leak, or authorization bypass. Follow [`SECURITY.md`](SECURITY.md).
-

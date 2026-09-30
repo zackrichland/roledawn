@@ -9,7 +9,7 @@ import { startSyntheticAtsDelivery, SYNTHETIC_VERIFICATION_CODE, type SyntheticD
 import { validateAgentQuestionDescriptors, type AgentQuestionAnswer, type AgentQuestionDescriptor, type ApplicationAgentQuestionRepository } from "../../domain/application-agent-questions.ts";
 import { createAgentBrowserTools, type AgentBrowserField } from "./agents-browser-tools.ts";
 import type { ApplicationFillExecutionPackage } from "./application-fill-materializer.ts";
-import { createApplicationDeliveryBrowser, displaysUploadFilename, resolveGreenhouseDeliveryPolicy, verificationBodyMatches, type DeliveryPriorSubmission, type DeliverySitePolicy, type DeliverySubmissionHooks } from "./application-delivery-browser.ts";
+import { createApplicationDeliveryBrowser, displaysUploadFilename, resolveGreenhouseDeliveryPolicy, verificationBodyMatches, type DeliveryPriorSubmission, type DeliveryRequestTransport, type DeliverySitePolicy, type DeliverySubmissionHooks } from "./application-delivery-browser.ts";
 import { createApplicationDeliveryDriver } from "./application-delivery-driver.ts";
 import type { AgentFormHarness } from "./agents-form-driver.ts";
 
@@ -23,7 +23,7 @@ function packet(url: string): ApplicationFillExecutionPackage {
   return { schemaRelease: "application-fill-execution-package/1", authorityScope: "FILL_ONLY_NO_SUBMIT", submitAuthorized: false, binding, destinationUrl: url,
     facts: [{ factVersionId: "name-1", factKey: "identity.legal_name", value: "Alex Fixture", valueHash: "a".repeat(64) }], artifacts: [artifact] };
 }
-type Fixture = { page: Page; policy: DeliverySitePolicy; requests: { submits: number; uploads: Buffer[]; next: number; back: number; leaks: number }; secondPage(): Promise<Page> };
+type Fixture = { page: Page; policy: DeliverySitePolicy; requests: { submits: number; uploads: Buffer[]; next: number; back: number; leaks: number; searches: string[] }; secondPage(): Promise<Page> };
 async function fixture(run: (input: Fixture) => Promise<void>, mode: SyntheticDeliveryMode = "normal") {
   const { policy, requests, close } = await startSyntheticAtsDelivery(mode);
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
@@ -41,8 +41,8 @@ function hooks(requests: Fixture["requests"]) {
   };
   return { value, begins: () => begins, last: () => last };
 }
-async function advance(page: Page, policy: DeliverySitePolicy, authority: DeliverySubmissionHooks) {
-  const runtime = await createApplicationDeliveryBrowser({ page, policy, hooks: authority, timeoutMs: 400 });
+async function advance(page: Page, policy: DeliverySitePolicy, authority: DeliverySubmissionHooks, requestTransport?: DeliveryRequestTransport) {
+  const runtime = await createApplicationDeliveryBrowser({ page, policy, hooks: authority, timeoutMs: 400, requestTransport });
   await runtime.open(); const fields = await createAgentBrowserTools(page, policy.startUrl).inspect();
   await runtime.upload(fields.fields.find((field) => field.kind === "FILE")!, artifact);
   await page.locator('[name="name"]').fill("Alex Fixture");
@@ -195,7 +195,7 @@ test("a Next rule cannot permit the final submission endpoint; Greenhouse routes
   assert.deepEqual(greenhouse.greenhouse?.uploadOrigins, ["https://grnhse-prod-jben-us-east-1.s3.amazonaws.com", "https://grnhse-prod-jben-us-west-2.s3.us-west-2.amazonaws.com"]);
   // "Location (City)" looks up cities through Greenhouse's own geocoding proxy, with its fixed parameters pinned.
   assert.deepEqual(greenhouse.searches, [{ origin: "https://api-geocode-earth-proxy.greenhouse.io", path: "/v1/autocomplete", query: "text",
-    params: { api_key: "ge-[0-9a-f]{16}", layers: "locality", lang: "[a-z]{2}(?:-[A-Za-z]{2})?" } }]);
+    params: { api_key: "ge-39f1178289d5d0c5", layers: "locality", lang: "en" } }]);
   assert.throws(() => resolveGreenhouseDeliveryPolicy("https://evil.example/example/jobs/1234"), /SITE_UNSUPPORTED/u);
   await assert.rejects(createApplicationDeliveryBrowser({ page: {} as Page, hooks: { async begin() { throw new Error("UNREACHABLE"); } }, policy: {
     ...greenhouse, steps: [{ ...greenhouse.steps[0], forward: { selector: "#next", request: greenhouse.steps[0].submit!.request, nextStepId: "application" } }],
@@ -368,6 +368,70 @@ test("a verification resend that changes the application is blocked before it le
     assert.equal(requests.submits, 1);
     await runtime.dispose();
   }, "greenhouse-verification-tamper");
+});
+
+test("an unrecognized verification response stays uncertain even when the employer accepted the resend", browserOptions, async () => {
+  for (const status of [400, 428, 429, 500, 502]) await fixture(async ({ page, policy, requests }) => {
+    const authority = hooks(requests);
+    const runtime = await advance(page, policy, authority.value, async (route) => {
+      if (route.request().postData()?.includes('"security_code"')) {
+        // The employer records the application, but an intermediary replaces
+        // its response. The existing code form remains visible in the browser.
+        await route.fetch();
+        await route.fulfill({ status, contentType: "application/json", body: JSON.stringify({ error: "unknown" }) });
+      } else await route.continue();
+    });
+    assert.equal((await runtime.submit("a".repeat(64), {})).kind, "VERIFICATION_REQUIRED");
+    const result = await runtime.verify(SYNTHETIC_VERIFICATION_CODE);
+    assert.equal(result.kind, "UNCERTAIN", JSON.stringify({ status, result }));
+    assert.equal(requests.submits, 2);
+    const retry = await runtime.verify(SYNTHETIC_VERIFICATION_CODE);
+    assert.equal(retry.kind === "UNCERTAIN" && retry.reasonCode, "DELIVERY_VERIFICATION_NOT_PENDING");
+    assert.equal(requests.submits, 2, "an uncertain resend never permits another network send");
+    assert.equal(authority.begins(), 1);
+    await runtime.dispose();
+  }, "greenhouse-verification");
+});
+
+test("search egress allows only the approved text during its active field fill", browserOptions, async () => {
+  await fixture(async ({ page, policy, requests }) => {
+    const runtime = await createApplicationDeliveryBrowser({ page, policy, hooks: hooks(requests).value });
+    await runtime.open();
+    const lookup = (query: string) => page.evaluate(async (value) => {
+      await fetch(`/locations?api_key=ge-0123456789abcdef&layers=locality&lang=en&q=${encodeURIComponent(value)}`).catch(() => undefined);
+    }, query);
+    await lookup("Washington");
+    await runtime.withSearch("Washington", async () => {
+      await lookup("PRIVATE_EXAMPLE_EMAIL");
+      await lookup("Wash");
+      await lookup("Washington");
+      await lookup("Washington PRIVATE_EXAMPLE_EMAIL");
+      // Values that fit the former patterns still cannot encode candidate
+      // text in an API key or language while the city itself is legitimate.
+      for (const changed of [{ api_key: "ge-5345435245543432" }, { lang: "ab" }, { layers: "address" }]) {
+        await page.evaluate(async (params) => {
+          const query = new URLSearchParams({ api_key: "ge-0123456789abcdef", layers: "locality", lang: "en", q: "Washington", ...params });
+          await fetch(`/locations?${query}`).catch(() => undefined);
+        }, changed);
+      }
+    });
+    await lookup("Washington");
+    assert.deepEqual(requests.searches, ["Wash", "Washington"]);
+    const controller = new AbortController();
+    await runtime.withSearch("Washington", async () => {
+      controller.abort();
+      await lookup("Washington");
+    }, controller.signal);
+    assert.deepEqual(requests.searches, ["Wash", "Washington"]);
+    // An exact approved answer for a different field is not approval to send
+    // it to a city geocoder, even when that field uses the same widget.
+    await page.locator('#candidate-location-label').evaluate((element) => { element.textContent = "Preferred AI tool"; });
+    const tools = createAgentBrowserTools(page, policy.startUrl, { allowReactSelectDisplay: true, remoteSearch: true, remoteSearchSemantic: "CITY", withRemoteSearch: runtime.withSearch });
+    const field = (await tools.inspect()).fields.find((item) => item.domId === "candidate-location")!;
+    await assert.rejects(tools.fillValue(field.fieldId, "ChatGPT", undefined, { source: "ANSWER", semantic: null }), /AGENTS_FILL_OPTION_AMBIGUOUS/u);
+    assert.deepEqual(requests.searches, ["Wash", "Washington"], "an unrelated approved answer never reaches the city lookup");
+    await runtime.dispose();
+  }, "greenhouse-location");
 });
 
 test("verification bodies must equal the first request apart from the code and CAPTCHA token", () => {
