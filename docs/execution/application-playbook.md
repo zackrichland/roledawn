@@ -147,7 +147,7 @@ Connect under Profile → Preferences. The connection is read-only (`gmail.reado
 
 Developer plan since 2026-09-29: 25 browsers at once and 100 browser hours a month ([source register](../research/source-register.md)). One application uses about 3 to 14 browser minutes. Browserbase's own "Agents" feature is not used: RoleDawn's steps are fixed code, and Browserbase only supplies the browser.
 
-**Session recording (D-147):** every delivery session is recorded. To watch a send, open the session in the Browserbase dashboard (Sessions, filtered by the `roledawn_delivery_provision_key` metadata) and play the replay. Recordings show what the form displayed, including the candidate's details, and stay in the private Browserbase project under its retention. CAPTCHA solving is on as well (D-146).
+**Session recording (D-147):** every delivery session is recorded with its console and network logs. To watch a send, open the session in the Browserbase dashboard (Sessions, filtered by the `roledawn_delivery_provision_key` metadata) and play the replay or read its request log. Recordings and logs show what the form displayed, including the candidate's details, and stay in the private Browserbase project under its retention. CAPTCHA solving is on as well (D-146).
 
 ## Known gaps (2026-09-30)
 
