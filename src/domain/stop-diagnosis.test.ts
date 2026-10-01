@@ -48,7 +48,10 @@ test("earlier stages are attributed before any send exists", () => {
   assert.equal(diagnoseStop({ applicationStatus: "FAILED_SAFE", runStatus: "FAILED", runError: "MODEL_CREDITS_EXHAUSTED" }).stage, "WRITING");
   assert.equal(diagnoseStop({ applicationStatus: "FAILED_SAFE", runStatus: "FAILED", runError: "PREPARATION_JOB_NOT_RESOLVED" }).stage, "PREPARATION");
   assert.equal(diagnoseStop({ applicationStatus: "READY", sendIntentClosedReason: "NOT_DELIVERABLE" }).stage, "SEND_QUEUE");
-  assert.match(diagnoseStop({ applicationStatus: "READY", sendIntentOpen: true }).cause, /swallowed/u);
+  assert.match(diagnoseStop({ applicationStatus: "READY", sendIntentOpen: true }).cause, /no reason was recorded/u);
+  const stale = diagnoseStop({ applicationStatus: "READY", sendIntentOpen: true, sendIntentError: "APPLICATION_AUTOPILOT_REVISION_INVALID" });
+  assert.equal(stale.certainty, "confirmed");
+  assert.match(stale.next, /Rewrite documents/u);
   assert.equal(diagnoseStop({ applicationStatus: "CONFIRMED" }).stage, "DONE");
   assert.equal(diagnoseStop({ applicationStatus: "EXECUTING", sendStatus: "UNCERTAIN", sendFailure: "DELIVERY_RECEIPT_UNVERIFIED" }).stage, "CONFIRMATION");
 });

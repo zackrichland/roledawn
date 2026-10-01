@@ -342,9 +342,10 @@ export function guideSend(input: SendGuidanceInput): StopGuidance {
 // Reading the job
 // ---------------------------------------------------------------------------
 
-export type IntakeFailureKind = "UNSUPPORTED_BOARD" | "NOT_A_JOB_LINK" | "POSTING_CLOSED" | "TOO_LARGE" | "INCOMPLETE" | "TEMPORARY" | "UNKNOWN";
+export type IntakeFailureKind = "UNSUPPORTED_BOARD" | "NOT_A_JOB_LINK" | "POSTING_CLOSED" | "TOO_LARGE" | "INCOMPLETE" | "DUPLICATE" | "TEMPORARY" | "UNKNOWN";
 export function intakeFailureKind(code: string | null | undefined): IntakeFailureKind {
   switch (code) {
+    case "DUPLICATE_APPLICATION": return "DUPLICATE";
     case "ATS_UNSUPPORTED": return "UNSUPPORTED_BOARD";
     case "JOB_URL_SHAPE_UNSUPPORTED": return "NOT_A_JOB_LINK";
     case "JOB_NOT_FOUND": return "POSTING_CLOSED";
@@ -369,6 +370,9 @@ export function guideIntakeFailure(code: string | null | undefined): StopGuidanc
       return guide({ ...shared, label: "Not supported", heading: "This job board isn’t supported", happened: "This link is from a job board RoleDawn can’t apply on yet.",
         next: "RoleDawn supports Greenhouse, Lever and Ashby. This site needs an adapter before it can apply here; nothing was submitted.", tone: "neutral", closed: true,
         retry: "AFTER_CHANGE", primary: action("EMPLOYER_PAGE", "Open the posting", undefined, "Open posting") });
+    case "DUPLICATE":
+      return guide({ ...shared, label: "Already added", heading: "You already have this job", happened: "This posting is already in your applications under another link.",
+        next: "Use that application on Home. Nothing new was started and nothing was submitted.", tone: "neutral", closed: true, retry: "AFTER_CHANGE", primary: NONE });
     case "NOT_A_JOB_LINK":
       return guide({ ...shared, label: "Not a job link", heading: "That isn’t one job posting", happened: "That link doesn’t point to a single public job posting.",
         next: "Paste the link to the job’s own page. Nothing was submitted.", tone: "neutral", closed: true, retry: "AFTER_CHANGE", primary: NONE });

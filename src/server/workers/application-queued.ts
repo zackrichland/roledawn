@@ -17,6 +17,12 @@ type ApplicationQueuedPayload = Readonly<{
 
 export type ApplicationQueuedHandlerDependencies = Readonly<{
   resolveJob?: typeof resolvePublicJobUrl;
+  /**
+   * The outbox's last attempt. A still-retryable fetch failure is then recorded
+   * on the intake ("Couldn't read job", with Try again) instead of being
+   * dead-lettered silently, which left Home on "Reading the job" (D-149).
+   */
+  finalAttempt?: boolean;
 }>;
 
 function queuedPayload(value: Json): ApplicationQueuedPayload | null {
@@ -293,6 +299,29 @@ async function persistResolvedJobVersion(
     .eq("id", catalogJob.id);
   if (currentError) throw new Error("JOB_CURRENT_VERSION_WRITE_FAILED");
 
+  // The same job reached through another link (boards. vs job-boards., or a
+  // Jobs match) already has this candidate's application: one per job,
+  // archived included. Say so on this intake instead of retrying the
+  // uniqueness conflict until it is dead-lettered on "Reading the job" (D-149).
+  const { data: duplicates, error: duplicateError } = await supabase
+    .from("applications")
+    .select("id")
+    .eq("candidate_id", intake.candidate_id)
+    .eq("job_id", catalogJob.id)
+    .neq("id", applicationId)
+    .limit(1);
+  if (duplicateError) throw new Error("JOB_DUPLICATE_CHECK_FAILED");
+  if (Array.isArray(duplicates) && duplicates.length > 0) {
+    const { error: duplicateFailure } = await supabase.rpc("fail_pasted_link_intake", {
+      p_job_intake_id: intake.id,
+      p_expected_application_id: applicationId,
+      p_failure_code: "DUPLICATE_APPLICATION",
+      p_expected_intake_updated_at: intake.updated_at,
+    });
+    if (duplicateFailure) throw new Error("JOB_INTAKE_FAILURE_COMMIT_FAILED");
+    return;
+  }
+
   const { error: resolveError } = await supabase.rpc("resolve_pasted_link_intake", {
     p_job_intake_id: intake.id,
     p_expected_application_id: applicationId,
@@ -348,7 +377,7 @@ export async function handleApplicationQueued(
     createNativeJobApiFetchPort(),
   );
 
-  if (result.kind === "FAILED" && result.retryable) {
+  if (result.kind === "FAILED" && result.retryable && !dependencies.finalAttempt) {
     throw new Error(`JOB_RESOLUTION_RETRYABLE_${result.code}`);
   }
 

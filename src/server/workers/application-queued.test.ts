@@ -88,11 +88,14 @@ function chain(result: unknown) {
     insert: passthrough,
     select: passthrough,
     eq: passthrough,
+    neq: passthrough,
     in: passthrough,
     order: passthrough,
     limit: passthrough,
     single: async () => result,
     maybeSingle: async () => result,
+    // Like the Supabase builder, a filtered select can be awaited directly.
+    then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) => Promise.resolve(result).then(resolve, reject),
   };
   return value;
 }
@@ -165,6 +168,35 @@ test("transient official API failures keep the intake retryable", async () => {
   assert.deepEqual(calls, ["from:applications", "from:job_intakes", "from:job_intakes"]);
 });
 
+test("on the outbox's last attempt a still-transient fetch failure is recorded on the intake instead of dead-lettered silently (D-149)", async () => {
+  const calls: string[] = [];
+  const results = [
+    { data: { ...intake, status: "PENDING" }, error: null },
+    { data: intake, error: null },
+  ];
+  const client = {
+    from(table: string) {
+      calls.push(`from:${table}`);
+      if (table === "applications") return chain({ data: { id: applicationId }, error: null });
+      return chain(results.shift() ?? { data: intake, error: null });
+    },
+    async rpc(name: string, args: Record<string, unknown>) {
+      calls.push(`rpc:${name}`);
+      assert.equal(args.p_failure_code, "FETCH_FAILED");
+      return { data: null, error: null };
+    },
+  };
+  await handleApplicationQueued(
+    client as never,
+    { application_id: applicationId, job_intake_id: intake.id },
+    {
+      finalAttempt: true,
+      resolveJob: async () => ({ kind: "FAILED", code: "FETCH_FAILED", message: "temporary network error", retryable: true, status: null }),
+    },
+  );
+  assert.deepEqual(calls, ["from:applications", "from:job_intakes", "from:job_intakes", "rpc:fail_pasted_link_intake"]);
+});
+
 test("terminal intake replays acknowledge without refetching or rewriting the catalog", async () => {
   const calls: string[] = [];
   const client = {
@@ -192,7 +224,7 @@ test("terminal intake replays acknowledge without refetching or rewriting the ca
 test("resolved official jobs persist catalog rows then commit the intake", async () => {
   const calls: string[] = [];
   const results: Record<string, unknown[]> = {
-    applications: [{ data: { id: applicationId }, error: null }],
+    applications: [{ data: { id: applicationId }, error: null }, { data: [], error: null }],
     job_intakes: [
       { data: { ...intake, status: "PENDING" }, error: null },
       { data: intake, error: null },
@@ -251,11 +283,73 @@ test("resolved official jobs persist catalog rows then commit the intake", async
   assert.equal(calls.includes("from:job_versions"), true);
 });
 
+test("the same job pasted under another link records an already-added intake instead of looping on the uniqueness conflict (D-149)", async () => {
+  const calls: string[] = [];
+  const results: Record<string, unknown[]> = {
+    applications: [{ data: { id: applicationId }, error: null }, { data: [{ id: "b0000000-0000-4000-a000-00000000000b" }], error: null }],
+    job_intakes: [
+      { data: { ...intake, status: "PENDING" }, error: null },
+      { data: intake, error: null },
+    ],
+    employers: [{ data: { id: "60000000-0000-4000-a000-000000000006" }, error: null }],
+    job_sources: [{ data: null, error: null }, { data: { id: "70000000-0000-4000-a000-000000000007" }, error: null }],
+    source_job_listings: [{ data: { id: "80000000-0000-4000-a000-000000000008" }, error: null }],
+    jobs: [
+      { data: { id: "90000000-0000-4000-a000-000000000009", current_version_id: null }, error: null },
+      { data: null, error: null },
+    ],
+    job_versions: [
+      { data: null, error: null },
+      { data: null, error: null },
+      { data: { id: "a0000000-0000-4000-a000-00000000000a" }, error: null },
+    ],
+  };
+  const client = {
+    from(table: string) {
+      calls.push(`from:${table}`);
+      const result = results[table]?.shift();
+      if (!result) throw new Error(`Unexpected table call: ${table}`);
+      return chain(result);
+    },
+    async rpc(name: string, args: Record<string, unknown>) {
+      calls.push(`rpc:${name}:${String(args.p_failure_code ?? "")}`);
+      return { data: null, error: null };
+    },
+  };
+
+  await handleApplicationQueued(
+    client as never,
+    { application_id: applicationId, job_intake_id: intake.id },
+    {
+      resolveJob: async () => ({
+        kind: "RESOLVED",
+        value: {
+          reference: {
+            provider: "LEVER",
+            tenantKey: "example",
+            externalJobId: normalizedJob.externalJobId,
+            region: "GLOBAL",
+            canonicalInputUrl: normalizedJob.canonicalJobUrl,
+          },
+          endpoint: "https://api.lever.co/v0/postings/example/20000000-0000-4000-a000-000000000002?mode=json",
+          rawSha256: "b".repeat(64),
+          rawBytes: 1_024,
+          job: normalizedJob,
+          applicationSchema: null,
+        },
+      }),
+    },
+  );
+
+  assert.equal(calls.at(-1), "rpc:fail_pasted_link_intake:DUPLICATE_APPLICATION");
+  assert.equal(calls.some((call) => call.startsWith("rpc:resolve_pasted_link_intake")), false);
+});
+
 test("a pasted link reuses a reviewed catalog board without renaming its employer", async () => {
   const calls: string[] = [];
   const writes: string[] = [];
   const results: Record<string, unknown[]> = {
-    applications: [{ data: { id: applicationId }, error: null }],
+    applications: [{ data: { id: applicationId }, error: null }, { data: [], error: null }],
     job_intakes: [
       { data: { ...intake, status: "PENDING" }, error: null },
       { data: intake, error: null },
@@ -336,7 +430,7 @@ test("a Greenhouse resolution persists the immutable form schema before committi
   const jobId = "90000000-0000-4000-a000-000000000009";
   const jobVersionId = "a0000000-0000-4000-a000-00000000000a";
   const results: Record<string, unknown[]> = {
-    applications: [{ data: { id: applicationId }, error: null }],
+    applications: [{ data: { id: applicationId }, error: null }, { data: [], error: null }],
     job_intakes: [
       { data: { ...intake, status: "PENDING" }, error: null },
       { data: intake, error: null },
@@ -420,7 +514,7 @@ test("an existing canonical job is reused only when it belongs to the same sourc
   const calls: string[] = [];
   const listingId = "80000000-0000-4000-a000-000000000008";
   const results: Record<string, unknown[]> = {
-    applications: [{ data: { id: applicationId }, error: null }],
+    applications: [{ data: { id: applicationId }, error: null }, { data: [], error: null }],
     job_intakes: [
       { data: { ...intake, status: "PENDING" }, error: null },
       { data: intake, error: null },
@@ -490,7 +584,7 @@ test("an existing canonical job is reused only when it belongs to the same sourc
 test("an unspecified provider work mode persists as the database UNKNOWN value", async () => {
   let insertedWorkMode: unknown;
   const results: Record<string, unknown[]> = {
-    applications: [{ data: { id: applicationId }, error: null }],
+    applications: [{ data: { id: applicationId }, error: null }, { data: [], error: null }],
     job_intakes: [
       { data: { ...intake, status: "PENDING" }, error: null },
       { data: intake, error: null },

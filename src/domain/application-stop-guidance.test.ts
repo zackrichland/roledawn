@@ -38,7 +38,7 @@ const CATALOGUE: Readonly<Record<DeliveryStopGroup, readonly string[]>> = {
   UNKNOWN: ["SOMETHING_ELSE_ENTIRELY", "MAILBOX_TOKEN_REVOKED"],
 };
 const ALL_CODES = Object.values(CATALOGUE).flat();
-const INTAKE_CODES = ["ATS_UNSUPPORTED", "JOB_URL_SHAPE_UNSUPPORTED", "JOB_NOT_FOUND", "BODY_TOO_LARGE", "PAYLOAD_INVALID", "FETCH_FAILED", "HTTP_ERROR", "JSON_INVALID", "NEW_CODE", null];
+const INTAKE_CODES = ["ATS_UNSUPPORTED", "JOB_URL_SHAPE_UNSUPPORTED", "JOB_NOT_FOUND", "BODY_TOO_LARGE", "PAYLOAD_INVALID", "DUPLICATE_APPLICATION", "FETCH_FAILED", "HTTP_ERROR", "JSON_INVALID", "NEW_CODE", null];
 const WRITING_CODES = ["DRAFTING_CAREER_PROFILE_MISSING", "LETTER_CLAIM_UNVERIFIED", "APPLICATION_KIT_NAME_REQUIRED", "APPLICATION_WRITING_FAILED", "APPLICATION_DRAFTING_FAILED", "OPENAI_TIMEOUT", "MODEL_UNAVAILABLE", "WORKER_UNEXPECTED_FAILURE", null];
 
 function everyGuidance(): readonly StopGuidance[] {
@@ -230,10 +230,12 @@ test("unreadable postings are retried only when the failure was a bad moment", (
     assert.equal(intakeRetryClass(code), "AFTER_CHANGE");
   }
   // Nothing the candidate can do about a closed posting or an unsupported board: the row settles instead of nagging.
-  for (const code of ["JOB_NOT_FOUND", "ATS_UNSUPPORTED", "JOB_URL_SHAPE_UNSUPPORTED"]) {
+  for (const code of ["JOB_NOT_FOUND", "ATS_UNSUPPORTED", "JOB_URL_SHAPE_UNSUPPORTED", "DUPLICATE_APPLICATION"]) {
     assert.equal(guideIntakeFailure(code).needsYou, false, code);
     assert.equal(guideIntakeFailure(code).closed, true, code);
   }
+  assert.equal(guideIntakeFailure("DUPLICATE_APPLICATION").label, "Already added");
+  assert.equal(offersTryAgain("DUPLICATE_APPLICATION"), false);
   assert.equal(guideIntakeFailure("JOB_NOT_FOUND").label, "Posting closed");
 });
 

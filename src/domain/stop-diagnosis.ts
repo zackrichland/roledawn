@@ -17,6 +17,8 @@ export type StopDiagnosisInput = Readonly<{
   /** The latest preparation run (it also carries document writing). */
   runStatus?: string | null; runError?: string | null;
   sendIntentClosedReason?: string | null; sendIntentOpen?: boolean;
+  /** The latest recorded reason the open send request could not start (migration 20261001040000). */
+  sendIntentError?: string | null;
   sendStatus?: string | null; sendFailure?: string | null;
   /** Latest `stop-diagnosis` worker event detail, if any. */
   diagnosis?: Readonly<Record<string, unknown>> | null;
@@ -127,9 +129,17 @@ export function diagnoseStop(input: StopDiagnosisInput): StopDiagnosis {
   }
   if (input.sendIntentClosedReason === "NOT_DELIVERABLE") return { stage: "SEND_QUEUE", code: "NOT_DELIVERABLE", certainty: "confirmed",
     cause: "The documents were written, but the job's apply URL is not a hosted form RoleDawn can send to (custom career site, EU host or another ATS).", next: "Use the prepared files on the employer's site." };
-  if (input.sendIntentOpen && !input.sendStatus && input.applicationStatus === "READY") return { stage: "SEND_QUEUE", code: null, certainty: "likely",
-    cause: "The send request is open but no send was created. Delegation errors are swallowed in delegate_ready_send_intents (most often a profile edit after the documents, or an earlier attempt on this application).",
-    next: "Rewrite documents if the profile changed; otherwise read the cleanup lane events." };
+  if (input.sendIntentOpen && !input.sendStatus && input.applicationStatus === "READY") {
+    const code = input.sendIntentError ?? null;
+    if (code === "APPLICATION_AUTOPILOT_REVISION_INVALID" || code === "APPLICATION_AUTOPILOT_AUTHORITY_STALE") return { stage: "SEND_QUEUE", code, certainty: "confirmed",
+      cause: "The send request is waiting on documents written before the latest profile change, so it cannot start.", next: "Rewrite documents on the application page; the send then starts by itself." };
+    if (code === "APPLICATION_AUTOPILOT_REVIEW_STALE") return { stage: "SEND_QUEUE", code, certainty: "confirmed",
+      cause: "This application already has a submission attempt or changed after review, so a new send cannot be delegated.", next: "Check the earlier attempt's outcome before sending again." };
+    if (code) return { stage: "SEND_QUEUE", code, certainty: "confirmed", cause: `The send request could not start: ${code}.`, next: "Read the cleanup lane events; the sweep retries every few minutes." };
+    return { stage: "SEND_QUEUE", code: null, certainty: "likely",
+      cause: "The send request is open but no send was created, and no reason was recorded (the recording migration 20261001040000 may not be applied yet). Most often a profile edit after the documents, or an earlier attempt on this application.",
+      next: "Apply the migration, or rewrite documents if the profile changed." };
+  }
   if (input.sendStatus === "FAILED_SAFE" || input.sendStatus === "UNCERTAIN") {
     const code = input.sendFailure ?? null;
     const stageName = String(diagnosis.stage ?? "");

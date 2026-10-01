@@ -32,6 +32,7 @@ select json_build_object('now', to_char(now() at time zone 'utc', 'YYYY-MM-DD HH
       (si.application_id is not null and si.closed_at is null) as intent_open, si.close_reason,
       ap.status as send_status, ap.failure_code as send_failure, ap.transient_retries, ap.reconcile_count,
       (select w.detail from private.worker_events w where w.application_id = a.id and w.stage = 'stop-diagnosis' order by w.occurred_at desc limit 1) as diagnosis,
+      (select w.code from private.worker_events w where w.application_id = a.id and w.stage = 'send-intent' order by w.occurred_at desc limit 1) as intent_error,
       (select coalesce(json_agg(json_build_object('at', to_char(e.occurred_at at time zone 'utc', 'HH24:MI:SS'), 'lane', e.lane, 'stage', e.stage,
           'outcome', e.outcome, 'code', e.code, 'seconds', round(e.duration_ms / 1000.0), 'message', e.detail->>'message') order by e.occurred_at), '[]')
         from (select * from private.worker_events w where w.application_id = a.id order by w.occurred_at desc limit 12) e) as events
@@ -79,7 +80,7 @@ for (const row of (result.apps as Row[] | undefined) ?? []) {
   const verdict = diagnoseStop({
     applicationStatus: row.status as string, intakeStatus: row.intake_status as string | null, intakeFailure: row.intake_failure as string | null,
     runStatus: row.run_status as string | null, runError: row.run_error as string | null,
-    sendIntentOpen: row.intent_open === true, sendIntentClosedReason: row.close_reason as string | null,
+    sendIntentOpen: row.intent_open === true, sendIntentClosedReason: row.close_reason as string | null, sendIntentError: row.intent_error as string | null,
     sendStatus: row.send_status as string | null, sendFailure: row.send_failure as string | null, diagnosis,
   });
   console.log(`\n[${row.created}] ${String(row.id).slice(0, 8)}  ${row.employer} — ${row.role}`);

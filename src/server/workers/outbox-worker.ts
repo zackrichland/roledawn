@@ -6,7 +6,7 @@ import { createSupabaseAdminClient } from "../../lib/supabase/admin.ts";
 import { handleApplicationQueued } from "./application-queued.ts";
 import { handleApplicationPreparationRequested } from "./application-preparation.ts";
 import { handleCareerProfileRequested } from "./career-profile-worker.ts";
-import { decideOutboxFailureDisposition } from "./outbox-retry-policy.ts";
+import { decideOutboxFailureDisposition, MAX_OUTBOX_ATTEMPTS } from "./outbox-retry-policy.ts";
 
 function firstBoolean(value: unknown): boolean {
   if (Array.isArray(value)) return value[0] === true;
@@ -51,7 +51,7 @@ export async function runPreparationWorkerOnce(environment: NodeJS.ProcessEnv = 
     try {
       const handlerKind = preparationOutboxHandlerKind(message.topic);
       if (handlerKind === "JOB_RESOLVER") {
-        await handleApplicationQueued(supabase, message.payload);
+        await handleApplicationQueued(supabase, message.payload, { finalAttempt: message.attempt_count >= MAX_OUTBOX_ATTEMPTS });
       } else if (handlerKind === "INPUT_SNAPSHOT") {
         await handleApplicationPreparationRequested(supabase, message.payload, workerId, environment);
       } else if (handlerKind === "CAREER_PROFILE") {
