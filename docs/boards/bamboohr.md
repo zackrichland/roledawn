@@ -90,7 +90,7 @@ Do:
 - Match the tenant subdomain and `/careers/<id>`; confirm the job via `/careers/<id>/detail`, read-only.
 - Fill standard fields only from approved facts; `desiredPay` only from a saved expected-salary answer; `dateAvailable` only from a saved start date.
 - Answer custom questions from candidate answers; ask when none exists.
-- Stop on any block page or unknown control; CAPTCHAs go to the session's solver (D-136).
+- Stop on any block page or unknown control; CAPTCHAs go to the session's solver (D-146).
 
 Don't:
 - Treat a BambooHR-branded company's Greenhouse board as BambooHR.

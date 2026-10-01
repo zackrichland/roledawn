@@ -58,6 +58,9 @@ select json_build_object('now', to_char(now() at time zone 'utc', 'YYYY-MM-DD HH
       || coalesce(' (' || (select string_agg(replace(key, 'Ms', '') || ' ' || round(value::numeric / 1000) || 's', ', ' order by key)
         from jsonb_each_text(w.detail) where key in ('openMs', 'readMs', 'fillMs', 'modelMs', 'submitMs')) || ')', '')
       || coalesce(' answered ' || (w.detail->>'answered') || '/' || (w.detail->>'questions'), '')
+      || coalesce(' status=' || (w.detail->>'status'), '') || coalesce(' reason=' || (w.detail->>'failure'), '')
+      || coalesce(' attempt=' || coalesce(w.detail->>'attempt',w.detail->>'turnAttempt'), '') || coalesce(' unsupported=' || (w.detail->>'unsupportedSegments'), '')
+      || coalesce(' sqlstate=' || (w.detail->>'databaseCode'), '')
   from private.worker_events w where w.application_id::text like '${prefix}%'
   union all
   select c.created_at, to_char(c.created_at at time zone 'utc', 'HH24:MI:SS'), 'agent', c.tool_name, coalesce(c.result->>'success', 'pending')
@@ -90,7 +93,7 @@ function query(sql = SQL) {
 
 function table(rows, columns) {
   if (!rows.length) return "  (none)";
-  const widths = columns.map((column) => Math.min(42, Math.max(column.length, ...rows.map((row) => String(row[column] ?? "").length))));
+  const widths = columns.map((column) => Math.min(["failure", "code", "info", "cause"].includes(column) ? 140 : 42, Math.max(column.length, ...rows.map((row) => String(row[column] ?? "").length))));
   const line = (cells) => "  " + cells.map((cell, index) => String(cell ?? "").slice(0, widths[index]).padEnd(widths[index])).join("  ");
   return [line(columns), line(widths.map((width) => "-".repeat(width))), ...rows.map((row) => line(columns.map((column) => row[column])))].join("\n");
 }

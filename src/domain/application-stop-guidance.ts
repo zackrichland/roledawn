@@ -26,7 +26,7 @@ export type GuidanceTone = "working" | "attention" | "ready" | "done" | "neutral
 export type RetryClass = "NOT_STOPPED" | "AUTOMATIC" | "MANUAL" | "AFTER_CHANGE" | "NEVER";
 
 export type StopActionKind =
-  | "ANSWER" | "CODE" | "TRY_AGAIN" | "RESUME" | "PAUSE"
+  | "ANSWER" | "CODE" | "VERIFY_BROWSER" | "TRY_AGAIN" | "RESUME" | "PAUSE"
   | "EMPLOYER_PAGE" | "REFRESH_FILES" | "OPEN_PROFILE" | "OPEN_APPLICATION" | "NONE";
 export type StopAction = Readonly<{
   kind: StopActionKind; label: string; href?: string;
@@ -63,8 +63,8 @@ const NONE: StopAction = Object.freeze({ kind: "NONE", label: "" });
 const action = (kind: StopActionKind, label: string, href?: string, short?: string): StopAction =>
   Object.freeze({ kind, label, ...(href ? { href } : {}), ...(short ? { short } : {}) });
 const TRY_AGAIN = action("TRY_AGAIN", "Try again");
-const EMPLOYER = action("EMPLOYER_PAGE", "Finish on the employer’s site");
-const EMPLOYER_APPLY = action("EMPLOYER_PAGE", "Apply on the employer’s site");
+const EMPLOYER = action("OPEN_APPLICATION", "View application");
+const EMPLOYER_APPLY = action("OPEN_APPLICATION", "View application");
 const PAUSE = action("PAUSE", "Pause");
 
 function guide(input: Omit<StopGuidance, "code" | "closed" | "secondary" | "needsYou" | "step" | "canCancel"> & Partial<Pick<StopGuidance, "code" | "closed" | "secondary" | "needsYou" | "step" | "canCancel">>): StopGuidance {
@@ -90,7 +90,7 @@ export const AUTOMATIC_RETRY_LIMIT = 2;
 export const RECONCILE_LIMIT = 3;
 
 export type DeliveryStopGroup =
-  | "TEMPORARY" | "CAPACITY" | "UNSUPPORTED_SITE" | "HUMAN_CHECK" | "FORM_REJECTED" | "SIGN_IN" | "UNSUPPORTED_FIELD"
+  | "TEMPORARY" | "SERVICE_CREDITS" | "CAPACITY" | "UNSUPPORTED_SITE" | "HUMAN_CHECK" | "FORM_REJECTED" | "SIGN_IN" | "UNSUPPORTED_FIELD"
   | "ANSWER_REJECTED" | "CODE_NOT_ACCEPTED" | "FORM_CHECK" | "UNKNOWN";
 
 const SITE_UNSUPPORTED = new Set(["DELIVERY_SITE_UNSUPPORTED", "APPLICATION_AUTOPILOT_DESTINATION_UNSUPPORTED"]);
@@ -101,9 +101,11 @@ const OUR_FAMILY = /^(?:DELIVERY_|AGENTS_|APPLICATION_FILL_)/u;
 export function deliveryStopGroup(code: string | null | undefined): DeliveryStopGroup {
   if (!code) return "UNKNOWN";
   if (AUTOMATIC_RETRY_CODES.has(code)) return "TEMPORARY";
+  if (code === "MODEL_CREDITS_EXHAUSTED") return "SERVICE_CREDITS";
+  if (code === "MODEL_RATE_LIMITED") return "TEMPORARY";
   if (code === "DELIVERY_BROWSER_QUOTA_EXHAUSTED") return "CAPACITY";
   if (SITE_UNSUPPORTED.has(code)) return "UNSUPPORTED_SITE";
-  if (code === "APPLICATION_FILL_CAPTCHA_TAKEOVER") return "HUMAN_CHECK";
+  if (code === "APPLICATION_FILL_CAPTCHA_TAKEOVER" || code === "DELIVERY_BROWSER_VERIFICATION_TIMEOUT") return "HUMAN_CHECK";
   if (code === "DELIVERY_FORM_VALIDATION_OR_CAPTCHA") return "FORM_REJECTED";
   if (code === "APPLICATION_FILL_ACCOUNT_LOGIN_TAKEOVER" || code === "APPLICATION_FILL_OTP_MFA_TAKEOVER") return "SIGN_IN";
   if (code === "DELIVERY_ANSWER_NOT_ACCEPTED_BY_FORM") return "ANSWER_REJECTED";
@@ -119,7 +121,7 @@ export function deliveryStopGroup(code: string | null | undefined): DeliveryStop
 /** How a stop that ended the send (FAILED_SAFE) can be retried. */
 export function deliveryStopRetryClass(code: string | null | undefined): RetryClass {
   switch (deliveryStopGroup(code)) {
-    case "TEMPORARY": case "CODE_NOT_ACCEPTED": case "FORM_CHECK": case "UNKNOWN": return "MANUAL";
+    case "TEMPORARY": case "HUMAN_CHECK": case "CODE_NOT_ACCEPTED": case "FORM_CHECK": case "UNKNOWN": return "MANUAL";
     default: return "AFTER_CHANGE";
   }
 }
@@ -128,50 +130,57 @@ type GroupCopy = Readonly<{
   label: string; heading: string; happened: string; next: string;
   tone: GuidanceTone; primary: StopAction; secondary: StopAction | null; retry: RetryClass;
 }>;
-const LATER = "It wasn’t submitted. Finish on the employer’s site; your files are ready to upload.";
+const LATER = "It wasn’t submitted. Your documents and the stop details stay here while this form needs repair.";
 const GROUP_COPY: Readonly<Record<DeliveryStopGroup, GroupCopy>> = {
   TEMPORARY: {
     label: "Stopped", heading: "Stopped after a temporary problem",
     happened: "A temporary problem on RoleDawn’s side interrupted the form, and it wasn’t submitted.",
-    next: "Try again in a few minutes, or apply yourself on the employer’s site with your files.",
+    next: "Try again in a few minutes. Your application and documents stay here.",
     tone: "error", primary: TRY_AGAIN, secondary: EMPLOYER_APPLY, retry: "MANUAL",
+  },
+  SERVICE_CREDITS: {
+    label: "Stopped", heading: "The application service needs credits",
+    happened: "RoleDawn's AI account ran out of credits before this application was submitted.",
+    next: "Add credits to the configured AI account, then try again.",
+    tone: "error", primary: TRY_AGAIN, secondary: null, retry: "AFTER_CHANGE",
   },
   CAPACITY: {
     label: "Couldn’t start", heading: "Couldn’t start",
     happened: "RoleDawn has used up its form-filling time for now, so it couldn’t start. It wasn’t submitted.",
-    next: "That’s on RoleDawn’s side, and it clears only when more time is added. You can apply on the employer’s site with your files now.",
+    next: "RoleDawn needs more form-filling capacity before it can continue. Your application stays here.",
     tone: "attention", primary: EMPLOYER_APPLY, secondary: TRY_AGAIN, retry: "AFTER_CHANGE",
   },
   UNSUPPORTED_SITE: {
-    label: "Finish on their site", heading: "Finish on the employer’s site",
+    label: "Stopped", heading: "This form needs help",
     happened: "RoleDawn can’t fill in this employer’s application form yet.",
-    next: "RoleDawn applies on Greenhouse, Lever and Ashby. Your files are ready to upload on the employer’s site.",
+    next: "This site needs a delivery adapter before RoleDawn can complete the application here. Your documents are saved.",
     tone: "attention", primary: EMPLOYER, secondary: null, retry: "AFTER_CHANGE",
   },
   HUMAN_CHECK: {
-    label: "Finish on their site", heading: "Finish on the employer’s site",
-    happened: "The employer’s form asked for a human check, which only you can complete. RoleDawn doesn’t try to get past these.",
-    next: LATER, tone: "attention", primary: EMPLOYER, secondary: null, retry: "AFTER_CHANGE",
+    label: "Verification needed", heading: "Verify here",
+    happened: "The employer asked for a human verification check before submission.",
+    next: "Reopen verification. RoleDawn prepares the form again and shows the check here when it appears.",
+    tone: "attention", primary: action("TRY_AGAIN", "Reopen verification", undefined, "Verify here"), secondary: null, retry: "MANUAL",
   },
   FORM_REJECTED: {
-    label: "Finish on their site", heading: "Finish on the employer’s site",
+    label: "Stopped", heading: "This form needs help",
     happened: "The employer’s form asked for a correction or a human check before it would go on.",
     next: LATER, tone: "attention", primary: EMPLOYER, secondary: null, retry: "AFTER_CHANGE",
   },
   SIGN_IN: {
-    label: "Finish on their site", heading: "Finish on the employer’s site",
+    label: "Stopped", heading: "This form needs help",
     happened: "This employer wants you to sign in or create an account before you apply, which RoleDawn can’t do for you yet.",
     next: LATER, tone: "attention", primary: EMPLOYER, secondary: null, retry: "AFTER_CHANGE",
   },
   UNSUPPORTED_FIELD: {
-    label: "Finish on their site", heading: "Finish on the employer’s site",
+    label: "Stopped", heading: "This form needs help",
     happened: "This form has a step or field RoleDawn can’t fill in yet.",
     next: LATER, tone: "attention", primary: EMPLOYER, secondary: null, retry: "AFTER_CHANGE",
   },
   ANSWER_REJECTED: {
-    label: "Finish on their site", heading: "Finish on the employer’s site",
+    label: "Stopped", heading: "This form needs help",
     happened: "The employer’s form wouldn’t accept one of the answers.",
-    next: "It wasn’t submitted. Check that answer and finish on the employer’s site; your files are ready to upload.",
+    next: "It wasn’t submitted. The answer needs correction before RoleDawn can continue here.",
     tone: "attention", primary: EMPLOYER, secondary: null, retry: "AFTER_CHANGE",
   },
   CODE_NOT_ACCEPTED: {
@@ -183,13 +192,13 @@ const GROUP_COPY: Readonly<Record<DeliveryStopGroup, GroupCopy>> = {
   FORM_CHECK: {
     label: "Stopped", heading: "Stopped before sending",
     happened: "RoleDawn couldn’t verify the employer’s form before final submission, so it stopped.",
-    next: "You can try again or finish on the employer’s site using your documents.",
+    next: "Try again here. Your documents and answers are saved.",
     tone: "error", primary: TRY_AGAIN, secondary: EMPLOYER_APPLY, retry: "MANUAL",
   },
   UNKNOWN: {
     label: "Stopped", heading: "Stopped before sending",
     happened: "Something unexpected stopped RoleDawn before it could submit this application.",
-    next: "Try again, or apply on the employer’s site with your files.",
+    next: "Try again here. The stop details and your documents are saved.",
     tone: "error", primary: TRY_AGAIN, secondary: EMPLOYER_APPLY, retry: "MANUAL",
   },
 };
@@ -212,6 +221,7 @@ export type SendGuidanceInput = Readonly<{
   /** Present when the employer emailed a code that RoleDawn hasn't received yet. */
   verificationRecipient?: string | null;
   verificationRetry?: boolean;
+  browserVerification?: boolean;
 }>;
 
 function failedSend(input: SendGuidanceInput): StopGuidance {
@@ -226,7 +236,7 @@ function failedSend(input: SendGuidanceInput): StopGuidance {
   const refused = offersTryAgain && (input.expired || input.profileChanged);
   if (refused && input.expired) {
     return guide({ label: copy.label, heading: copy.heading, happened, tone: copy.tone, needsYou: true, retry: "AFTER_CHANGE", code,
-      next: "This send request expired after 7 days, so it can’t run again. Apply on the employer’s site with your files.", primary: EMPLOYER_APPLY });
+      next: "This send request expired after 7 days, so it can’t run again. Open the application to review its saved documents.", primary: EMPLOYER_APPLY });
   }
   if (refused) {
     return guide({ label: copy.label, heading: copy.heading, happened, tone: copy.tone, needsYou: true, retry: "AFTER_CHANGE", code,
@@ -238,6 +248,12 @@ function failedSend(input: SendGuidanceInput): StopGuidance {
 
 /** What the candidate sees for an application's send, in every state it can be in. */
 export function guideSend(input: SendGuidanceInput): StopGuidance {
+  if (input.status === "RUNNING" && input.browserVerification) return guide({
+    label: "Verification needed", heading: "Verify here",
+    happened: "The employer needs a human verification check before RoleDawn can finish.",
+    next: "Complete the check below. RoleDawn continues in the same form and waits for the employer’s confirmation.",
+    tone: "attention", needsYou: true, retry: "NOT_STOPPED", primary: action("VERIFY_BROWSER", "Open verification", undefined, "Verify here"), secondary: PAUSE, canCancel: true,
+  });
   const code = input.failureCode ?? null;
   switch (input.status) {
     case "QUEUED":
@@ -351,7 +367,7 @@ export function guideIntakeFailure(code: string | null | undefined): StopGuidanc
   switch (kind) {
     case "UNSUPPORTED_BOARD":
       return guide({ ...shared, label: "Not supported", heading: "This job board isn’t supported", happened: "This link is from a job board RoleDawn can’t apply on yet.",
-        next: "RoleDawn applies on Greenhouse, Lever and Ashby. Nothing was submitted; you can still apply on the employer’s site.", tone: "neutral", closed: true,
+        next: "RoleDawn supports Greenhouse, Lever and Ashby. This site needs an adapter before it can apply here; nothing was submitted.", tone: "neutral", closed: true,
         retry: "AFTER_CHANGE", primary: action("EMPLOYER_PAGE", "Open the posting", undefined, "Open posting") });
     case "NOT_A_JOB_LINK":
       return guide({ ...shared, label: "Not a job link", heading: "That isn’t one job posting", happened: "That link doesn’t point to a single public job posting.",
@@ -361,10 +377,10 @@ export function guideIntakeFailure(code: string | null | undefined): StopGuidanc
         next: "There’s nothing to send. If it reopens, paste the link again.", tone: "neutral", closed: true, retry: "AFTER_CHANGE", primary: NONE });
     case "TOO_LARGE":
       return guide({ ...shared, label: "Couldn’t read job", heading: "Couldn’t read this posting", happened: "The posting was too large for RoleDawn to read safely.",
-        next: "Nothing was submitted. You can apply on the employer’s site.", tone: "neutral", needsYou: true, retry: "AFTER_CHANGE", primary: action("EMPLOYER_PAGE", "Open the posting", undefined, "Open posting") });
+        next: "Nothing was submitted. The posting needs repair before RoleDawn can read it.", tone: "neutral", needsYou: true, retry: "AFTER_CHANGE", primary: action("EMPLOYER_PAGE", "Open the posting", undefined, "Open posting") });
     case "INCOMPLETE":
       return guide({ ...shared, label: "Couldn’t read job", heading: "Couldn’t read this posting", happened: "The job board’s record for this posting was incomplete.",
-        next: "That usually clears when the employer fixes the posting. Nothing was submitted; you can apply on the employer’s site meanwhile.", tone: "neutral", needsYou: true,
+        next: "That usually clears when the employer fixes the posting. Nothing was submitted.", tone: "neutral", needsYou: true,
         retry: "AFTER_CHANGE", primary: action("EMPLOYER_PAGE", "Open the posting", undefined, "Open posting") });
     case "TEMPORARY":
     case "UNKNOWN":
@@ -379,19 +395,20 @@ export function guideIntakeFailure(code: string | null | undefined): StopGuidanc
 // Writing the documents
 // ---------------------------------------------------------------------------
 
-export type WritingFailureKind = "PROFILE_MISSING" | "LETTER_UNVERIFIED" | "NAME_REQUIRED" | "WRITING_CHECK" | "SERVICE_BUSY" | "UNKNOWN";
+export type WritingFailureKind = "PROFILE_MISSING" | "LETTER_UNVERIFIED" | "NAME_REQUIRED" | "WRITING_CHECK" | "SERVICE_BUSY" | "SERVICE_CREDITS" | "UNKNOWN";
 export function writingFailureKind(code: string | null | undefined): WritingFailureKind {
   if (!code) return "UNKNOWN";
   if (code === "DRAFTING_CAREER_PROFILE_MISSING") return "PROFILE_MISSING";
   if (code === "LETTER_CLAIM_UNVERIFIED") return "LETTER_UNVERIFIED";
   if (code === "APPLICATION_KIT_NAME_REQUIRED") return "NAME_REQUIRED";
   if (code.startsWith("APPLICATION_WRITING") || code.startsWith("APPLICATION_DRAFTING")) return "WRITING_CHECK";
+  if (code === "MODEL_CREDITS_EXHAUSTED") return "SERVICE_CREDITS";
   if (code.startsWith("OPENAI") || code.startsWith("MODEL_")) return "SERVICE_BUSY";
   return "UNKNOWN";
 }
 export function writingRetryClass(code: string | null | undefined): RetryClass {
   const kind = writingFailureKind(code);
-  return kind === "PROFILE_MISSING" || kind === "LETTER_UNVERIFIED" || kind === "NAME_REQUIRED" ? "AFTER_CHANGE" : "MANUAL";
+  return kind === "PROFILE_MISSING" || kind === "LETTER_UNVERIFIED" || kind === "NAME_REQUIRED" || kind === "SERVICE_CREDITS" ? "AFTER_CHANGE" : "MANUAL";
 }
 
 export function guideWritingFailure(input: Readonly<{ code: string | null | undefined; profileChanged?: boolean }>): StopGuidance {
@@ -418,6 +435,9 @@ export function guideWritingFailure(input: Readonly<{ code: string | null | unde
       return guide({ ...shared, label: "Writing stopped", heading, happened: "RoleDawn couldn’t finish documents that passed every check.",
         next: "Nothing was sent. Try again; if it stops again, adding a story to your profile usually helps.", tone: "error", retry: "MANUAL",
         primary: TRY_AGAIN, secondary: action("OPEN_PROFILE", "Add a story", "/vault/stories") });
+    case "SERVICE_CREDITS":
+      return guide({ ...shared, label: "Writing stopped", heading, happened: "RoleDawn's AI account ran out of credits.",
+        next: "Nothing was sent. Add credits to the configured AI account, then try again.", tone: "error", retry: "AFTER_CHANGE", primary: TRY_AGAIN });
     case "SERVICE_BUSY":
       return guide({ ...shared, label: "Writing stopped", heading, happened: "The writing service was busy.",
         next: "Nothing was sent. Try again in a few minutes.", tone: "error", retry: "MANUAL", primary: TRY_AGAIN });
@@ -436,7 +456,7 @@ export function guideSendNotDeliverable(): StopGuidance {
   return guide({
     label: "Send stopped", heading: "Send stopped",
     happened: "RoleDawn couldn’t send this when you asked, because the job board wasn’t supported then. Your documents are ready.",
-    next: "Open it to send again, or apply on the employer’s site with your files.",
+    next: "Open the application to continue sending here. Your documents are ready.",
     tone: "attention", needsYou: true, step: 2, retry: "AFTER_CHANGE", primary: action("OPEN_APPLICATION", "Open"),
   });
 }
@@ -457,9 +477,10 @@ export function homeActionLabel(primary: StopAction): string | null {
   switch (primary.kind) {
     case "ANSWER": return "Answer";
     case "CODE": return "Enter code";
+    case "VERIFY_BROWSER": return "Verify here";
     case "TRY_AGAIN": return "Try again";
     case "RESUME": return "Resume";
-    case "EMPLOYER_PAGE": return "Finish on site";
+    case "EMPLOYER_PAGE": return "Open posting";
     case "REFRESH_FILES": return "Rewrite";
     case "OPEN_PROFILE": return "Open Profile";
     case "OPEN_APPLICATION": return primary.label || "Open";

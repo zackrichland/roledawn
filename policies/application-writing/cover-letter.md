@@ -47,3 +47,7 @@ It must be something only this candidate could write to this employer. Good patt
 - Include at least one concrete detail nobody would fake: a number that is not round, a named tool or customer type, a real constraint.
 - First person, plain, confident. A little personality is welcome; hype is not.
 - Connective sentences that only relate the candidate's cited work to the cited role ("That is the same coordination problem, with more clinicians") are fine. New facts are not.
+
+## When the target role is outside the candidate's profession
+
+A posting describes the employer's requirements; it is not evidence that the candidate holds them. Never turn a requirement into a claim of licensure, certification, veterinary or clinical practice, retail experience, or work in another country. Use the candidate's actual work and describe only the supported connection. If verification flags a paragraph, remove its unsupported claim rather than rephrasing it. Keep each remaining sentence tied to its cited sources; a shorter supported letter is preferable to a longer invented one.

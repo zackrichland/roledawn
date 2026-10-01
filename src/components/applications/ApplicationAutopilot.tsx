@@ -15,7 +15,7 @@ import guidanceStyles from "./StopGuidance.module.css";
 type Props = Readonly<{
   applicationId: string; aggregateVersion: number; revisionId: string; packetHash: string;
   view: ApplicationAutopilotView | null; canStart: boolean; startBlockedReason?: string;
-  /** The employer's own page for this job: the fallback when RoleDawn can't finish the form. */
+  /** The employer's posting URL identifies the delivery adapter; recovery stays inside RoleDawn. */
   employerUrl?: string | null;
   /** Retry and reconcile counters for this send request. */
   summary?: AutopilotSummary | null;
@@ -98,6 +98,7 @@ function AutopilotForm({ applicationId, aggregateVersion, revisionId, packetHash
     status: view.status, failureCode: view.failureCode, transientRetries: summary?.transientRetries, reconcileCount: summary?.reconcileCount,
     expired: summary?.expired, profileChanged, provider: parseAutopilotDestination(employerUrl)?.provider ?? null,
     questionCount: view.questions.length, verificationRecipient: view.verification?.recipient ?? null, verificationRetry: view.verification?.retry,
+    browserVerification: Boolean(view.browserVerification),
   }) : null;
   const busy = pending || Boolean(saved);
   const applicationHref = `/applications/${applicationId}`;
@@ -138,6 +139,11 @@ function AutopilotForm({ applicationId, aggregateVersion, revisionId, packetHash
       </>}
       <button type="button" disabled={!canStart || Boolean(startBlockedReason) || busy} aria-describedby={startBlockedReason ? "application-autopilot-unavailable" : undefined} onClick={delegate}>{pending ? "Starting…" : "Apply for me"}</button>
     </>}
+    {view?.browserVerification ? <div className={styles.verificationBrowser}>
+      <iframe title="Complete employer verification in RoleDawn" src={`/applications/${applicationId}/verification-browser`}
+        referrerPolicy="no-referrer" />
+      <p className={styles.hint}>This form stays open for up to 5 minutes. Complete only the verification check; RoleDawn handles sending.</p>
+    </div> : null}
     {view?.verification ? <form onSubmit={verify}>
       <div className={styles.field}>
         <label htmlFor="autopilot-verification-code">Verification code</label>

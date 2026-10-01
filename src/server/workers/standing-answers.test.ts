@@ -21,7 +21,36 @@ const sponsorship = question("Will you require visa sponsorship in the future?",
 const basis = new Map([["s1", GPA_ID], ["s2", ONSITE_ID], ["f:work_authorization.us.sponsorship_required", "fact:work_authorization.us.sponsorship_required"], ["f:location.city", "fact:location.city"]]);
 const draft = (choices: string[], ids: string[], text = "") => ({ questionId: "q1", decision: "ANSWER", choices, text, basis: ids });
 
-test("demographic, legal, consent and optional questions always stay with the candidate", () => {
+test("an exact saved text question retains every location component without model rewriting", async () => {
+  const descriptor = question("Which city and country do you intend to work from?", "TEXT");
+  const value = "Springfield, Illinois, United States";
+  const resolver = createStandingAnswerResolver({ client: { responses: { async create() {
+    throw new Error("EXACT_TEXT_MUST_NOT_REACH_MODEL");
+  } } } as never });
+  const result = await resolver.resolve({ questions: [descriptor], context: { answers: [{ id: ONSITE_ID,
+    topic: "  WHICH CITY AND COUNTRY DO YOU INTEND TO WORK FROM?  ", answer: value }], job: null }, facts: [] });
+  assert.deepEqual(result.map(({ value, basis }) => ({ value, basis })), [{ value, basis: [ONSITE_ID] }]);
+});
+
+test("exact text reuse keeps protected-question exclusions and ambiguity checks", async () => {
+  const resolver = createStandingAnswerResolver({ client: { responses: { async create() {
+    return { status: "completed", output_text: '{"answers":[]}' };
+  } } } as never });
+  for (const descriptor of [question("Legal signature", "TEXT"), question("Medical history", "LONG_TEXT"),
+    question("City", "TEXT", [], { required: false }), question("Active TS/SCI with FSP or CI", "TEXT")]) {
+    assert.deepEqual(await resolver.resolve({ questions: [descriptor], context: { answers: [
+      { id: ONSITE_ID, topic: descriptor.label, answer: "Saved text" }], job: null }, facts: [] }), [], descriptor.label);
+  }
+  const descriptor = question("Intended city", "TEXT");
+  for (const answers of [
+    [{ id: ONSITE_ID, topic: "Current city", answer: "Springfield, Illinois, United States" }],
+    [{ id: ONSITE_ID, topic: descriptor.label, answer: "Springfield" }, { id: GPA_ID, topic: descriptor.label, answer: "Chicago" }],
+    [{ id: ONSITE_ID, topic: descriptor.label, answer: "x".repeat(1001) }],
+    [{ id: ONSITE_ID, topic: descriptor.label, answer: "bad\u0000text" }],
+  ]) assert.deepEqual(await resolver.resolve({ questions: [descriptor], context: { answers, job: null }, facts: [] }), []);
+});
+
+test("generic model inference excludes demographic, legal, consent and optional questions", () => {
   assert.equal(standingAnswerEligible(gpa), true);
   assert.equal(standingAnswerEligible(onsite), true);
   for (const label of ["Gender", "Are you a protected veteran?", "Have you ever been convicted of a felony?", "I agree to the privacy policy", "Signature", "Are you a U.S. citizen?",
@@ -167,4 +196,20 @@ test("model failure for another question preserves independently resolved exact 
     { id: GPA_ID, topic: "Undergraduate GPA", answer: "3.5" }, { id: ONSITE_ID, topic: EXACT_CLEARANCE_TOPIC, answer: "No" },
   ], job: null }, facts: [] });
   assert.deepEqual(result, [{ descriptor, value: false, basis: [ONSITE_ID] }]);
+});
+
+
+test("explicit delegated acknowledgements never depend on a model or become a basis for qualifications", async () => {
+  const { APPLICATION_ACKNOWLEDGEMENTS_TOPIC: topic, APPLICATION_ACKNOWLEDGEMENTS_AUTHORIZATION: answer } = await import("../../domain/application-delegated-acknowledgements.ts");
+  const authorization = { id: GPA_ID, topic, answer };
+  const descriptors = [question("I agree to the privacy policy", "BOOLEAN"), question("Do you consent to a background check?", "SINGLE_SELECT", ["Yes", "No"]), question("Electronic signature", "TEXT"), question("I certify that I am licensed", "BOOLEAN"), question("Do you have security clearance?", "BOOLEAN")];
+  let modelCalls = 0;
+  const resolver = createStandingAnswerResolver({ client: { responses: { async create() { modelCalls += 1; throw new Error("unavailable"); } } } as never });
+  const result = await resolver.resolve({ questions: descriptors, context: { answers: [authorization], job: null }, facts: [{ factKey: "identity.legal_name", value: "Synthetic Candidate" }] });
+  assert.equal(modelCalls, 0);
+  assert.deepEqual(result.map(item => item.value), [true, "option-0", "Synthetic Candidate"]);
+  assert.ok(result.every(item => item.basis.length === 1 && item.basis[0] === authorization.id));
+  assert.deepEqual(await resolver.resolve({ questions: descriptors.slice(0, 3), context: { answers: [], job: null }, facts: [] }), []);
+  const revoked = await resolver.resolve({ questions: descriptors.slice(0, 3), context: { answers: [{ ...authorization, answer: "Revoked" }], job: null }, facts: [] });
+  assert.deepEqual(revoked, []);
 });

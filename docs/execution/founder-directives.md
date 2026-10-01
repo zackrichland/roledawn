@@ -56,4 +56,11 @@ own answers.
 14. **Lean and modular.** Keep the repository easy for coding agents to read; keep AGENTS.md current with lessons learned. (2026-09-30)
 15. **Push to GitHub once it works,** with documentation that explains how everything works. (2026-09-29)
 16. **Remember everything.** Record every instruction here, in the decision log, and in agent memory. (2026-09-30)
-17. **CAPTCHAs never stop an application.** Turn on Browserbase's CAPTCHA solver for every board; RoleDawn ticks the "I'm not a robot" checkbox when shown and waits for the solve. Consent and attestation checkboxes still go to the candidate, and a solved CAPTCHA is never a receipt (D-136). (2026-10-01)
+
+17. **Delegate application acknowledgements.** The candidate authorizes RoleDawn to accept application terms, privacy notices, processing/screening consents and application-information attestations, and to enter the approved legal name in signature fields. Save that authority per candidate and record the exact employer wording on each send; no repeated candidate acknowledgement. This permission does not establish a qualification or personal-status fact. (2026-09-30, D-136)
+
+18. **Write narrative form answers from the approved record.** The agent handles short written responses using the résumé and evidence. Ask only for missing factual details; never fabricate the requested example. Home's Answer panel must display the actual questions and save replies back to the same send. (2026-09-30, D-140)
+
+19. **Finish inside RoleDawn.** Never send the candidate to an employer site to finish a stopped application. Any required human verification belongs in the application’s embedded browser, with RoleDawn continuing and tracking the result. Unsupported forms stay visibly stopped until their delivery path is repaired. (2026-09-30, D-144)
+
+20. **CAPTCHAs never stop an application.** Turn on Browserbase's CAPTCHA solver for every board; RoleDawn ticks the "I'm not a robot" checkbox when shown and waits for the solve. The candidate's embedded-browser check (directive 19) is only the fallback when the solver fails. A solved CAPTCHA is never a receipt (D-146). (2026-10-01)

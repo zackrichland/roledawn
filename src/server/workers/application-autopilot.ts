@@ -54,6 +54,35 @@ export function createExtendableBudget(ms: number, now: () => number = Date.now)
 }
 type ExtendableBudget = ReturnType<typeof createExtendableBudget>;
 
+/** Keep the guarded worker attached while the candidate completes verification. */
+export function createAutopilotBrowserVerificationRelay(input: Readonly<{
+  claim: ApplicationAutopilotClaim; repository: Pick<ApplicationAutopilotStore, "assertLease" | "extendLease" | "checkpoint" | "recordEvent">;
+  budget: ExtendableBudget; hardDeadline: number; runtimeExpiresAt: string; now?: () => number;
+}>) {
+  const now = input.now ?? Date.now;
+  let renewed = 0;
+  return {
+    async open() {
+      const deadline = Math.min(now() + 5 * 60_000, input.hardDeadline - 45_000, Date.parse(input.runtimeExpiresAt) - 45_000);
+      if (!Number.isFinite(deadline) || deadline <= now() + 30_000) return null;
+      await input.repository.assertLease(input.claim);
+      await input.repository.extendLease(input.claim, AUTOPILOT_LEASE_SECONDS);
+      renewed = now(); input.budget.extendTo(deadline + 40_000);
+      await input.repository.checkpoint(input.claim, { stage: "BROWSER_VERIFICATION", data: { browserVerificationExpiresAt: new Date(deadline).toISOString() } });
+      await input.repository.recordEvent?.(input.claim, { stage: "browser-verification", outcome: "INFO", code: "DELIVERY_BROWSER_VERIFICATION_REQUIRED" });
+      return deadline;
+    },
+    async poll() {
+      await input.repository.assertLease(input.claim);
+      if (now() - renewed >= 120_000) { await input.repository.extendLease(input.claim, AUTOPILOT_LEASE_SECONDS); renewed = now(); }
+    },
+    async close() {
+      await input.repository.checkpoint(input.claim, { stage: "BROWSER_VERIFICATION_CLOSED", data: { browserVerificationExpiresAt: null } });
+      await input.repository.recordEvent?.(input.claim, { stage: "browser-verification", outcome: "INFO", code: "DELIVERY_BROWSER_VERIFICATION_CLOSED" });
+    },
+  };
+}
+
 /**
  * Waits for the code the candidate types into RoleDawn after the employer
  * emails it. The lease is kept alive; the code is read once and settled.
@@ -178,11 +207,20 @@ export async function runApplicationAutopilotClaim(claim: ApplicationAutopilotCl
     standingAnswers: createStandingAnswerResolver({ apiKey: configuration.apiKey, model: configuration.model }),
     async drive(task) {
       const driver = createApplicationDeliveryDriver({
-        harness: createApplicationDeliveryHarness({ configuration, client, store: repository, lease: claim, signal }),
+        harness: createApplicationDeliveryHarness({ configuration, client, store: repository, lease: claim, signal,
+          report: async (detail, durationMs) => {
+            const { recordWorkerEvent } = await import("./worker-events.ts");
+            await recordWorkerEvent(supabase as never, { lane: "autopilot", stage: "agent-turn", outcome: "INFO", detail, durationMs,
+              applicationId: claim.applicationId, autopilotId: claim.id });
+          },
+        }),
         questions: task.questions,
         evidence: createApplicationAgentEvidence({ apiKey: configuration.apiKey }),
         resolvePage: (handle) => handle as Page,
-        submissionHooks: { begin: task.begin, checkpoint: task.checkpoint },
+        submissionHooks: { begin: task.begin, checkpoint: task.checkpoint,
+          browserVerification: createAutopilotBrowserVerificationRelay({ claim, repository, budget,
+            hardDeadline: started + AUTOPILOT_HARD_LIMIT_MS, runtimeExpiresAt: task.runtimeExpiresAt }),
+        },
         verification,
         assertLease: () => repository.assertLease(claim),
         maxActions: configuration.maxActions,

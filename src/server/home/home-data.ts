@@ -10,6 +10,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { AuthenticatedActor } from "@/server/auth/session";
 import { readAutoApplyState } from "@/server/auto-apply/state";
 import { getQueueWorkspace } from "@/server/dashboard/queue";
+import { readApplicationBrowserChecks } from "@/server/applications/browser-verification";
 
 export type { HomeNeed };
 export type HomeApplication = PersistentQueueApplication & Readonly<{ sendIntent: ApplicationSendIntentState; need: HomeNeed | null }>;
@@ -54,6 +55,7 @@ async function openNeeds(): Promise<ReadonlyMap<string, HomeNeed>> {
     .in("status", ["WAITING_ANSWERS", "SUBMITTING"]).order("created_at", { ascending: false });
   if (error || !Array.isArray(data)) return new Map();
   const needs = new Map<string, HomeNeed>();
+  for (const check of await readApplicationBrowserChecks(supabase)) needs.set(check.applicationId, { kind: "BROWSER", expiresAt: check.expiresAt });
   const now = Date.now();
   for (const row of data as unknown as readonly Readonly<{ application_id: string; status: string;
     application_autopilot_questions: readonly Readonly<{ status: string }>[] | null;

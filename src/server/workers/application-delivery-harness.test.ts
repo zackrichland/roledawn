@@ -37,3 +37,44 @@ test("delivery harness checks revoked authority at tool time and deletes the mod
   assert.ok(events.includes("delete"));
   assert.ok(events.includes("deleted"));
 });
+
+test("a failed provider turn resumes once with the shared action budget; cancellation and quota never resume", async () => {
+  for (const status of ["failed", "cancelled", "quota", "uncertain"] as const) {
+    let sessions = 0; let privateSent = false; let toolExecuted = false; let writes = 0;
+    const events: unknown[] = [];
+    const client: OpenAIAgentsClient = {
+      async createSession() { sessions += 1; privateSent = false; toolExecuted = false; return { id: `s${sessions}`, status: "idle", required_actions: [] }; },
+      async retrieveSession() { return { id: `s${sessions}`, status: "idle", required_actions: [] }; },
+      async retrieveTurn() { return { id: `t${sessions}`, session_id: `s${sessions}`, status: sessions === 2 ? "completed" : "failed", failure: "PROVIDER_ERROR" }; },
+      async retrieveLatestTurn() {
+        if (!privateSent) return { id: `init${sessions}`, session_id: `s${sessions}`, status: "completed" };
+        return { id: `t${sessions}`, session_id: `s${sessions}`, status: sessions === 2 ? "completed" : status === "cancelled" ? "cancelled" : "failed",
+          failure: status === "quota" ? "CREDITS_EXHAUSTED" : "PROVIDER_ERROR" };
+      },
+      async sendMessage() { privateSent = true; }, async sendToolResults() {}, async cancelTurn() {}, async deleteSession() {},
+    };
+    if (status === "uncertain") client.retrieveSession = async () => {
+      if (!privateSent) return { id: `s${sessions}`, status: "idle", required_actions: [] };
+      return { id: `s${sessions}`, status: "requires_action", required_actions: [{ type: "function_call", turn_id: "t1", call_id: "c1", name: "fill_fact", arguments: {} }] };
+    };
+    // One acknowledged tool is consumed before the first provider failure.
+    if (status === "failed") client.retrieveSession = async () => {
+      if (privateSent && !toolExecuted && sessions === 1) {
+        toolExecuted = true;
+        return { id: "s1", status: "requires_action", required_actions: [{ type: "function_call", turn_id: "t1", call_id: "c1", name: "fill_fact", arguments: {} }] };
+      }
+      return { id: `s${sessions}`, status: "idle", required_actions: [] };
+    };
+    const harness = createApplicationDeliveryHarness({ configuration: { driver: "agents", apiKey: "synthetic", model: "synthetic", timeoutMs: 5000, maxActions: 2 }, client,
+      store: { async assertLease() {}, async setAgentSession() {}, ledger() { return { async begin() { return { status: "new" }; }, async complete() {} }; } },
+      lease: { id: "autopilot", leaseToken: "lease" }, async report(detail) { events.push(detail); },
+    });
+    const run = harness.run({ binding: { workspaceId: "w", candidateId: "c", applicationId: "a", revisionId: "r", fillAttemptId: "f", computerSessionId: "s" },
+      instructions: "Synthetic", toolDefinitions: [{ type: "function", name: "fill_fact", description: "Fill", parameters: {} }], input: {}, maxActions: 2,
+      async executeTool() { writes += 1; if (status === "uncertain") throw new Error("UNACKNOWLEDGED_WRITE"); return {}; },
+    });
+    if (status === "failed") { await run; assert.equal(sessions, 2); assert.equal(writes, 1); }
+    else { await assert.rejects(run); assert.equal(sessions, 1); }
+    assert.ok(events.length >= 1);
+  }
+});

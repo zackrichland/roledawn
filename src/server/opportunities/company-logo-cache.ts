@@ -1,4 +1,5 @@
 import { companyLogoIdentity, isCompanyLogoBoardSlug, isCompanyLogoProvider, type CompanyLogoProvider } from "../../domain/company-logo.ts";
+import type { Database } from "../../lib/supabase/database.types.ts";
 import { createSupabaseAdminClient } from "../../lib/supabase/admin.ts";
 import {
   fetchCompanyLogo, isServableLogoAsset,
@@ -53,13 +54,11 @@ export function decodeBytea(value: unknown): Uint8Array | null {
   return new Uint8Array(Buffer.from(value.slice(2), "hex"));
 }
 
-/** Local row shape. Regenerate src/lib/supabase/database.types.ts after the migration is applied, then use it here. */
-type EmployerLogoRow = Readonly<{
-  status: string; content_type: string | null; logo_bytes: string | null; checked_at: string; attempted_at: string;
-}>;
+type EmployerLogoRow = Pick<Database["public"]["Tables"]["employer_logos"]["Row"],
+  "status" | "content_type" | "logo_bytes" | "checked_at" | "attempted_at">;
 
 type QueryResult = PromiseLike<Readonly<{ data: unknown; error: unknown }>>;
-/** Just the calls this store makes. The generated Database type does not know employer_logos yet. */
+/** Just the calls this store makes, so tests can supply a bounded database adapter. */
 export type CompanyLogoDatabaseClient = Readonly<{
   from(table: "employer_logos"): {
     select(columns: string): { eq(column: string, value: string): { eq(column: string, value: string): {
@@ -111,7 +110,7 @@ export function createSupabaseCompanyLogoStore(client: CompanyLogoDatabaseClient
 export function createDefaultCompanyLogoStore(environment: Readonly<Record<string, string | undefined>> = process.env): CompanyLogoStore | null {
   if (!environment.SUPABASE_SECRET_KEY?.trim() || !environment.NEXT_PUBLIC_SUPABASE_URL?.trim()) return null;
   try {
-    // The client type does not include the new table until types are regenerated; see CompanyLogoDatabaseClient.
+    // Bound the generic Supabase client to this adapter interface; row fields come from generated Database types.
     return createSupabaseCompanyLogoStore(createSupabaseAdminClient("company-logos/1", environment as NodeJS.ProcessEnv) as unknown as CompanyLogoDatabaseClient);
   } catch {
     return null;

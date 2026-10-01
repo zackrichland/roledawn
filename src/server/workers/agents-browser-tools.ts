@@ -22,6 +22,7 @@ export type AgentFieldKind = AgentQuestionDescriptor["kind"] | "FILE" | "UNSUPPO
 type RawControl = {
   index: number; tag: string; type: string; role: string; name: string; id: string; label: string; optionLabel: string;
   autocomplete: string; placeholder: string; required: boolean; readOnly: boolean;
+  maxLength?: number;
   form: string; value: string; checked: boolean; selected: string[];
   valid: boolean; accept: string; multiple: boolean; disabled: boolean;
   options: { value: string; label: string }[];
@@ -47,6 +48,8 @@ export type AgentBrowserField = Readonly<{
   provider?: "ASHBY";
   autocomplete: string;
   placeholder: string;
+  /** Native UTF-16 text limit; omitted when the control has none. */
+  maxLength?: number;
   required: boolean;
   readOnly: boolean;
   candidateOnly: boolean;
@@ -199,6 +202,7 @@ async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = fals
       optionLabel: [labelledBy, element.getAttribute("aria-label"), labels || ownText(element.closest("label"))]
         .filter(Boolean).join(" ").replace(/\s+/gu, " ").trim(),
       autocomplete: native.autocomplete ?? "", placeholder: native.placeholder ?? "",
+      ...((element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && native.maxLength >= 0 ? { maxLength: native.maxLength } : {}),
       required: ashbyRequired || Boolean(native.required) || element.getAttribute("aria-required") === "true" || Boolean(leverHeading?.querySelector(".required")) || type === "file" && Boolean(element.closest('.file-upload[aria-required="true"]')),
       readOnly: (Boolean(native.readOnly) && element.getAttribute("role") !== "combobox") || element.getAttribute("aria-readonly") === "true",
       form: ashbyEntry ? ashbyEntry.getAttribute("data-field-entry-id")!.slice(0, -(ashbyPath.length + 1)) : form ? JSON.stringify([form.id, form.getAttribute("name"), form.getAttribute("action"), form.method]) : "outside-form",
@@ -222,6 +226,8 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   permittedPassiveFrameUrls?: readonly string[]; allowReactSelectDisplay?: boolean; leverLabels?: boolean; ashbyLabels?: boolean;
   /** Delivery validates each current DOM/frame URL against its observed CAPTCHA key. */
   isPermittedPassiveFrameUrl?: (url: string) => boolean;
+  /** A reviewed SDK challenge document may be mounted hidden; visibility still stops. */
+  isReviewedChallengeFrameUrl?: (url: string) => boolean;
   /** Only when the delivery policy permits the page's own search lookups. */
   remoteSearch?: boolean;
   /** The approved field semantic whose value this site's lookup may receive. */
@@ -235,7 +241,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
    */
   invisibleHcaptcha?: boolean;
   /**
-   * The session's CAPTCHA solver is on (D-136). A shown challenge gets its
+   * The session's CAPTCHA solver is on (D-146). A shown challenge gets its
    * provider checkbox ticked and is waited out; only one still unsolved after
    * `captchaSolveTimeoutMs` hands over.
    */
@@ -251,6 +257,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   const ashbyLabels = options?.ashbyLabels === true;
   const permitsPassiveFrame = (url: string) => options?.isPermittedPassiveFrameUrl
     ? options.isPermittedPassiveFrameUrl(url) : options?.permittedPassiveFrameUrls?.includes(url) === true;
+  const reviewedChallengeFrame = (url: string) => options?.isReviewedChallengeFrameUrl?.(url) === true;
   // Reading a React Select menu means opening it: about a dozen browser round
   // trips per control, on every inspection. A closed menu whose visible state
   // and surrounding form are unchanged keeps its last verified read. Any
@@ -265,6 +272,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   const readsBack = (actual: AgentFieldValue, expected: AgentFieldValue, phone: boolean) => hash(actual) === hash(expected) ||
     phone && typeof actual === "string" && typeof expected === "string" && samePhoneNumber(actual, expected);
   let initialValues: Map<string, string> | null = null;
+  let initiallyEmpty: Map<string, string> | null = null;
 
   function assertOrigin() {
     if (new URL(page.url()).origin !== expectedOrigin) throw new Error("AGENTS_FILL_ORIGIN_MISMATCH");
@@ -293,6 +301,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       }
       if (frameUrl !== "about:blank" && frameOrigin !== expectedOrigin) {
         if (permitsPassiveFrame(frameUrl)) continue;
+        if (reviewedChallengeFrame(frameUrl)) continue;
         // With the solver on, a provider's own frame stops only while its challenge is unsolved.
         if (solving && isCaptchaFrameUrl(frameUrl)) {
           if (captchaUnsolved) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
@@ -309,7 +318,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       } else if (options?.invisibleHcaptcha) {
         const foreignCaptcha = await frame.locator('iframe[src*="captcha"], iframe[src*="turnstile"], [data-sitekey]').evaluateAll((elements) => elements.some((element) =>
           element instanceof HTMLIFrameElement
-            ? !/^https:\/\/newassets\.hcaptcha\.com\/captcha\/v1\/[A-Za-z0-9._-]{1,80}\/static\/hcaptcha\.html(?:[?#]|$)/u.test(element.src)
+            ? !/^https:\/\/newassets\.hcaptcha\.com\/captcha\/v1\/[A-Za-z0-9._-]{1,80}\/static\/hcaptcha(?:-enclave)?\.html(?:[?#]|$)/u.test(element.src)
             : element.classList.contains("g-recaptcha") || element.classList.contains("cf-turnstile")));
         if (foreignCaptcha || await frameShowsCaptchaChallenge(frame)) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
       } else {
@@ -317,7 +326,10 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
         // have not navigated yet. A widget or any unapproved URL still stops.
         const captchaUrls = await frame.locator('iframe[src*="captcha"], iframe[src*="turnstile"], [data-sitekey]').evaluateAll((elements) =>
           elements.map((element) => element instanceof HTMLIFrameElement ? element.src : null));
-        if (captchaUrls.some(url => url === null || !permitsPassiveFrame(url))) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
+        if (captchaUrls.some(url => url === null || !permitsPassiveFrame(url) && !reviewedChallengeFrame(url))
+          || await frameShowsCaptchaChallenge(frame, captchaUrls.filter((url): url is string => url !== null && permitsPassiveFrame(url)))) {
+          takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
+        }
       }
       navigationRequired ||= await frame.locator("button, input[type=button], a[role=button]").evaluateAll((elements) =>
         elements.some((element) => {
@@ -402,6 +414,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
           ...(ashbyLabels && control.form !== "outside-form" ? { provider: "ASHBY" as const } : {}),
           name: control.name, id: control.id, label, autocomplete: control.autocomplete,
           placeholder: control.placeholder, required: group.some((item) => item.required),
+          ...(control.maxLength !== undefined ? { maxLength: control.maxLength } : {}),
           readOnly: group.some((item) => item.readOnly), kind: fieldKind, options,
           accept: control.accept, multiple: control.multiple,
           aria: control.aria ? { listboxId: control.aria.listboxId, options: control.aria.options } : null,
@@ -428,6 +441,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
         let field: AgentBrowserField = Object.freeze({
           fieldId: `field_${fingerprint}`, fingerprint, label, kind: fieldKind, inputType: control.type,
           name: control.name, domId: control.id, autocomplete: control.autocomplete, placeholder: control.placeholder,
+          ...(descriptor.maxLength !== undefined ? { maxLength: descriptor.maxLength } : {}),
           ...(ashbyLabels && control.form !== "outside-form" ? { formKey: control.form } : {}),
           ...(descriptor.provider ? { provider: descriptor.provider } : {}),
           required: descriptor.required, readOnly: descriptor.readOnly,
@@ -461,6 +475,8 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     latest = next;
     initialValues ??= new Map([...next].filter(([, item]) => item.field.hasValue)
       .map(([id, item]) => [id, hash({ value: item.value, files: item.files })]));
+    initiallyEmpty ??= new Map([...next].filter(([, item]) => !item.field.hasValue)
+      .map(([id, item]) => [id, item.field.fingerprint]));
     return Object.freeze({ origin: expectedOrigin, pageUrl: page.url(), fields: [...next.values()].map((item) => item.field), takeoverReason, navigationRequired });
   }
 
@@ -495,8 +511,13 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     let expected: AgentFieldValue;
     if (field.kind === "TEXT" || field.kind === "LONG_TEXT") {
       if (typeof answer !== "string" || answer.length > 8_000) throw new Error("AGENTS_FILL_ANSWER_TYPE_INVALID");
+      if (field.maxLength !== undefined && answer.length > field.maxLength) throw new Error("AGENTS_FILL_TEXT_TOO_LONG");
       expected = answer;
       await controls.nth(indexes[0]).fill(answer, { timeout: 5_000 });
+      // Lever's parser protects inputs on native change/paste, not input.
+      // Complete the normal edit with blur before a later resume upload can
+      // reset the still-focused field. Re-read the exact approved value below.
+      if (options?.leverLabels) await controls.nth(indexes[0]).blur({ timeout: 5_000 });
     } else if (field.kind === "BOOLEAN") {
       if (typeof answer !== "boolean") throw new Error("AGENTS_FILL_ANSWER_TYPE_INVALID");
       expected = answer;
@@ -558,6 +579,29 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     await verifyWrites(signal);
   }
 
+  /** Omit unapproved parser output only from Lever's two optional system slots.
+   * Initial values, approved writes, required questions and other slots remain protected. */
+  async function clearOptionalParserValue(fieldId: string, signal?: AbortSignal): Promise<boolean> {
+    if (!options?.leverLabels) return false;
+    const before = latest.get(fieldId);
+    if (!before || initiallyEmpty?.get(fieldId) !== before.field.fingerprint || writes.has(fieldId)) return false;
+    const snapshot = await inspect(signal);
+    if (snapshot.takeoverReason) throw new Error(snapshot.takeoverReason);
+    const current = latest.get(fieldId);
+    if (!current || current.field.fingerprint !== before.field.fingerprint) throw new Error("AGENTS_FILL_FIELD_DRIFT");
+    const field = current.field;
+    const label = field.label.trim().toLowerCase();
+    if (field.kind !== "TEXT" || field.inputType !== "text" || field.required || field.readOnly || field.candidateOnly || !field.hasValue ||
+      !(field.name === "org" && label === "current company" || field.name === "location" && label === "current location")) return false;
+    if (signal?.aborted) throw new Error("AGENTS_FILL_CANCELLED");
+    const control = current.frame.locator(CONTROL_SELECTOR).nth(current.indexes[0]);
+    await control.fill("", { timeout: 5_000 });
+    await control.blur({ timeout: 5_000 });
+    writes.set(fieldId, { value: "" });
+    await verifyWrites(signal);
+    return true;
+  }
+
   async function verifyWrites(signal?: AbortSignal, includeDisabledForReview = false): Promise<AgentBrowserSnapshot> {
     const snapshot = await inspect(signal, includeDisabledForReview);
     for (const [id, priorHash] of initialValues ?? []) {
@@ -588,7 +632,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   }
 
   return Object.freeze({
-    inspect: (signal?: AbortSignal) => inspect(signal), fillValue, upload,
+    inspect: (signal?: AbortSignal) => inspect(signal), fillValue, upload, clearOptionalParserValue,
     verifyWrites: (signal?: AbortSignal) => verifyWrites(signal),
     // Ashby disables its controls after the click, before its final request is
     // intercepted. Read their exact values/schema here without enabling writes.

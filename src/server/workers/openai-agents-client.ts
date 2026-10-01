@@ -45,7 +45,21 @@ export type OpenAIAgentTurn = Readonly<{
   id: string;
   session_id: string;
   status: "queued" | "in_progress" | "waiting" | "completed" | "failed" | "cancelled";
+  failure?: AgentTurnFailure;
 }>;
+
+export type AgentTurnFailure = "CREDITS_EXHAUSTED" | "RATE_LIMIT" | "PROVIDER_ERROR" | "CONTEXT_LIMIT" | "CONTENT_FILTER" | "UNKNOWN";
+/** Fixed categories only: provider error messages can include candidate text or credentials. */
+export function classifyAgentTurnFailure(value: unknown): AgentTurnFailure {
+  const error = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const code = error.code;
+  if (code === "credit_balance_exhausted" || code === "insufficient_quota" || error.type === "insufficient_quota") return "CREDITS_EXHAUSTED";
+  if (code === "rate_limit_exceeded") return "RATE_LIMIT";
+  if (code === "server_error" || code === "internal_error") return "PROVIDER_ERROR";
+  if (code === "context_length_exceeded") return "CONTEXT_LIMIT";
+  if (code === "content_filter" || code === "safety_violation") return "CONTENT_FILTER";
+  return "UNKNOWN";
+}
 
 export type OpenAIAgentToolResult = Readonly<{
   type: "agent.session.input.tool_result";
@@ -149,7 +163,8 @@ function parseTurn(value: unknown, sessionId: string, turnId?: string): OpenAIAg
   if (!["queued", "in_progress", "waiting", "completed", "failed", "cancelled"].includes(String(record.status))) {
     fail("OPENAI_AGENTS_INVALID_RESPONSE");
   }
-  return { id: parsedId, session_id: sessionId, status: record.status as OpenAIAgentTurn["status"] };
+  return { id: parsedId, session_id: sessionId, status: record.status as OpenAIAgentTurn["status"],
+    ...(record.status === "failed" ? { failure: classifyAgentTurnFailure(record.error) } : {}) };
 }
 
 function validateResult(result: OpenAIAgentToolResult): void {
@@ -226,7 +241,12 @@ export function createOpenAIAgentsClient(options: Readonly<{
         redirect: "error",
       }), combined);
       if (!response.ok) {
-        void response.body?.cancel().catch(() => undefined);
+        if (response.status === 429) {
+          let failure: AgentTurnFailure = "UNKNOWN";
+          try { failure = classifyAgentTurnFailure(object(await readJson(response)).error); } catch { /* Never expose provider text. */ }
+          if (failure === "CREDITS_EXHAUSTED") throw new OpenAIAgentsError("MODEL_CREDITS_EXHAUSTED", response.status);
+          if (failure === "RATE_LIMIT") throw new OpenAIAgentsError("MODEL_RATE_LIMITED", response.status);
+        } else void response.body?.cancel().catch(() => undefined);
         throw new OpenAIAgentsError("OPENAI_AGENTS_HTTP_ERROR", response.status);
       }
       if (method === "DELETE" && response.status !== 200) {
@@ -348,6 +368,7 @@ export type OpenAIAgentsRunResult = Readonly<{
   turnId: string;
   status: "completed" | "failed" | "cancelled";
   actionCount: number;
+  failure?: AgentTurnFailure;
 }>;
 
 /** Provider completion is not proof that a browser form is complete or that any application was sent. */
@@ -437,7 +458,12 @@ export async function runOpenAIAgentsFunctions(options: Readonly<{
     for (; polls < maxPolls; polls += 1) {
       checkSignal(signal);
       if (session.id !== sessionId) fail("OPENAI_AGENTS_SESSION_MISMATCH");
-      if (session.status === "failed") fail("OPENAI_AGENTS_SESSION_FAILED");
+      if (session.status === "failed") {
+        const terminal = await bounded(options.client.retrieveLatestTurn(sessionId, signal));
+        if (!terminal || terminal.id === initializationTurnId || terminal.session_id !== sessionId || terminal.status !== "failed"
+          || (turnId && terminal.id !== turnId)) fail("OPENAI_AGENTS_SESSION_FAILED");
+        return { sessionId, turnId: terminal.id, status: "failed", actionCount, failure: terminal.failure ?? "UNKNOWN" };
+      }
       if (session.required_actions.length) {
         // Validate the whole batch before the first effect, including mixed-turn or duplicate calls.
         const batchIds = new Set<string>();
@@ -519,7 +545,7 @@ export async function runOpenAIAgentsFunctions(options: Readonly<{
           if (turn.session_id !== sessionId || (turnId && turn.id !== turnId)) fail("OPENAI_AGENTS_TURN_MISMATCH");
           turnId = id(turn.id);
           if (turn.status === "completed" || turn.status === "failed" || turn.status === "cancelled") {
-            return { sessionId, turnId, status: turn.status, actionCount };
+            return { sessionId, turnId, status: turn.status, actionCount, ...(turn.failure ? { failure: turn.failure } : {}) };
           }
         }
       }

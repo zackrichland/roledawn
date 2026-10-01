@@ -3265,6 +3265,45 @@ export type Database = {
           },
         ]
       }
+      employer_logos: {
+        Row: {
+          attempted_at: string
+          board_slug: string
+          checked_at: string
+          content_type: string | null
+          created_at: string
+          fetched_at: string
+          logo_bytes: string | null
+          miss_count: number
+          provider: string
+          status: string
+        }
+        Insert: {
+          attempted_at?: string
+          board_slug: string
+          checked_at?: string
+          content_type?: string | null
+          created_at?: string
+          fetched_at?: string
+          logo_bytes?: string | null
+          miss_count?: number
+          provider: string
+          status: string
+        }
+        Update: {
+          attempted_at?: string
+          board_slug?: string
+          checked_at?: string
+          content_type?: string | null
+          created_at?: string
+          fetched_at?: string
+          logo_bytes?: string | null
+          miss_count?: number
+          provider?: string
+          status?: string
+        }
+        Relationships: []
+      }
       employers: {
         Row: {
           canonical_domain: string | null
@@ -5180,6 +5219,14 @@ export type Database = {
           provider_session_ref: string
         }[]
       }
+      get_application_browser_check_binding: {
+        Args: { p_application_id: string; p_auth_user_id: string }
+        Returns: {
+          destination_url: string
+          expires_at: string
+          provider_session_ref: string
+        }[]
+      }
       get_candidate_mailbox_connection: {
         Args: { p_candidate_id: string }
         Returns: Json
@@ -5327,6 +5374,14 @@ export type Database = {
         Args: { p_id: string; p_lease_token: string }
         Returns: Json
       }
+      read_application_browser_checks: {
+        Args: { p_application_id?: string }
+        Returns: {
+          application_id: string
+          autopilot_id: string
+          expires_at: string
+        }[]
+      }
       read_auto_apply_state: { Args: never; Returns: Json }
       read_autopilot_mailbox_connection: {
         Args: { p_id: string; p_lease_token: string }
@@ -5375,6 +5430,16 @@ export type Database = {
           profile_version_id: string
           recorded: boolean
         }[]
+      }
+      record_employer_logo_check: {
+        Args: {
+          p_board_slug: string
+          p_content_type?: string
+          p_logo_bytes?: string
+          p_outcome: string
+          p_provider: string
+        }
+        Returns: string
       }
       record_resume_extraction: {
         Args: {

@@ -6,7 +6,7 @@ import { chromium, type Page } from "playwright-core";
 import { ASHBY_FIXTURE_FINAL_ACTION, startSyntheticAshby, type AshbyFixtureMode } from "../../test-support/synthetic-ashby-delivery.ts";
 import { createAgentBrowserTools } from "./agents-browser-tools.ts";
 import { createApplicationDeliveryDriver } from "./application-delivery-driver.ts";
-import { createApplicationDeliveryBrowser } from "./application-delivery-browser.ts";
+import { createApplicationDeliveryBrowser, type DeliverySubmissionHooks } from "./application-delivery-browser.ts";
 import { pageShowsCaptchaChallenge } from "./agents-captcha.ts";
 
 const chrome = [process.env.ROLEDAWN_CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/chromium", "/usr/bin/google-chrome"].find((value): value is string => Boolean(value && existsSync(value)));
@@ -20,18 +20,21 @@ async function fixture(mode: AshbyFixtureMode, run: (data: {
  browserTools: ReturnType<typeof createAgentBrowserTools>;
  requests: Awaited<ReturnType<typeof startSyntheticAshby>>["requests"];
  checkpoints: Readonly<Record<string, unknown>>[];
+ captchaReads: string[];
  begins: () => number;
-}) => Promise<void>) {
+}) => Promise<void>, browserVerification?: DeliverySubmissionHooks["browserVerification"]) {
  const server = await startSyntheticAshby(mode);
  const browser = await chromium.launch({ executablePath: chrome, headless: true });
  let begins = 0;
  const checkpoints: Readonly<Record<string, unknown>>[] = [];
+ const captchaReads: string[] = [];
  try {
   const page = await browser.newPage({ serviceWorkers: "block" });
-  const runtime = await createApplicationDeliveryBrowser({ page, policy: server.policy, timeoutMs: 1500,
-   hooks: { async begin() { assert.equal(server.requests.submits, 0); begins++; return { attemptId: "fixture-attempt", idempotencyKey: "once" }; }, async checkpoint(state) { checkpoints.push(state); } },
+  const runtime = await createApplicationDeliveryBrowser({ page, policy: server.policy, timeoutMs: 1500, captchaSolveTimeoutMs: 300,
+   hooks: { browserVerification, async begin() { assert.equal(server.requests.submits, 0); begins++; return { attemptId: "fixture-attempt", idempotencyKey: "once" }; }, async checkpoint(state) { checkpoints.push(state); } },
    requestTransport: async (route) => {
     if (new URL(route.request().url()).origin === "https://www.recaptcha.net") {
+      captchaReads.push(new URL(route.request().url()).pathname);
       // Synthetic provider document only; these tests never run a CAPTCHA SDK.
       await route.fulfill({ status: 200, contentType: "text/html", headers: { "access-control-allow-origin": "*" }, body: "<!doctype html><html><body></body></html>" });
     } else if (route.request().url() === "https://fixture-bucket.s3.amazonaws.com/") {
@@ -42,7 +45,7 @@ async function fixture(mode: AshbyFixtureMode, run: (data: {
   });
   await runtime.open();
   const browserTools = createAgentBrowserTools(page, server.policy.startUrl, { ashbyLabels: true });
-  await run({ page, runtime, browserTools, requests: server.requests, checkpoints, begins: () => begins });
+  await run({ page, runtime, browserTools, requests: server.requests, checkpoints, captchaReads, begins: () => begins });
   await runtime.dispose();
  } finally { await browser.close(); await server.close(); }
 }
@@ -286,4 +289,102 @@ test("a late invisible anchor is checked against live adapter authority even bef
   assert.equal(data.begins(), 0);
   assert.equal(data.requests.submits, 0);
  });
+});
+
+test("a reviewed idle reCAPTCHA challenge frame is allowed only while hidden and bound to an observed key", options, async () => {
+ await fixture("normal", async data => {
+  const key = "6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y";
+  const challenge = "https://www.recaptcha.net/recaptcha/enterprise/bframe?k=" + key;
+  const observer = createAgentBrowserTools(data.page, data.runtime.policy.startUrl, {
+   ashbyLabels: true, isPermittedPassiveFrameUrl: data.runtime.isPassiveFrameUrl,
+   isReviewedChallengeFrameUrl: data.runtime.isReviewedChallengeFrameUrl,
+  });
+  assert.equal(data.runtime.isReviewedChallengeFrameUrl(challenge), false);
+  await data.page.evaluate(key => fetch("https://www.recaptcha.net/recaptcha/api.js?render=" + key), key);
+  assert.equal(data.runtime.isReviewedChallengeFrameUrl(challenge), true);
+  assert.equal(data.runtime.isPassiveFrameUrl(challenge), false, "a challenge document is never a passive badge");
+  await data.page.evaluate(src => {
+   const iframe = document.createElement("iframe"); iframe.style.cssText = "visibility:hidden;width:400px;height:580px";
+   iframe.src = src; document.body.append(iframe);
+  }, challenge);
+  assert.equal((await observer.inspect()).takeoverReason, null);
+  for (const src of [challenge.replace(key, "unreviewed-key"), challenge.replace("www.recaptcha.net", "unreviewed.example"), challenge.replace("/bframe?", "/other?")]) {
+   await data.page.locator("iframe").evaluate((element, src) => { (element as HTMLIFrameElement).src = src; }, src);
+   assert.ok((await observer.inspect()).takeoverReason, "an unreviewed hidden frame supplies no trust");
+  }
+  await data.page.locator("iframe").evaluate((element, src) => {
+   (element as HTMLIFrameElement).src = src; (element as HTMLElement).style.cssText = "visibility:visible;width:400px;height:580px";
+  }, challenge);
+  assert.equal((await observer.verifyWrites()).takeoverReason, "APPLICATION_FILL_CAPTCHA_TAKEOVER");
+  const result = await data.runtime.submit("e".repeat(64), {}, undefined, async () => {
+   if ((await observer.verifyWrites()).takeoverReason) throw new Error("DELIVERY_FINAL_REVIEW_DRIFT");
+  });
+  assert.equal(result.kind, "TAKEOVER");
+  assert.equal(data.begins(), 0);
+  assert.equal(data.requests.submits, 0);
+ });
+});
+
+// Synthetic checks only: this never loads or interacts with a CAPTCHA SDK.
+test("embedded human check preserves exact review, expiry and once-only dispatch", options, async () => {
+ for (const scenario of ["complete", "drift", "expire", "cancel"] as const) {
+  let opens = 0; let closes = 0; let candidate: Promise<void> | null = null;
+  let page: Page;
+  await fixture("normal", async data => {
+   page = data.page;
+   await fill(data);
+   await page.evaluate(async () => {
+    await fetch("https://www.recaptcha.net/recaptcha/api.js?render=6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y");
+    await fetch("https://www.recaptcha.net/recaptcha/api2/payload?k=6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y").catch(() => {});
+   });
+   // The session's solver needs the provider's own challenge traffic at any time (D-146).
+   assert.equal(data.captchaReads.filter(path => path.endsWith("/payload")).length, 1, "challenge traffic is admitted for the solver");
+   await page.evaluate(() => {
+    const button = document.querySelector('.ashby-application-form-submit-button')!;
+    button.addEventListener("click", async (event) => {
+     if (document.getElementById("fixture-human-done")) return;
+     event.preventDefault(); event.stopImmediatePropagation();
+     await new Promise(resolve => {
+      const image = new Image(); image.onload = image.onerror = resolve;
+      image.src = "https://www.recaptcha.net/recaptcha/api2/payload?k=6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y";
+     });
+     const iframe = document.createElement("iframe"); iframe.id = "fixture-human-check";
+     iframe.src = "https://www.recaptcha.net/recaptcha/api2/bframe?k=6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y";
+     iframe.style.cssText = "width:400px;height:400px"; document.body.append(iframe);
+    }, true);
+   });
+   const result = await data.runtime.submit("a".repeat(64), {}, undefined, async () => {
+    if (await page.locator('#_systemfield_name').inputValue() !== "Alex Fixture") throw new Error("DELIVERY_FINAL_REVIEW_DRIFT");
+   });
+   if (candidate) await candidate;
+   assert.equal(opens, 1); assert.equal(closes, 1);
+   assert.equal(data.captchaReads.filter(path => path.endsWith("/payload")).length, 2, "the native check renders before the solver wait and the human window");
+   if (scenario === "complete") {
+    assert.equal(result.kind, "CONFIRMED", JSON.stringify(result)); assert.equal(data.begins(), 1); assert.equal(data.requests.submits, 1);
+    assert.equal((await data.runtime.submit("a".repeat(64), {})).kind, "UNCERTAIN");
+    assert.equal(data.requests.submits, 1);
+   } else {
+    assert.equal(result.kind, "TAKEOVER", JSON.stringify(result)); assert.equal(data.begins(), 0); assert.equal(data.requests.submits, 0);
+    assert.equal(result.kind === "TAKEOVER" && result.reasonCode, scenario === "drift" ? "DELIVERY_FINAL_REVIEW_DRIFT" : scenario === "expire" ? "DELIVERY_BROWSER_VERIFICATION_TIMEOUT" : "APPLICATION_AUTOPILOT_MUTATION_DENIED");
+   }
+  }, {
+   async open() {
+    opens++;
+    if (scenario === "complete" || scenario === "drift") candidate = (async () => {
+     // Wait longer than the ordinary submit timeout, then simulate a candidate
+     // in the fixture. No real challenge is solved or token supplied.
+     await new Promise(resolve => setTimeout(resolve, 1_650));
+     if (scenario === "drift") await page.locator('#_systemfield_name').evaluate(input => { (input as HTMLInputElement).value = "Changed fixture"; });
+     await page.evaluate(() => {
+      document.getElementById("fixture-human-check")!.remove();
+      const marker = document.createElement("div"); marker.id="fixture-human-done"; document.body.append(marker);
+      (document.querySelector('.ashby-application-form-submit-button') as HTMLButtonElement).click();
+     });
+    })();
+    return Date.now() + (scenario === "expire" ? 100 : 4_000);
+   },
+   async poll() { if (scenario === "cancel") throw new Error("APPLICATION_AUTOPILOT_MUTATION_DENIED"); },
+   async close() { closes++; },
+  });
+ }
 });

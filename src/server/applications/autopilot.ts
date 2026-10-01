@@ -9,6 +9,7 @@ import { validateAgentQuestionAnswer, validateAgentQuestionDescriptors, type Age
 import { AUTOPILOT_UNSUPPORTED_DESTINATION_COPY, parseAutopilotDestination } from "../../domain/application-autopilot-eligibility.ts";
 import type { OpenAIAgentActionLedger, OpenAIAgentCallKey, OpenAIAgentToolResult } from "../workers/openai-agents-client.ts";
 import { recordWorkerEvent } from "../workers/worker-events.ts";
+import { readApplicationBrowserChecks } from "./browser-verification.ts";
 
 type Row = Record<string, unknown>;
 type QueryResult = { data: unknown; error: { code?: string; message?: string } | null };
@@ -312,6 +313,7 @@ export async function getApplicationAutopilot(client: unknown, applicationId: st
     .sort((left, right) => String(right.requested_at).localeCompare(String(left.requested_at)))[0];
   const verification = item.status === "SUBMITTING" && open ? Object.freeze({ id: open.id as string, recipient: open.recipient_hint as string,
     retry: open.retry_reason === "CODE_REJECTED", expiresAt: open.expires_at as string }) : null;
+  const browserCheck = item.status === "RUNNING" ? (await readApplicationBrowserChecks(client, applicationId)).find((check) => check.autopilotId === item.id) : null;
   return Object.freeze({ id: item.id, applicationId, revisionId: item.revision_id, status: item.status,
-    version: item.version, failureCode: item.failure_code, questions, verification }) as ApplicationAutopilotView;
+    version: item.version, failureCode: item.failure_code, questions, verification, browserVerification: browserCheck ? { expiresAt: browserCheck.expiresAt } : null }) as ApplicationAutopilotView;
 }

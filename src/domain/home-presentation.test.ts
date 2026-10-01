@@ -26,7 +26,7 @@ test("a Home row reads a queue row as it arrives: intake failure, send request a
   assert.equal(closed.needsYou, false);
   const stopped = presentHomeApplication({ ...base, status: "FAILED_SAFE", failureCode: null, hasDocuments: true, need: null,
     autopilot: { id: "0b2c6c1e-0000-4000-8000-000000000001", status: "FAILED_SAFE", version: 4, failureCode: "DELIVERY_SITE_UNSUPPORTED", transientRetries: 0, reconcileCount: 0, expired: false } });
-  assert.equal(stopped.label, "Finish on their site");
+  assert.equal(stopped.label, "Stopped");
   assert.equal(stopped.needsYou, true);
   // A live need outranks everything the row would otherwise say.
   assert.equal(presentHomeApplication({ ...queueRow, need: { kind: "ANSWERS", count: 2 } }).label, "Answer 2 questions");

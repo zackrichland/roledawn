@@ -79,6 +79,21 @@ test("pause and cancel persist and refresh without scheduling delivery", async (
   }
 });
 
+test("existing sends accept answers, codes and controls while new sends are disabled", async () => {
+  for (const [name, command] of [
+    ["saveApplicationAutopilotAnswersAction", {}], ["provideApplicationAutopilotVerificationCodeAction", {}],
+    ["controlApplicationAutopilotAction", { action: "RESUME" }], ["controlApplicationAutopilotAction", { action: "PAUSE" }],
+    ["controlApplicationAutopilotAction", { action: "CANCEL" }],
+  ] as const) {
+    const run = harness({ enabled: false });
+    assert.equal((await run.actions[name](command)).ok, true, name);
+    assert.ok(run.events.some(event => event.startsWith("saved:")));
+    const signedOut = harness({ enabled: false, authenticated: false });
+    assert.equal((await signedOut.actions[name](command)).ok, false, name);
+    assert.equal(signedOut.events.length, 0);
+  }
+});
+
 test("failed, unauthenticated and disabled commands never schedule a wakeup", async () => {
   for (const options of [
     { enabled: false }, { authenticated: false },

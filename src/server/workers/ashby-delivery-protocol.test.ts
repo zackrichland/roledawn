@@ -33,6 +33,10 @@ function field(path: string, type = "TEXT"): AgentBrowserField {
 const save = (path: string, value: unknown, extra: Record<string, unknown> = {}) => envelope("ApiSetFormValue", {
   organizationHostedJobsPageName: board, formRenderIdentifier: id(2), formDefinitionIdentifier: id(3), path, value, ...extra,
 });
+const compositeDefinition = (overrides: Record<string, unknown> = {}) => JSON.stringify({
+  kind: "CompositeFormDefinitionId-JobPostingApplicationFormV2", formDefinitionId: id(3),
+  jobPostingId: job, jobBoardSuperType: "External", ...overrides,
+});
 function submission(survey = false, overrides: Record<string, unknown> = {}): AshbyEnvelope {
   return envelope(survey ? "ApiSubmitMultipleFormsAction" : "ApiSubmitSingleApplicationFormAction", {
     organizationHostedJobsPageName: board, jobPostingId: job, recaptchaToken: "fixture-passive-token",
@@ -41,6 +45,20 @@ function submission(survey = false, overrides: Record<string, unknown> = {}): As
       : { formRenderIdentifier: id(2), formDefinitionIdentifier: id(3), actionIdentifier: id(4) }), ...overrides,
   });
 }
+
+test("final requests admit only the reviewed standard and Enterprise token envelopes", () => {
+  for (const survey of [false, true]) {
+    const protocol = initialized(survey);
+    for (const token of ["fixture-passive-token", "ENT===fixture-passive-token", "UNIVERSAL_ENT===fixture-passive-token", "a".repeat(12_000)]) {
+      assert.equal(protocol.authorize(submission(survey, { recaptchaToken: token }), undefined, true), "SUBMIT");
+    }
+    for (const token of [null, undefined, 42, "", "ENT===", "UNIVERSAL_ENT===", "OTHER===fixture", "ENT==fixture", "ENT====fixture",
+      "ENT===ENT===fixture", "fixture=", "private spaces", "fixture\n", "a".repeat(12_001), "ENT===" + "a".repeat(12_000)]) {
+      assert.equal(protocol.authorize(submission(survey, { recaptchaToken: token }), undefined, true), null);
+      assert.equal(protocol.authorizationFailure(), `DELIVERY_ASHBY_REQUEST_SUBMIT_${survey ? "MULTIPLE" : "SINGLE"}_RECAPTCHA_TOKEN`);
+    }
+  }
+});
 
 test("reviewed Ashby operation documents cannot be spoofed by name, URL, extra arguments or a different query", () => {
   for (const operation of Object.keys(ASHBY_QUERY_HASHES) as AshbyOperation[]) {
@@ -76,6 +94,48 @@ test("draft saves require the current approved field and exact tenant, form, pat
   assert.equal(protocol.authorize(request), null);
   assert.equal(protocol.review()[0].fields.find(f => f.path === "_systemfield_name")?.valueHash,
     createHash("sha256").update(JSON.stringify("Alex Candidate")).digest("hex"));
+});
+
+test("composite application definition IDs bind the exact named job, autosave echo and final review", () => {
+  const protocol = createAshbyProtocol(board, job);
+  const definition = compositeDefinition();
+  protocol.observe(postingRequest, { data: { jobPosting: { id: job,
+    applicationForm: { ...form(), sourceFormDefinitionId: definition }, surveyForms: [form(12)] } } });
+  protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+  const request = save("_systemfield_name", "Alex Candidate", { formDefinitionIdentifier: definition });
+  assert.equal(protocol.authorize(save("_systemfield_name", "Alex Candidate")), null);
+  assert.equal(protocol.authorize(request), "FIELD");
+  protocol.observe(request, { data: { setFormValue: { ...form(2, { _systemfield_name: "Alex Candidate" }), sourceFormDefinitionId: definition } } });
+  assert.equal(protocol.fieldAcknowledged(), true);
+  protocol.endField();
+  assert.equal(protocol.review()[0].definitionId, definition);
+  assert.equal(protocol.authorize(submission(true, { applicationFormDefinitionIdentifier: definition }), undefined, true), "SUBMIT");
+  assert.equal(protocol.authorize(submission(true, { applicationFormDefinitionIdentifier: compositeDefinition({ formDefinitionId: id(90) }) }), undefined, true), null);
+});
+
+test("unreviewed composite schemas, other jobs, survey composites and changed server echoes stop before submit", () => {
+  const invalid = [compositeDefinition({ jobPostingId: id(90) }), compositeDefinition({ kind: "Other" }),
+    compositeDefinition({ formDefinitionId: "invalid" }), compositeDefinition({ jobBoardSuperType: "Internal" }),
+    compositeDefinition({ extra: true }), "{}", "[1]", "null", "malformed", " ".repeat(513)];
+  for (const definition of invalid) {
+    const protocol = createAshbyProtocol(board, job);
+    assert.throws(() => protocol.observe(postingRequest, { data: { jobPosting: { id: job,
+      applicationForm: { ...form(), sourceFormDefinitionId: definition }, surveyForms: [] } } }), /FORM_DEFINITION_ID_DRIFT/u);
+    assert.equal(protocol.ready(), false);
+  }
+  const survey = createAshbyProtocol(board, job);
+  assert.throws(() => survey.observe(postingRequest, { data: { jobPosting: { id: job,
+    applicationForm: form(), surveyForms: [{ ...form(12), sourceFormDefinitionId: compositeDefinition() }] } } }), /FORM_DEFINITION_ID_DRIFT/u);
+  const protocol = createAshbyProtocol(board, job);
+  protocol.observe(postingRequest, { data: { jobPosting: { id: job,
+    applicationForm: { ...form(), sourceFormDefinitionId: compositeDefinition() }, surveyForms: [] } } });
+  protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+  const request = save("_systemfield_name", "Alex Candidate", { formDefinitionIdentifier: compositeDefinition() });
+  protocol.authorize(request);
+  assert.throws(() => protocol.observe(request, { data: { setFormValue: {
+    ...form(2, { _systemfield_name: "Alex Candidate" }), sourceFormDefinitionId: compositeDefinition({ formDefinitionId: id(90) }),
+  } } }), /FORM_DEFINITION_ID_DRIFT/u);
+  assert.equal(protocol.ready(), false);
 });
 
 test("a server echo that changes another answer or the form schema permanently stops this run", () => {
@@ -114,6 +174,33 @@ test("city autosave must be the one result confirmed by the approved city, regio
   assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Missouri, United States", providerLocationId: "city-mo" })), null);
   assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "forged" })), null);
   assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "city-il" })), "FIELD");
+});
+
+test("mixed location widgets bind their reviewed lookup types and still accept only an approved city result", () => {
+  const mixedForm = form();
+  const location = mixedForm.sections[0].fieldEntries.find(entry => entry.field.path === "_systemfield_location")!;
+  Object.assign(location.field, { locationTypes: ["Country", "Region", "City"] });
+  const protocol = createAshbyProtocol(board, job);
+  const empty = envelope("ApiAutocompleteGeoLocation", { text: "", locationTypes: ["Country", "Region", "City"] });
+  assert.equal(protocol.authorize(empty), "READ", "mount can precede the posting response");
+  protocol.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: mixedForm, surveyForms: [] } } });
+  protocol.beginField(field("_systemfield_location", "SINGLE_SELECT"), "Springfield", { semantic: "CITY", source: "FACT", hints: { region: "IL", country: "US" } });
+  const search = envelope("ApiAutocompleteGeoLocation", { text: "Springfield", locationTypes: ["Country", "Region", "City"] });
+  assert.equal(protocol.authorize(search, "Springfield"), "SEARCH");
+  assert.equal(protocol.authorize({ ...search, variables: { ...search.variables, locationTypes: ["City"] } }, "Springfield"), null);
+  protocol.observe(search, { data: { result: { suggestions: [
+    { name: "Springfield", geoLocationPath: [{ type: "Region", providerLocationId: "region-il" }] },
+    { name: "Springfield, Illinois, United States", geoLocationPath: [{ type: "City", providerLocationId: "city-il" }] },
+  ] } } });
+  assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield", providerLocationId: "region-il" })), null);
+  assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "city-il" })), "FIELD");
+  const changed = structuredClone(mixedForm);
+  Object.assign(changed.sections[0].fieldEntries.find(entry => entry.field.path === "_systemfield_location")!.field, { locationTypes: ["City"] });
+  assert.throws(() => protocol.observe(save("_systemfield_location", {}),
+    { data: { setFormValue: changed } }), /LOCATION_TYPES_DRIFT/u);
+  for (const types of [["Country"], ["Region", "City"], ["Country", "Region", "City", "Other"], ["City", "Country", "Region"]]) {
+    assert.equal(createAshbyProtocol(board, job).authorize(envelope("ApiAutocompleteGeoLocation", { text: "", locationTypes: types })), null);
+  }
 });
 
 test("a file handle cannot attach before byte acknowledgement or to another form field", () => {
@@ -412,4 +499,30 @@ test("constant empty City lookup is harmless outside a field and its response ne
   protocol.observe(empty, { data: { result: { suggestions: [{ name: "Springfield, Illinois, United States", geoLocationPath: [{ type: "City", providerLocationId: "unexpected-city" }] }] } } });
   assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "unexpected-city" })), null);
   assert.equal(protocol.authorize(save("_systemfield_location", { text: "Springfield, Illinois, United States", providerLocationId: "approved-city" })), "FIELD");
+});
+
+test("passive AI notices bind exact rule IDs and content into the sealed review", () => {
+  const protocol = createAshbyProtocol(board, job);
+  protocol.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: form(), surveyForms: [],
+    automatedProcessingLegalNotice: { automatedProcessingLegalNoticeRuleId: id(70), automatedProcessingLegalNoticeHtml: null } } } });
+  assert.equal(protocol.authorize(submission(false, { viewedAutomatedProcessingLegalNoticeRuleId: id(70) }), undefined, true), "SUBMIT");
+  assert.equal(protocol.authorize(submission(), undefined, true), null);
+  assert.equal(protocol.authorize(submission(false, { viewedAutomatedProcessingLegalNoticeRuleId: id(71) }), undefined, true), null);
+  assert.equal(protocol.review()[0].informationalNoticeRuleId, id(70));
+  assert.match(protocol.review()[0].informationalNoticeHash ?? "", /^[a-f0-9]{64}$/u);
+  const custom = createAshbyProtocol(board, job);
+  custom.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: form(), surveyForms: [],
+    automatedProcessingLegalNotice: { automatedProcessingLegalNoticeRuleId: id(70), automatedProcessingLegalNoticeHtml: '<p>Employer processing notice</p>' } } } });
+  assert.equal(custom.authorize(submission(false, { viewedAutomatedProcessingLegalNoticeRuleId: id(70) }), undefined, true), "SUBMIT");
+  assert.notEqual(custom.review()[0].informationalNoticeHash, protocol.review()[0].informationalNoticeHash);
+  for (const notice of [
+    { automatedProcessingLegalNoticeRuleId: id(70), automatedProcessingLegalNoticeHtml: {} },
+    { automatedProcessingLegalNoticeRuleId: id(70), automatedProcessingLegalNoticeHtml: 'x'.repeat(32_001) },
+    { automatedProcessingLegalNoticeRuleId: 'untrusted rule', automatedProcessingLegalNoticeHtml: null },
+    { automatedProcessingLegalNoticeRuleId: id(70) },
+  ]) {
+    const guarded = createAshbyProtocol(board, job);
+    assert.throws(() => guarded.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: form(), surveyForms: [], automatedProcessingLegalNotice: notice } } }));
+    assert.equal(guarded.ready(), false);
+  }
 });

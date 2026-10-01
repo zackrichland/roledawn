@@ -85,8 +85,8 @@ function fillStateCopy(
           tone: "attention",
         }
       : {
-          label: "Finish on the employer's site",
-          detail: "The secure browser stopped at a step RoleDawn can't do for you, and it has closed. Nothing was submitted. Open the posting and apply with the documents on this page.",
+          label: "Form session closed",
+          detail: "The earlier form session closed before submission. Your documents remain here; use the current send controls to continue.",
           tone: "attention",
         };
   }

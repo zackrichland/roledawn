@@ -65,7 +65,7 @@ Single page.
 ## Verification and anti-bot
 
 - Spam protection levels per employer: Strict, Less Permissive, Permissive (default), No Protection (vendor docs).
-- The reviewed public form uses standard reCAPTCHA. RoleDawn admits its invisible badge and scoring requests; a visible challenge goes to the session's solver and stops delivery only if it is still unsolved after 120 s (D-136). A solved challenge is not a receipt.
+- Reviewed forms use standard or Enterprise reCAPTCHA. RoleDawn admits the passive invisible badge and native scoring requests. A visible challenge goes to the session's solver first (D-146); only if it is still unsolved does it open in RoleDawn for the candidate (D-144). The agent never retries to improve a score, and a solved challenge is not a receipt.
 - The page's own device fingerprint is an opaque, bounded vendor-format field on the final request. It supplies no application authority.
 - No account sign-in or employer API key is used.
 
@@ -81,6 +81,12 @@ Single page.
 
 ## Known quirks
 
+- **Verified public client and regression, 2026-09-30:** Enterprise final tokens carry exact `ENT===` or `UNIVERSAL_ENT===` prefixes. The request guard accepts those bounded envelopes, rejects malformed prefixes and preserves exact form/answer/file binding. This is a protocol rule, not model guidance or employer acceptance (D-145).
+
+- 2026-09-30: A visible check after the final click opens the exact guarded tab inside RoleDawn for the candidate, up to five minutes; no model challenge tools run, and exact final readback still gates submission (D-144; synthetic completion/drift/expiry/cancel coverage).
+
+- **Verified 2026-09-30:** a fresh form changes field fingerprints within the same send. Recall the candidate's original answer by matching wording and option labels in the same frozen context; derived answers and protected questions retain their exclusions (D-143; SQL regression).
+
 - Field saves disclose approved data before final submission; a stopped run may have an employer-side draft. Copy must not claim that no data was sent.
 - One shared GraphQL URL handles both reads and writes. Never allow it by origin or operation name alone; query documents, variables and the current action must agree.
 - The reviewed public client refetches organization metadata with optional `searchContext` omitted, `null` or `JobPosting`, and issues a constant empty City lookup on mount and around uploads. Those exact reads are admitted; empty-search responses never supply candidate location choices. Every nonempty lookup still requires an active approved-city search. Rejections report a static operation/rule code without request values.
@@ -89,7 +95,7 @@ Single page.
 - Playwright briefly reports `""` as a newly attached frame's URL. That URL supplies no controls or trust. The current DOM iframe source and eventual frame URL are checked independently against the reviewed CAPTCHA origin, anchor path, observed key and invisible mode; a late approved badge is not a challenge. Visible challenges and unapproved foreign frames still stop final readback before submit permission is consumed (D-127/D-128).
 - The form has no native `<form>` element. Ashby labels, field paths and form identifiers supply the control identity.
 - **Verified by reproduction, 2026-09-30:** the final submit click disables inputs before its request dispatches. Final readback retains and compares their identity, current values and files; ordinary filling still refuses disabled controls. Two real-client replays exercised the actual pre-dispatch guard, while changed disabled values/labels received no authorization or submission (D-130; published in `b103640`).
-- A changed public operation document fails closed until reviewed. Defaults, hidden values, legal-processing notices and unrecognized widgets can still require candidate help; support does not promise every employer-specific form.
+- A changed public operation document fails closed until reviewed. Defaults, hidden values and unrecognized widgets can still require candidate facts; passive processing notices are admitted with exact review binding and acknowledgements use saved delegation; support does not promise every employer-specific form.
 
 ## RoleDawn status and gaps
 
@@ -128,3 +134,15 @@ Don't:
 - [ATS delivery expansion acceptance](../execution/ats-delivery-expansion-acceptance.md); [source register](../research/source-register.md) ATS-D05, ATS-D06; [decision log](../execution/decision-log.md) D-086; `tmp/form-audit/` (5 live forms, 2026-09-28, not committed)
 
 - [Hosted form protocol and branding](../research/source-register.md) AB-20260930-01 and AB-20260930-02 — public-client and DOM observation, accessed 2026-09-30; no live employer receipt implied.
+
+- 2026-09-30 (D-136): `automatedProcessingLegalNotice` is a passive notice, including the standard null-HTML notice. Bind its observed rule ID and content hash into review and require the exact rule ID at submit; a notice alone must not stop delivery. Consent controls use the candidate's saved delegation.
+
+- 2026-09-30 (D-137): application `sourceFormDefinitionId` can be the exact JSON `CompositeFormDefinitionId-JobPostingApplicationFormV2`, bound to this job and External board scope. Surveys still use UUIDs. Preserve the opaque string in every autosave and final review.
+
+- 2026-09-30 (D-138): a Location widget can request the exact `Country, Region, City` list, including an empty mount read. Bind nonempty lookups to the observed widget types; only approved-text, server-returned City results can become saved location values.
+
+- 2026-09-30 (D-139): the Enterprise SDK mounts an idle hidden `bframe` before a challenge. Trust only the exact reviewed origin/path and observed key; check iframe visibility independently on every inspection and final readback. The hosted Linux probe stops before this correction and continues afterwards, without candidate fields or submit.
+
+- 2026-09-30 (D-140): the reviewed system location slot may ask which city and country the candidate intends to work from. That wording needs the candidate's explicit answer, not a residence default; city/region/country lookup matching accepts only fixed jurisdiction aliases and a unique exact result.
+
+- 2026-09-30 (D-141): shortening a saved city answer can drop its region and select a same-named state from the mixed lookup. Copy text verbatim when its saved topic is the exact question; retain all supplied location components for new wording. The city-only protocol check remains unchanged.

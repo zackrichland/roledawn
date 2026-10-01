@@ -4,7 +4,7 @@ import type { Page, Request, Response, Route } from "playwright-core";
 
 import { parseAutopilotDestination, parseAshbyAutopilotDestination, parseGreenhouseAutopilotDestination, parseLeverAutopilotDestination } from "../../domain/application-autopilot-eligibility.ts";
 import type { AgentBrowserField, AgentFieldValue } from "./agents-browser-tools.ts";
-import { APPLICATION_FILL_CAPTCHA_TAKEOVER, CAPTCHA_SOLVE_TIMEOUT_MS, captchaPending, isCaptchaProviderRequestUrl, waitForCaptchaSolved } from "./agents-captcha.ts";
+import { APPLICATION_FILL_CAPTCHA_TAKEOVER, CAPTCHA_SOLVE_TIMEOUT_MS, captchaPending, isCaptchaProviderRequestUrl, pageShowsCaptchaChallenge, waitForCaptchaSolved } from "./agents-captcha.ts";
 import type { MaterializedApplicationArtifact } from "./application-fill-materializer.ts";
 
 import type { OptionMatch } from "./agents-option-match.ts";
@@ -84,6 +84,12 @@ export type DeliveryReceipt = Readonly<{
 export type DeliverySubmissionHooks = Readonly<{
   begin(input: Readonly<{ reviewHash: string; requestFingerprint: string; review: Readonly<Record<string, unknown>> }>): Promise<DeliverySubmissionLease>;
   checkpoint?(state: Readonly<Record<string, unknown>>): Promise<void>;
+  /** The candidate completes a visible check in an embedded, guarded browser. */
+  browserVerification?: Readonly<{
+    open(): Promise<number | null>;
+    poll(): Promise<void>;
+    close(): Promise<void>;
+  }>;
 }>;
 export type DeliverySubmitResult =
   | Readonly<{ kind: "CONFIRMED"; receipt: DeliveryReceipt; submission: DeliveryPriorSubmission }>
@@ -114,6 +120,8 @@ type ActionWindow = {
   beginStarted?: boolean;
   error?: string;
   signal?: AbortSignal;
+  humanVerification?: boolean;
+  humanVerificationDeadline?: number;
   /** The final request's body, kept in memory to bind a verification resend. */
   requestBody?: Buffer;
   /** The employer asked for an emailed code in its response. */
@@ -274,7 +282,7 @@ function validatePolicy(policy: DeliverySitePolicy): void {
 export async function createApplicationDeliveryBrowser(input: Readonly<{
   page: Page; policy: DeliverySitePolicy; hooks: DeliverySubmissionHooks; timeoutMs?: number;
   requestTransport?: DeliveryRequestTransport;
-  /** How long a shown CAPTCHA may take to be solved before the send hands over (D-136). */
+  /** How long a shown CAPTCHA may take to be solved before the send hands over (D-146). */
   captchaSolveTimeoutMs?: number;
 }>) {
   const { page, policy, hooks } = input;
@@ -317,6 +325,16 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     return url.origin === "https://www.recaptcha.net" && ["/recaptcha/enterprise/anchor", ...(ashby ? ["/recaptcha/api2/anchor"] : [])].includes(url.pathname) &&
       url.searchParams.get("size") === "invisible" && recaptchaKeys.has(url.searchParams.get("k") ?? "");
   }
+  function isReviewedChallengeFrameUrl(value: string): boolean {
+    if (!policy.greenhouse && !ashby) return false;
+    let url: URL;
+    try { url = new URL(value); } catch { return false; }
+    // The SDK mounts its idle challenge document before any challenge exists.
+    // This is URL identity only: the observer must separately reject visibility.
+    return url.origin === "https://www.recaptcha.net"
+      && ["/recaptcha/enterprise/bframe", ...(ashby ? ["/recaptcha/api2/bframe"] : [])].includes(url.pathname)
+      && recaptchaKeys.has(url.searchParams.get("k") ?? "");
+  }
   function passiveFrameUrls(): string[] {
     return page.frames().map((frame) => frame.url()).filter(isPassiveFrameUrl);
   }
@@ -342,16 +360,23 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     if (request.method() === "GET" && ["/recaptcha/enterprise/webworker.js", ...(ashby ? ["/recaptcha/api2/webworker.js"] : [])].includes(url.pathname)) return recaptchaKeys.size > 0;
     if (!recaptchaKeys.has(url.searchParams.get("k") ?? "")) return false;
     if (request.method() === "GET" && ["/recaptcha/enterprise/anchor", "/recaptcha/enterprise/bframe", ...(ashby ? ["/recaptcha/api2/anchor", "/recaptcha/api2/bframe"] : [])].includes(url.pathname)) return true;
-    // Ordinary passive assessment only. No userverify/solve endpoint or model
-    // interaction with a challenge is ever exposed or allowed.
+    // The SDK loads check images before the visible-frame observer can open
+    // Live View. Read-only presentation needs the active, unsent submit;
+    // answering still needs the candidate's bounded human window below.
+    if (action?.kind === "SUBMIT" && !action.admitted && !action.error && !action.signal?.aborted && request.method() === "GET" &&
+        ["/recaptcha/enterprise/payload", "/recaptcha/api2/payload"].includes(url.pathname)) return true;
     return action?.kind === "SUBMIT" && request.method() === "POST" &&
-      ["/recaptcha/enterprise/reload", "/recaptcha/enterprise/clr", ...(ashby ? ["/recaptcha/api2/reload", "/recaptcha/api2/clr"] : [])].includes(url.pathname) && (request.postDataBuffer()?.length ?? 0) <= 128_000;
+      ["/recaptcha/enterprise/reload", "/recaptcha/enterprise/clr", ...(ashby ? ["/recaptcha/api2/reload", "/recaptcha/api2/clr"] : []),
+        ...(action.humanVerification && !action.error && !action.signal?.aborted ? ["/recaptcha/enterprise/userverify", "/recaptcha/api2/userverify"] : [])].includes(url.pathname) && (request.postDataBuffer()?.length ?? 0) <= 128_000;
   }
   const startHost = new URL(policy.startUrl).hostname;
+  const hcaptchaKeys = new Set<string>();
   function isHcaptcha(request: Request): boolean {
     if (!policy.lever?.invisibleHcaptcha) return false;
     const url = new URL(request.url());
     if (request.method() === "GET") {
+      if (action?.kind === "SUBMIT" && !action.admitted && !action.error && !action.signal?.aborted && hcaptchaKeys.size > 0 &&
+          url.origin === "https://imgs.hcaptcha.com" && request.resourceType() === "image") return true;
       // Live Lever forms load the `secure-api.js` loader (observed 2026-09-28).
       return ["https://js.hcaptcha.com", "https://hcaptcha.com"].includes(url.origin) && ["/1/api.js", "/1/secure-api.js"].includes(url.pathname) ||
         url.origin === "https://newassets.hcaptcha.com" && /^\/(?:captcha\/v1|c)\/[A-Za-z0-9._-]{1,80}\//u.test(url.pathname) ||
@@ -359,11 +384,16 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         /^https:\/\/[0-9a-f]{12}\.w\.hcaptcha\.com$/u.test(url.origin) && url.pathname === "/logo.png" && !url.search;
     }
     if (request.method() !== "POST" || !["https://api.hcaptcha.com", "https://api2.hcaptcha.com"].includes(url.origin) || (request.postDataBuffer()?.length ?? 0) > 128_000) return false;
-    // Site configuration for this exact host, and the passive score request
-    // only while the final submit is in progress. Challenge answers
-    // (checkcaptcha) and every other endpoint stay blocked.
-    if (url.pathname === "/checksiteconfig") return url.searchParams.get("host") === startHost && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(url.searchParams.get("sitekey") ?? "");
-    return action?.kind === "SUBMIT" && /^\/getcaptcha\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(url.pathname);
+    // User challenge responses are allowed only in the guarded human window.
+    const challenge = /^\/checkcaptcha\/([0-9a-f-]{36})\/[A-Za-z0-9._-]{1,200}$/u.exec(url.pathname);
+    if (action?.humanVerification && !action.error && !action.signal?.aborted && challenge && hcaptchaKeys.has(challenge[1])) return true;
+    if (url.pathname === "/checksiteconfig") {
+      const key = url.searchParams.get("sitekey") ?? "";
+      if (url.searchParams.get("host") !== startHost || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(key)) return false;
+      hcaptchaKeys.add(key); return true;
+    }
+    const passive = /^\/getcaptcha\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u.exec(url.pathname);
+    return action?.kind === "SUBMIT" && Boolean(passive && hcaptchaKeys.has(passive[1]));
   }
   async function onResponse(response: Response) {
     const current = action;
@@ -427,6 +457,10 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     const current = action;
     try {
       if (closed) { await route.abort("blockedbyclient"); return; }
+      if (current?.humanVerification && (Date.now() >= (current.humanVerificationDeadline ?? 0) || current.signal?.aborted)) {
+        current.error ??= "DELIVERY_BROWSER_VERIFICATION_TIMEOUT";
+        blockedRequests += 1; await route.abort("blockedbyclient"); return;
+      }
       const recaptcha = isRecaptcha(request);
       const hcaptcha = isHcaptcha(request);
       try {
@@ -463,7 +497,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         Boolean(policy.searches?.some((rule) => searchPermitted(url, rule, activeSearch!.query)));
       const receiptNavigation = current?.kind === "SUBMIT" && current.admitted && request.method() === "GET" && canonical(request.url()) === canonical(policy.receipt.url);
       const moveNavigation = current?.kind === "MOVE" && current.admitted && request.method() === "GET" && policy.steps.some((step) => canonical(step.url) === canonical(request.url()));
-      // The CAPTCHA solver (D-136) needs the provider's own challenge traffic; it carries no candidate data.
+      // The CAPTCHA solver (D-146) needs the provider's own challenge traffic; it carries no candidate data.
       const captchaSolver = isCaptchaProviderRequestUrl(request.url()) && (request.postDataBuffer()?.length ?? 0) <= 2_000_000;
       if (asset || ashbyManifest || translation || bootstrap || search || recaptcha || hcaptcha || captchaSolver || receiptNavigation || moveNavigation) { await dispatch(route); return; }
       // A CORS preflight has no candidate payload; it is limited to this exact
@@ -493,6 +527,12 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
           const artifacts = [...uploadedArtifacts.values()];
           if (!multipart || artifacts.length !== 1 || multipart.file.length !== artifacts[0].byteSize || hash(multipart.file) !== artifacts[0].sha256) throw new Error("DELIVERY_SUBMIT_ARTIFACT_MISMATCH");
         }
+        if (current.humanVerification) {
+          // Providers may invoke their callback just before hiding the widget.
+          // Wait for its actual disappearance; never suppress the final check.
+          const hidden = await waitFor(async () => !await pageShowsCaptchaChallenge(page, ashby ? passiveFrameUrls() : []), current.signal);
+          if (!hidden) throw new Error(APPLICATION_FILL_CAPTCHA_TAKEOVER);
+        }
         await current.verifyReview?.();
         assertActive(current.signal);
         submitConsumed = true;
@@ -521,14 +561,20 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   await context.routeWebSocket("**/*", (socket) => socket.close());
 
   async function drain() { await Promise.all([...pending]); }
-  async function waitFor(check: () => Promise<boolean>, signal?: AbortSignal): Promise<boolean> {
+  async function uploadAcknowledgementText(selector: string): Promise<string> {
+    const target = page.locator(selector);
+    // Lever styles this filename with text-transform. Its DOM text preserves
+    // the actual filename; innerText changes its case for presentation only.
+    return (policy.lever ? await target.textContent() ?? "" : await target.innerText()).trim();
+  }
+  async function waitFor(check: () => Promise<boolean>, signal?: AbortSignal, extendedDeadline?: () => number): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     do {
       assertActive(signal);
       await drain();
       if (await check()) return true;
       await new Promise((resolve) => setTimeout(resolve, 50));
-    } while (Date.now() < deadline);
+    } while (Date.now() < Math.max(deadline, extendedDeadline?.() ?? 0));
     return false;
   }
   async function currentStep(): Promise<DeliveryStepPolicy | null> {
@@ -589,7 +635,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       activeSearch = { query, signal };
       try { return await work(); } finally { activeSearch = null; }
     },
-    passiveFrameUrls, isPassiveFrameUrl,
+    passiveFrameUrls, isPassiveFrameUrl, isReviewedChallengeFrameUrl,
     async open(signal?: AbortSignal) {
       assertActive(signal);
       if (page.url() !== "about:blank" && canonical(page.url()) !== canonical(policy.startUrl) && !await currentStep()) throw new Error("DELIVERY_RESTORE_DESTINATION_INVALID");
@@ -643,11 +689,11 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
           if (current.error || current.response && (current.response.status < 200 || current.response.status >= 300)) return true;
           const ack = page.locator(rule.acknowledgementSelector);
           const success = !rule.successSelector || await page.locator(rule.successSelector).count() === 1 && await page.locator(rule.successSelector).isVisible();
-          return Boolean(current.response && (!ashby || ashby.upload()?.acknowledged) && success && await ack.count() === 1 && await ack.isVisible() && displaysUploadFilename(await ack.innerText(), artifact.filename));
+          return Boolean(current.response && (!ashby || ashby.upload()?.acknowledged) && success && await ack.count() === 1 && await ack.isVisible() && displaysUploadFilename(await uploadAcknowledgementText(rule.acknowledgementSelector), artifact.filename));
         }, signal);
         if (!acknowledged || current.error || ashby && !ashby.upload()?.acknowledged || !current.response || current.response.status < 200 || current.response.status >= 300) throw new Error(current.error || "DELIVERY_UPLOAD_NOT_ACKNOWLEDGED");
         // The review records the exact name the employer received with the bytes.
-        const proof = { artifactVersionId: artifact.artifactVersionId, filename: artifact.filename, sha256: artifact.sha256, byteSize: artifact.byteSize, acknowledgementHash: hash((await page.locator(rule.acknowledgementSelector).innerText()).trim()), response: current.response };
+        const proof = { artifactVersionId: artifact.artifactVersionId, filename: artifact.filename, sha256: artifact.sha256, byteSize: artifact.byteSize, acknowledgementHash: hash(await uploadAcknowledgementText(rule.acknowledgementSelector)), response: current.response };
         uploadProofs.set(field.fieldId, proof);
         uploadedArtifacts.set(field.fieldId, artifact);
         uploadChecks.set(field.fieldId, { stepId: step!.id, selector: rule.acknowledgementSelector, filename: artifact.filename });
@@ -679,32 +725,52 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       if (!step?.submit) return { kind: "TAKEOVER", reasonCode: "DELIVERY_SUBMIT_POLICY_REQUIRED" };
       const current: ActionWindow = { kind: "SUBMIT", request: step.submit.request, admitted: false, reviewHash, review, signal, verifyReview };
       action = current;
-      // A passive CAPTCHA may turn into a visible challenge after the click. The
-      // solver (D-136) gets the time to clear it; the send hands over only if it
-      // is still unsolved. Solving it is never a receipt, and the network guard
-      // still admits one final request for this sealed attempt.
+      // A passive CAPTCHA may turn into a visible challenge after the click.
+      // First the session's solver gets the time to clear it (D-146). If it
+      // cannot, the candidate finishes it in the guarded browser inside RoleDawn
+      // (D-144): no model tools run during that window, and the exact final
+      // readback and submit guard stay active. A solved challenge is never a
+      // receipt, and the guard still admits one final request per sealed attempt.
+      let verificationDeadline = 0;
+      let verificationOpened = false;
+      let polledAt = 0;
       let solvedChallenge = false;
       const submitSelector = step.submit.selector;
       const challenged = async () => {
-        if (current.admitted || current.error || !await captchaPending(page, passiveFrameUrls())) return false;
+        if (current.admitted || current.error) return false;
+        if (verificationOpened) {
+          if (Date.now() >= verificationDeadline) { current.error = "DELIVERY_BROWSER_VERIFICATION_TIMEOUT"; return true; }
+          if (Date.now() - polledAt >= 2_000) { await hooks.browserVerification!.poll(); polledAt = Date.now(); }
+          return false;
+        }
+        if (!await captchaPending(page, passiveFrameUrls())) return false;
         const solved = await waitForCaptchaSolved(page, { timeoutMs: captchaSolveTimeoutMs, signal, permittedPassiveFrameUrls: passiveFrameUrls });
         if (current.admitted || current.error) return false;
-        if (!solved) { current.error = APPLICATION_FILL_CAPTCHA_TAKEOVER; return true; }
-        solvedChallenge = true;
-        // The page's own callback usually sends after a solve; if it has not within a few seconds, click once more.
-        for (const until = Date.now() + 3_000; !current.admitted && !current.error && Date.now() < until;) await new Promise((resolve) => setTimeout(resolve, 100));
-        if (!current.admitted && !current.error) await page.locator(submitSelector).click({ timeout: timeoutMs }).catch(() => undefined);
-        return false;
+        if (solved) {
+          solvedChallenge = true;
+          // The page's own callback usually sends after a solve; if it has not within a few seconds, click once more.
+          for (const until = Date.now() + 3_000; !current.admitted && !current.error && Date.now() < until;) await new Promise((resolve) => setTimeout(resolve, 100));
+          if (!current.admitted && !current.error) await page.locator(submitSelector).click({ timeout: timeoutMs }).catch(() => undefined);
+          return false;
+        }
+        const deadline = await hooks.browserVerification?.open();
+        if (deadline && Number.isFinite(deadline) && deadline > Date.now()) {
+          verificationOpened = true; verificationDeadline = deadline; current.humanVerification = true; current.humanVerificationDeadline = deadline;
+          return false;
+        }
+        current.error = APPLICATION_FILL_CAPTCHA_TAKEOVER;
+        return true;
       };
       try {
         await page.locator(step.submit.selector).click({ timeout: timeoutMs });
         for (let round = 0; round < 3; round += 1) {
           solvedChallenge = false;
           const settled = await waitFor(async () => Boolean(current.error || current.submission && await receipt(current.submission) || await challenged() ||
-            current.challenge && await verificationShown()), signal);
+            current.challenge && await verificationShown()), signal, () => verificationDeadline);
           if (settled || !solvedChallenge) break;
         }
         await drain();
+        if (verificationOpened && !current.beginStarted && Date.now() >= verificationDeadline) current.error ??= "DELIVERY_BROWSER_VERIFICATION_TIMEOUT";
         if (current.submission) {
           const observed = await receipt(current.submission);
           if (observed && !current.error) return { kind: "CONFIRMED", receipt: observed, submission: current.submission };
@@ -719,7 +785,11 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       } catch (error) {
         return current.beginStarted ? { kind: "UNCERTAIN", reasonCode: safeError(error), submission: current.submission ?? null }
           : { kind: "TAKEOVER", reasonCode: safeError(error) };
-      } finally { await drain(); action = null; }
+      } finally {
+        current.humanVerification = false;
+        if (verificationOpened) await hooks.browserVerification!.close().catch(() => undefined);
+        await drain(); action = null;
+      }
     },
     /**
      * Types the candidate's emailed code into the employer's own boxes and lets
@@ -779,7 +849,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         if (check.stepId !== step?.id) continue;
         const acknowledgement = page.locator(check.selector);
         if (await acknowledgement.count() !== 1 || !await acknowledgement.isVisible()) throw new Error("DELIVERY_UPLOAD_ACKNOWLEDGEMENT_DRIFT");
-        const text = (await acknowledgement.innerText()).trim();
+        const text = await uploadAcknowledgementText(check.selector);
         if (!displaysUploadFilename(text, check.filename) || hash(text) !== uploadProofs.get(fieldId)?.acknowledgementHash) throw new Error("DELIVERY_UPLOAD_ACKNOWLEDGEMENT_DRIFT");
       }
     },

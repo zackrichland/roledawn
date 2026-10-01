@@ -13,9 +13,9 @@ three employer-confirmed applications across two employers, verified by hosted
 readback on 2026-09-30 UTC. Lever and Ashby have delivery adapters; live employer
 acceptance remains unproven for both. Keep the product scoped to personal use.
 
-**Published release:** `b4ae35b`, Netlify deployment
-`6abca481cfba66dce4ca9bd1`. Authenticated worker health verified that exact release
-at 05:56:59 UTC; the private gate returns 404 without access, all 14 checked page
+**Published release:** `ec709d5` (includes Claude main `0364902`), Netlify deployment
+`6abd9d321ada7333d5c66ea1`. Authenticated worker health verified that exact release
+at 23:38:00 UTC; the private gate returns 404 without access, all 14 checked page
 assets return 200 and the approved private profile/story content remains
 visible. The sole new Ashby submission occurred on `b103640`. Final readback
 still shows one attempt, zero confirmed attempts/receipts, and
@@ -36,12 +36,12 @@ They do not override this snapshot or the [application playbook](application-pla
 | Jobs | Ranked catalog search, saved jobs and named-job application intake. | Source inventory changes; old catalog counts are historical. |
 | Profile | Résumé review, structured experience, approved stories, routine answers, preferences and read-only Gmail connection. | Exact private content stays in owned database records. |
 | Writing | Frozen candidate inputs, source-linked drafting and verification, owned writing policies and five rendered files. | See [writing policies](../../policies/application-writing/README.md). |
-| Delivery | Browserbase form agent, approved facts/files, acknowledged writes, sealed single-use submit permission and employer-evidenced receipts. | CAPTCHAs go to Browserbase's solver (D-136); only an unsolved challenge or an unknown contract stops the send. |
-| Answers | Profile facts, same-context remembered candidate answers, saved standing answers, then the candidate. | Sensitive exclusions remain in worker and SQL; D-125 permits only exact explicitly saved clearance reuse. |
-| Branding | Employer logos from exact Ashby theme, Greenhouse configuration or Lever header, with bounded thumbnails. Code for a per-employer stored cache (`employer_logos`, D-134) is written and tested locally; the migration is **not applied** and the code falls back to live fetching. | Missing branding retains initials; no guessed domains, platform logos or banners. |
+| Delivery | Browserbase form agent, approved facts/files, acknowledged writes, sealed single-use submit permission and employer-evidenced receipts. | CAPTCHAs go to Browserbase's solver first (D-146); a final-click check still unsolved opens in the guarded browser inside RoleDawn for up to five minutes (D-144). Unknown contracts remain visibly stopped. |
+| Answers | Profile facts, same-context remembered answers, saved standing answers and explicit acknowledgement delegation, then missing candidate facts. | Worker and SQL enforce the same scope; D-125 permits exact saved clearance reuse, and D-136 binds delegated acknowledgements without inferring qualifications. |
+| Branding | Employer logos from exact Ashby theme, Greenhouse configuration or Lever header, with bounded thumbnails. The per-employer cache (`employer_logos`, D-134) is applied and deployed. Production returned the same 1,044-byte WebP twice and hosted readback confirmed a FOUND row for the tested Ashby board. | Missing branding retains initials; no guessed domains, platform logos or banners. |
 | Stops and retry | One catalogue gives every stop plain-English copy, one primary action and a retry class; Try again shows only where it can help (D-133). | Database caps on manual retries and re-claimed fill runs are not built (needs a migration). |
-| Agent context | Reviewed per-ATS notes for Greenhouse, Lever and Ashby are added to the delivery-step prompt; eight other boards keep unverified paths (D-132). | Unit-tested only; not yet observed in a live run. |
-| Interface | SF system stack with Inter fallback, tokenized surfaces and CSS-only motion (D-135). | Public pages screenshotted; signed-in screens checked only in a static mock. |
+| Agent context | Reviewed per-ATS notes for Greenhouse, Lever and Ashby are added to the delivery-step prompt; eight other boards keep unverified paths (D-132). | Deployed and unit-tested; not yet observed in a live application run. |
+| Interface | SF system stack with Inter fallback, tokenized surfaces and CSS-only motion (D-135). | Signed-in local Home visually checked after rollout; the tested Ashby and Greenhouse logos render, Sent today reads 3/24 and review-before-send remains off as selected by the founder. Other screens retain earlier evidence. |
 | Operations and access | Private access-key sessions, ownership checks, database leases, immediate lane wakeups, scheduled recovery and sanitized worker events. | Local web development still relies on the hosted scheduler for its initial tick. |
 
 ## ATS evidence
@@ -74,8 +74,8 @@ not retained. New diagnostics cannot recover that response. Bounded static
 response categories/counts are now published and verified for future attempts.
 They use fixed enums, counts capped at 1,000
 and a 2 MB parse limit, without raw response or candidate content. Acceptance,
-retry and runtime-retention rules are unchanged (D-131). No new live application
-is planned, and this unknown application will not be retried.
+retry and runtime-retention rules are unchanged (D-131). This historical unknown application will not be retried; separate new named
+applications with zero attempts follow their own authorized sends.
 
 ## Verified review changes
 
@@ -122,7 +122,7 @@ cases. The final full suite and exact published-deployment readback also pass.
 |---|---|
 | Standing answers have no editor; automatic answers are not listed on the application page. | Their source and basis are persisted, but correction and inspection still need operator access. |
 | Private agent replay records can retain extracted document text after provider cleanup. | No public disclosure was found; retention cleanup must preserve active and uncertain-session recovery. |
-| Required consent, privacy and attestation fields need candidate input. | A send may pause on a valid form. O-013 remains open; automation must not invent consent. |
+| New factual qualification questions may lack an approved answer. | Saved delegation handles application acknowledgements automatically; it does not supply personal qualifications or missing facts (D-136). |
 | Two historical archived attempts remain uncertain, with no lease and reconciliation exhausted. | Preserve their retry blocks; profile changes and a different application's result do not resolve them. |
 | One additional Ashby attempt has an observed response but no receipt, raw response or retained browser. | Acceptance and rejection are both unproven. Future diagnostics cannot resolve this older attempt; preserve its resend block. |
 | Archive has no candidate button; candidate export and account deletion are incomplete. | Operator work remains; this is not a broader-user release. |
@@ -133,11 +133,49 @@ cases. The final full suite and exact published-deployment readback also pass.
 
 ## Operating boundary
 
-This review is complete without a confirmed Ashby receipt. The current Ashby
-attempt needs new employer-side evidence to resolve its outcome; no new
-submission or retry is planned. Keep it and the two historical uncertain
+The historical uncertain Ashby attempt needs new employer-side evidence to
+resolve its outcome and will not be resent. New named applications with zero
+attempts are being repaired and resumed under the founder's request. Keep it and the two historical uncertain
 attempts blocked until their own outcomes are established. Greenhouse remains
 the only ATS with verified live acceptance for this account.
 
 The [application playbook](application-playbook.md) owns operating instructions;
 the [decision log](decision-log.md) owns decisions and reversal triggers.
+
+## Current repair (2026-09-30)
+
+Verified root causes: passive Ashby automated-processing notices were rejected as posting drift; terminal writing failure release omitted `dead_letter_reason`, violating the outbox pair constraint and leaving Writing active; Greenhouse logos rejected the reviewed s5 CDN and disabled board indexes prevented extraction; daily usage joined only catalog enrollments, excluding pasted links. Local fixes and integration checks cover each. The configured OpenAI key reported credit exhaustion; a small request succeeded after the founder funded it.
+
+D-136 adds explicit saved acknowledgement delegation with worker/database rule parity and exact employer descriptor audit. Model-turn failures and writing repair counts are logged without candidate text. The 95% delivery goal remains a target, not measured product evidence. Deployment, migration readback and new live results are recorded below.
+
+**Verified repair readback:** migrations `20260930184500`, `20260930190000` and `20260930193436` are applied and recorded (98 migrations). Generated public types are unchanged. Terminal release, pasted usage, cap serialization, delegated mapping and worker/private grants read back correctly. The candidate's explicit delegation and earlier exact clearance answer are present; no profile input epoch changed. The requested Greenhouse logo cache was refreshed through the existing logo RPC. A read-only hosted Linux probe reproduced Lever's hidden hCaptcha enclave false positive, then passed inspection after the exact-path correction. No candidate fields or submission were used in that probe.
+
+**Published repair:** `c17fda7`, full-build production deploy `6abd66cc945a219a569f32ff`; GitHub CI passed. The local dashboard reads Sent today 3/24. Three failed sends with zero attempts were resumed through their owning control RPC. Ashby reached a second startup mismatch: the public form uses a reviewed composite definition ID (D-137). Greenhouse reached missing factual questions; Lever remained queued behind the one active delivery lane. These are live progress observations, not employer receipts.
+
+**Follow-up adapter repair:** D-137 composite definition support passed a fresh public posting read and all 884 unit tests; full-build deploy `6abd6af831bdb2c8beb0fb5f` passed worker health, private gate, profile/story and all 14 page assets. A resumed zero-attempt Ashby run then stopped on the mixed-location empty mount request; D-138 binds that observed widget contract. Lever stopped on exact field readback after parsing; its public client only protects changed/pasted fields, so the last focused edit needs native blur. The real-client mocked-parser replay and regression test pass without employer submission.
+
+**Verified D-138 rollout:** all 886 tests pass; typecheck, lint, docs links and full production build pass. Deploy `6abd6e09a26825e9a0a454c5` serves the enabled workers, private gate, approved career/story and all 14 checked page assets. Real public Lever client replay with mocked parsing reproduced loss of the last focused approved field before the change and preserved it afterwards; no employer upload or submission occurred in either probe.
+
+**Further live diagnosis:** the next zero-attempt Ashby send stopped on an idle hidden reCAPTCHA Enterprise challenge document; the hosted Linux before/after probe reproduces the old stop and corrected inspection with exact key/origin/path checks (D-139). The next Lever send stopped on upload acknowledgement, while a synthetic PDF parser probe shows successful markers and filename DOM text differing from uppercase innerText. D-139 corrects that comparison without changing filename identity or submission proof. No additional confirmed application is claimed.
+
+**Verified D-139 rollout:** all 889 tests pass; typecheck, lint, docs links and the full production build pass. GitHub CI passed on rerun after a Chrome startup timeout. Both repaired live sends reached their forms: Ashby asked five required questions, Greenhouse retained four missing facts and Lever asked two optional parser-filled fields. None of these three sends had created an attempt. D-140 repairs the optional parser stop and the Home question reader, which wrongly hid existing questions when new-send execution was disabled. The signed-in local Answer panel now shows the actual text/select controls. Approved narrative evidence is provided before the model turn; the agent must attempt a draft through the independent validator before requesting new factual details. Unsupported claims are still refused.
+
+**Verified D-140 rollout:** all 896 tests, typecheck, lint, documentation links and GitHub CI pass. The SQL check for retiring obsolete questions passes across 98 migrations; no new migration is needed. The full-build deployment and exact release checks above pass. Four candidate-supplied factual replies were saved through the owned standing-answer RPC and read back by count. That RPC re-queued the waiting sends without changing the frozen candidate input version. A separately guarded optional-question recovery transaction refused the already-changed send state and rolled back without mutation. Exact answers and operational IDs remain private. Subsequent live runs are recorded below; these checks alone do not establish employer acceptance.
+
+**Further live diagnosis:** Ashby generated its narrative through the independent evidence validator, then stopped before an attempt because the standing-answer mapper omitted a supplied region. Its shortened location selected a same-named state; the unchanged city-only network check rejected it. A fresh hosted browser probe succeeds with the complete candidate-approved text, without final submission. D-141 preserves exact-topic text without a model call and requires all supplied location components when mapping new wording.
+
+Greenhouse rejected two unsupported narrative proposals, then a validated proposal failed native text-input readback. The local browser regression reproduces paragraph-break loss and passes after formatting before validation/fill (D-142). Lever cleared the obsolete optional parser fields and reached final submission, where a visible CAPTCHA stopped it before any attempt or employer request. No challenge was interacted with or retried; there is still no Lever receipt.
+
+**Verified D-141/D-142 rollout:** all 899 tests, typecheck, lint, documentation links, the standing-answer SQL check across 98 migrations and GitHub CI pass. The production build took 50.5 seconds; exact release, private gate, approved profile/story and all 14 checked assets pass. A public lookup confirms the shortened location names a Region, while the complete approved text passes the hosted City save/echo checks. The earlier derived answer remains append-only evidence: a guarded correction transaction was rejected by the immutable-row trigger and rolled back. Fresh Ashby forms have new schema fingerprints, and standing-derived answers never enter cross-form remembered reuse. The normal control RPC returned the two zero-attempt sends to waiting questions; re-saving the unchanged, owned city answer through its RPC re-queued both for the corrected resolver. No direct record mutation or submission bypass occurred.
+
+**D-143 diagnosis and local verification:** the latest Greenhouse run still stopped on native narrative readback after D-142. Its short-answer input has a 255-unit native text limit; the reader now exposes and fingerprints the limit, refuses oversized drafts before validation/write, and allows a complete supported revision. Ashby correctly saved its location, experience and validated narrative, then repeatedly asked one sponsorship question even after the candidate answered it through Home. The Home save succeeded and re-queued the send, but fresh Ashby field fingerprints hit a recall function that excluded original replies within that same send. D-143 removes that exclusion under the unchanged candidate/input/job/wording/option and protected-question checks. Both regressions fail before the repair; all 901 tests, typecheck, lint and docs links pass afterward. The SQL check passes across 99 migrations. Migration `20260930222500` is applied and recorded in hosted history; private function execution remains unavailable to public/candidate roles. GitHub CI passes and the full build/deploy took 51.8 seconds. Hosted readback confirms the exact new deploy, all recall checks and unchanged private function grants; generated types are unchanged. The private gate, approved experience/story and all 14 checked assets pass. The two named zero-attempt sends were re-queued through their existing control/settings RPCs; live outcomes follow below.
+
+**D-143 live readback:** the fresh Ashby form reused the original candidate sponsorship reply, filled the saved city and experience answers, and passed complete review before a visible verification check stopped it with zero attempts. Greenhouse wrote the bounded narrative successfully and now waits only on three missing factual choices; no new application receipt is claimed.
+
+**Verified D-144 rollout:** final-click human verification retains the guarded worker/browser and opens the exact tab in Home or the application page. An owned metadata RPC exposes only the expiry; the provider binding stays service-only. Pausing, stale leases, expiry, wrong candidate or an existing attempt deny access. Synthetic completion sends once; drift, cancel and expiry send nothing. Migrations `20260930230000` and `20260930231000` are applied. All 905 tests, typecheck, lint, docs links, 19 SQL checks across 101 migrations and full builds pass. GitHub CI passed on rerun after an unchanged Chrome startup test failed; its isolated local rerun also passed. The live Lever browser rendered inside Home at 23:24 UTC and closed after five minutes, with no attempt. A usable challenge and human completion are not yet proven.
+
+**D-145 diagnosis and local verification:** a fresh Ashby send passed answers and complete review, then rejected its final token envelope before any attempt. The current public client uses exact Enterprise prefixes that the existing regex excluded; both form-count variants now cover those prefixes and reject malformed/empty/oversized envelopes. A synthetic Lever replay reproduces a check-image request preceding the visible-frame observer; read-only images are now admitted during the active unsent submit, while answer requests still require the candidate's bounded window. Expiry receives its specific timeout code. Resuming an unsent FAILED_SAFE send rereads the form instead of waiting on stale OPEN descriptors; ordinary question pauses and unknown-outcome blocks remain. All 906 tests, typecheck, lint and documentation links pass; all 19 SQL checks pass across 102 migrations. Hosted rollout and new live results follow below.
+
+**Verified D-145 rollout:** migration `20260930234000` is applied and recorded; hosted readback confirms the fresh-inspection branch, unchanged resume checks, empty search path and no anonymous execution. Regenerated public types are identical. GitHub CI, the local production build and full-build production deployment pass. The exact deployed worker, private gate, approved career/story and all 14 checked assets pass. The local web dashboard restarted with both worker-execution flags off. The named zero-attempt Ashby send resumed through Home; the named Lever send's preceding generic expiry was resumed through the same owned control RPC in an ID-scoped transaction after confirming no attempt or active lease. Ashby is running and Lever is queued; new employer acceptance is still unproven. The older uncertain application and its resend block are untouched.
+
+**Live in-app verification, 23:43 UTC:** Ashby reused the saved facts, passed complete review and opened the owned browser check. The dashboard panel visibly renders the employer's real image challenge inside RoleDawn; the candidate was asked to complete it there. Hosted readback still shows zero attempts. No agent interacted with the challenge. Lever waits behind the retained delivery lane; human completion and new employer receipts remain pending.

@@ -83,6 +83,8 @@ Single page; the form sits under the posting.
 
 ## Known quirks
 
+- **Verified 2026-09-30:** native narrative inputs may cap text at 255 UTF-16 units; the reader exposes `maxLength`, rejects an oversized draft before writing and lets the agent compose a complete shorter answer (D-143; native-browser regression).
+
 - Redirecting hosted pages still serve the same form at the embed URL (D-102).
 - Opening React Select menus is slow: about 22 s per full inspection before caching, 2.1 s cached (D-104).
 - Phone readback differs in format from saved E.164; compare digits. Upload bucket follows the browser's region (D-104).
@@ -111,7 +113,7 @@ Do:
 - Fill multi-selects only from candidate, remembered or standing answers and confirm the chips match exactly (D-113, D-117). Fill the location typeahead only from the city fact, confirmed by region and country (D-118).
 
 Don't:
-- "Score-shop" reCAPTCHA or request a new token to retry; a solved CAPTCHA is not a receipt (D-136).
+- "Score-shop" reCAPTCHA or request a new token to retry; a solved CAPTCHA is not a receipt (D-146).
 - Use MyGreenhouse, the API `POST`, or Dropbox/Drive pickers.
 - Guess EEOC or demographic answers; fill only saved voluntary answers whose wording matches (D-091).
 - Treat the confirmation URL, a model judgment or an email alone as proof; probe many boards in a burst; resend after an unknown outcome.
@@ -129,3 +131,5 @@ Don't:
 - https://github.com/yash10019coder/JOB-BORG/issues/79, https://github.com/CryptoJones/OSApplyTrack/pull/170 — security-code email sender and subject (Community), accessed 2026-09-30
 - https://boards.greenhouse.io/embed/job_board/js?for=carvana — embed script (Direct observation), accessed 2026-09-30
 - [Application playbook](../execution/application-playbook.md); [decision log](../execution/decision-log.md) D-095, D-102 to D-113; `tmp/form-audit/` (read-only audit, 2026-09-28, not committed) — RoleDawn evidence
+
+- 2026-09-30 (D-142): a narrative prompt can use a native single-line text input. Format paragraph breaks into spaces before evidence validation, then fill and seal that exact text. Textareas retain paragraphs; no readback comparison is relaxed.

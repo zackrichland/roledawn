@@ -10,6 +10,7 @@ accessed_at: 2026-08-06 unless otherwise stated; backend architecture, Supabase,
 ## Hosted ATS forms and branding — checked 2026-09-30
 
 | ID | Primary source | Evidence class and observed use | Limit |
+| ATS-HC-20260930 | [hCaptcha enclave client](https://newassets.hcaptcha.com/captcha/v1/b9ca2a6602c2bf69741b771db488f3001ea35b08/static/hcaptcha-enclave.html) | Read-only hosted Linux browser observation, 2026-09-30: hidden full-page bootstrap frame caused a false CAPTCHA stop. Exact origin/path admitted while hidden. | Public-client observation, not proof of employer submission; visible challenges remain blocked. |
 |---|---|---|---|
 | AB-20260930-01 | [Official hosted application](https://jobs.ashbyhq.com/coder/a923d2a8-a994-4cc2-9c71-bc8e7d99f583/application), [public posting API](https://developers.ashbyhq.com/docs/public-job-posting-api) | **Verified public client and DOM observation:** the form uses named GraphQL reads and draft-field saves, upload-handle creation, file attachment, and single/multiple-form final submission. Yes/No uses pressed buttons; the city widget exposes a controlled listbox. A non-candidate public city query was inspected without selecting a location or submitting an application. | The hosted frontend protocol is not a documented applicant API. Exact operation and payload checks must fail closed on drift. Source inspection alone is not employer acceptance. |
 | AB-20260930-02 | [Official hosted board](https://jobs.ashbyhq.com/coder) | **Verified public page metadata:** board bootstrap supplies square and wordmark logo URLs. The square logo is a first-party source that needs no paid logo service or guessed company domain. | Some employers supply no square logo. Preserve initials as fallback. Logos identify the source company; they do not imply endorsement. |
@@ -352,3 +353,27 @@ Recheck product features, prices, model names, policies, domains, and APIs befor
 
 
 **Direct Netlify observation, 2026-09-16:** scheduled invocation logs for the currently published production deploy reported `context=production`, `published=false`, and the enabled flag true. The dispatcher therefore uses the platform's documented published-only scheduling plus the production context; the receiving background worker retains the strict published-deploy guard. A separate ordinary authenticated health invocation passed that strict guard. This observed context mismatch is not treated as a broader provider guarantee.
+
+### AB-20260930-04: composite application-form definition ID
+
+- **Primary observation**, accessed 2026-09-30: `ApiJobPosting` from [the public hosted board](https://jobs.ashbyhq.com/Ashby) returns `CompositeFormDefinitionId-JobPostingApplicationFormV2` as an opaque JSON string with UUID form-definition/job fields and `External` board scope; survey definition IDs remain UUIDs. Fresh read-only response and synthetic replay establish schema support, not submission acceptance.
+
+### LV-20260930-02: parser edit tracking
+
+- **Primary observation**, accessed 2026-09-30: [Lever public parser client](https://jobs.lever.co/js/parseResume.js) protects nonempty inputs after native change/paste events; an input event alone does not mark the last focused field as edited. Replayed with synthetic fields and mocked parsing, without employer upload or submission.
+
+### ATS-20260930-05: idle frames and filename presentation
+
+- **Primary observations**, accessed 2026-09-30: [Ashby public board](https://jobs.ashbyhq.com/Ashby) mounts a hidden reCAPTCHA Enterprise challenge document with the observed key; a hosted Linux before/after inspection isolates the false stop. [Lever public form client](https://jobs.lever.co/js/application.js) and its native form CSS render upload filenames in uppercase without changing the DOM text. A synthetic PDF upload to the parser established successful parsing, with no final application submission or real candidate data.
+
+### ATS-20260930-06: native text limits
+
+- **Primary specification**, accessed 2026-09-30: [HTML input maxlength](https://html.spec.whatwg.org/multipage/input.html#attr-input-maxlength) constrains native text length. A public Greenhouse posting renders a short-answer input with `maxLength="255"`; the local native-browser regression verifies rejection before writing and shorter-answer recovery. No employer acceptance is established by this field test.
+
+### BB-20260930-02: embedded live verification
+
+- **Vendor documentation**, read 2026-09-30: [Browserbase Session Live View](https://docs.browserbase.com/platform/browser/observability/session-live-view) supports interactive iframe embedding and a URL per tab in `pages`. Its sandbox example permits scripts and same-origin; mobile keyboards are not officially supported. D-144 uses the exact candidate tab with owned active-lease checks. These vendor capabilities do not prove live employer acceptance.
+
+### AB-20260930-07: native Enterprise token envelope
+
+- **Primary public-client observation**, accessed 2026-09-30: the [Ashby client bundle](https://cdn.ashbyprd.com/frontend_non_user/37472b76d4cf7d336351b40ebc3f98ff75edc350/assets/index-BQbfVskg.js), selected from the public board's Vite manifest, prefixes Enterprise tokens with `ENT===` or `UNIVERSAL_ENT===` before the final GraphQL mutation. The regression covers both exact prefixes, a standard token and malformed/empty/oversized envelopes. Client code establishes the observed request shape, not independent evidence of employer acceptance; tokens themselves are neither recorded nor committed.

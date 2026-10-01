@@ -78,6 +78,10 @@ Single page.
 
 ## Known quirks
 
+- **Verified regression, 2026-09-30:** the SDK can request a check image before the visible frame opens Live View. Only the active unsent submit admits images from the reviewed provider origin; challenge-answer POSTs still require the bounded candidate window. A live embedded browser renders, but human completion and employer acceptance remain unproven (D-145).
+
+- 2026-09-30: A visible check after the final click opens the exact guarded tab inside RoleDawn for the candidate, up to five minutes; no model challenge tools run, and exact final readback still gates submission (D-144; synthetic completion/drift/expiry/cancel coverage).
+
 - The static `/thanks` page and employer success-page redirects (above).
 - Live forms load hCaptcha from `secure-api.js`; RoleDawn's guard blocked it until D-104, so no submit could have scored.
 - Parser side effects after upload (above).
@@ -88,7 +92,7 @@ Single page.
 - **Fills-only** (see [README](README.md)). Release `lever-hosted-global/2026-09-16` in `resolveLeverDeliveryPolicy` (`src/server/workers/application-delivery-browser.ts`); `application-delivery-driver.ts` demands provenance for every non-file Lever value; card labels (`leverLabels`) and passive hCaptcha handling live in `agents-browser-tools.ts` and `agents-captcha.ts`.
 - **Verified:** the adapter fills, uploads and includes a one-use multipart submit, exercised only against synthetic fixtures (`application-delivery-lever.test.ts`). Autopilot accepts `jobs.lever.co` destinations, so a live send **would submit**.
 - **Verified:** no live Lever submission or receipt exists. The 2026-09-16 read-only probe (Aledade, 28 fields) stopped at CAPTCHA takeover with zero non-GET requests, before the D-104 loader fix.
-- Gaps: no live proof; EU host and custom domains excluded; a visible hCaptcha goes to the session's solver and hands over only if still unsolved after 120 s (D-136); custom success-page redirects are not recognized as receipts; `liveEmployerAccepted: false` (correctly) in the capability registry.
+- Gaps: no live proof; EU host and custom domains excluded; a visible hCaptcha goes to the session's solver and hands over only if still unsolved after 120 s (D-146); custom success-page redirects are not recognized as receipts; `liveEmployerAccepted: false` (correctly) in the capability registry.
 
 ## Agent guidance
 
@@ -97,7 +101,7 @@ Do:
 - Fill approved facts before the résumé upload; re-verify every value afterwards.
 - Treat any parser-filled value as unapproved until it matches a fact or a candidate answer.
 - Upload exactly one approved résumé artifact; confirm the displayed name and success marker.
-- Tick a consent or attestation checkbox for the candidate. The server, not the agent, handles hCaptcha (D-136).
+- Interact with hCaptcha as the agent; the server and the session's solver handle it (D-146).
 
 Don't:
 - Resubmit to get a better score, or count a solved challenge as a receipt.
@@ -115,3 +119,11 @@ Don't:
 - https://help.lever.co/hc/en-us/articles/20087269688733-Winter-2023-Release — 99.9% claim (Vendor claim, snippet only), accessed 2026-09-30
 - https://help.lever.co/hc/en-us/articles/20087458260893-Blocking-repeat-applications, /20087340764701, /20087307202333, /20087313893021 — repeat blocking, EEO, success URL, LinkedIn (Snippet only), accessed 2026-09-30
 - [ATS delivery expansion acceptance](../execution/ats-delivery-expansion-acceptance.md); [source register](../research/source-register.md) ATS-D01 to ATS-D04; [decision log](../execution/decision-log.md) D-086, D-104; `tmp/form-audit/` (5 live forms, 2026-09-28, not committed)
+
+- 2026-09-30 (D-136): the hosted Linux browser loads a full-page, `visibility:hidden` hCaptcha enclave at the exact reviewed `newassets.hcaptcha.com/captcha/v1/<revision>/static/hcaptcha-enclave.html` path. Treat that hidden bootstrap as passive; a visible enclave, widget, prompt or unreviewed origin/path still stops. No challenge interaction is admitted.
+
+- 2026-09-30 (D-138): the public résumé parser tracks native change/paste events. Complete approved text edits with blur before upload; otherwise the last focused field can be overwritten. Real public-client replay with a mocked parser response preserves exact values after the correction; this is field-mechanics proof, not employer acceptance.
+
+- 2026-09-30 (D-139): the upload button uppercases its displayed filename through CSS. Check its exact DOM text, while retaining visible-marker, response, byte and final readback requirements. A real synthetic PDF parsed successfully but old innerText comparison falsely stopped; a different underlying filename remains rejected.
+
+- 2026-09-30 (D-140): optional native `org`/Current company and `location`/Current location fields can be populated by parsing. After approved uploads, omit unverified values only when the exact slot was initially empty; preserve initial values, approved writes and required questions. Reintroduced values fail final readback.

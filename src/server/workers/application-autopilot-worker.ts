@@ -24,6 +24,7 @@ export type DeliveryWorkerOutcome = Readonly<{
 export type DeliveryWorkerDriveInput = Readonly<{
   claim: ApplicationAutopilotClaim;
   page: Page;
+  runtimeExpiresAt: string;
   executionPackage: ApplicationFillExecutionPackage;
   questions: ApplicationAgentQuestionRepository;
   signal: AbortSignal;
@@ -185,9 +186,14 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
     timings.browserMs = Date.now() - browserStarted;
     const driveStarted = Date.now();
     outcome = await input.drive({
-      claim, page: runtime.page, executionPackage: execution, questions, signal,
+      claim, page: runtime.page, runtimeExpiresAt: runtime.expiresAt, executionPackage: execution, questions, signal,
       async begin(request) {
         if (signal.aborted || claim.mode !== "FILL") throw new Error("DELIVERY_SUBMIT_NOT_AUTHORIZED");
+        // Exact final readback found no unresolved fields. Previously asked
+        // questions can become obsolete after parser omission or evidence-led
+        // drafting; supersede them under this lease before sealing, not by
+        // fabricating candidate answers. Answered questions remain intact.
+        await repository.requestQuestions(claim, []);
         const sealHash = await repository.seal(claim, {
           diff: jsonObject(request.review), readbackHash: request.reviewHash,
           requestFingerprint: request.requestFingerprint, destinationUrl: claim.destinationUrl,

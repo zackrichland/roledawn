@@ -1,7 +1,7 @@
 import type { Frame, Page } from "playwright-core";
 
 /**
- * CAPTCHA handling (founder decision D-136, 2026-10-01). Delivery sessions run
+ * CAPTCHA handling (founder decision D-146, 2026-10-01). Delivery sessions run
  * with Browserbase's CAPTCHA solver on. When a challenge shows, RoleDawn ticks
  * the provider's own "I'm not a robot" checkbox and waits for the solver; the
  * application is handed over only if the challenge is still unsolved when the
@@ -92,7 +92,7 @@ export async function waitForCaptchaSolved(page: Page, options: Readonly<{
 export function isHcaptchaFrameUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.origin === "https://newassets.hcaptcha.com" && /^\/captcha\/v1\/[A-Za-z0-9._-]{1,80}\/static\/hcaptcha\.html$/u.test(url.pathname);
+    return url.origin === "https://newassets.hcaptcha.com" && /^\/captcha\/v1\/[A-Za-z0-9._-]{1,80}\/static\/hcaptcha(?:-enclave)?\.html$/u.test(url.pathname);
   } catch { return false; }
 }
 

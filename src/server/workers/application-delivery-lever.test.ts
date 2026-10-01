@@ -64,10 +64,55 @@ test("Lever refuses failed uploads, extra upload fields and changed final artifa
   }
 });
 
-test("Lever parser cannot add unapproved optional company answers", options, async () => {
+test("Lever omits unapproved parser values from initially empty optional system slots", options, async () => {
   const { result, observed, state } = await run("parser-autofill");
-  assert.equal(result.kind, "QUESTIONS_REQUIRED", JSON.stringify(result));
-  if (result.kind === "QUESTIONS_REQUIRED") assert.ok(result.questions.some((question) => /company/iu.test(question.label)));
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+  assert.equal(observed.submissions[0].includes("Unverified employer"), false);
+  assert.equal(observed.submissions[0].includes("Unverified city"), false);
+  assert.match(observed.submissions[0].toString(), /name="org"\r\n\r\n\r\n/u);
+  assert.match(observed.submissions[0].toString(), /name="location"\r\n\r\n\r\n/u);
+});
+
+test("Lever never clears initial values, required answers or unreviewed parser slots", options, async () => {
+  for (const mode of ["parser-prefilled", "parser-required", "parser-other-slot"] as const) {
+    await run(mode, async (result, fixture, state, page) => {
+      assert.equal(result.kind, "QUESTIONS_REQUIRED", JSON.stringify(result));
+      assert.equal(fixture.observed.submits, 0);
+      assert.equal(state.begins, 0);
+      const selector = mode === "parser-other-slot" ? '[name="otherOrg"]' : '[name="org"]';
+      assert.equal(await page.locator(selector).inputValue(), mode === "parser-prefilled" ? "Existing company" : "Unverified employer");
+    });
+  }
+});
+
+test("Lever blocks a parser value reintroduced after the sealed empty readback", options, async () => {
+  const { result, observed, state } = await run("parser-repopulate");
+  assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
+  assert.equal(observed.submits, 0);
+  assert.equal(state.begins, 0);
+});
+
+test("Lever completes the native field change before upload so its parser preserves approved values", options, async () => {
+  const { result, observed, state } = await run("parser-change-events");
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.uploads.length, 1);
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+});
+
+test("Lever verifies the exact uploaded filename through presentation case changes", options, async () => {
+  const { result, observed, state } = await run("filename-uppercase");
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+});
+
+test("Lever still rejects a changed filename in the underlying acknowledgement before submit authority", options, async () => {
+  const { result, observed, state } = await run("filename-changed");
+  assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
+  assert.equal(observed.uploads.length, 1);
   assert.equal(observed.submits, 0);
   assert.equal(state.begins, 0);
 });
@@ -127,7 +172,7 @@ test("Lever's invisible hCaptcha scores on submit and one application is confirm
   assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
   assert.equal(observed.submits, 1);
   assert.equal(state.begins, 1);
-  // CAPTCHA provider traffic is admitted for the session's solver (D-136); it never carries candidate data.
+  // CAPTCHA provider traffic is admitted for the session's solver (D-146); it never carries candidate data.
   assert.ok(observed.captchaScores >= 1);
 });
 
@@ -152,6 +197,7 @@ test("a challenge that appears after the submit click and is never solved stops 
   assert.equal(observed.uploads.length, 1, "the approved upload happened before the challenge");
   assert.equal(observed.submits, 0);
   assert.equal(state.begins, 0);
+  assert.ok(observed.requests.some(request => request === "GET https://imgs.hcaptcha.com/fixture-check.png"), "the challenge image loads for the solver");
 });
 
 test("the CAPTCHA detector treats hidden, zero-size and off-page widgets as passive and anything asking the person as a challenge", options, async () => {
@@ -176,6 +222,26 @@ test("the CAPTCHA detector treats hidden, zero-size and off-page widgets as pass
     for (const [name, body, expected] of cases) {
       await page.setContent(`<!doctype html><html><body><form id="application-form">${body}</form></body></html>`);
       assert.equal(await frameShowsCaptchaChallenge(page.mainFrame()), expected, name);
+    }
+  } finally { await browser.close(); }
+});
+
+
+test("Lever's hidden enclave bootstrap is passive; visible and unreviewed frames still stop inspection", options, async () => {
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.route("**/*", route => route.fulfill({ status: 200, contentType: "text/html", body: "<html><body></body></html>" }));
+    await page.goto("http://localhost/fixture");
+    for (const [src, visibility, expected] of [
+      ["https://newassets.hcaptcha.com/captcha/v1/fixture/static/hcaptcha-enclave.html", "hidden", null],
+      ["https://newassets.hcaptcha.com/captcha/v1/fixture/static/hcaptcha-enclave.html", "visible", "APPLICATION_FILL_CAPTCHA_TAKEOVER"],
+      ["https://newassets.hcaptcha.com/captcha/v1/fixture/static/unreviewed-hcaptcha.html", "hidden", "APPLICATION_FILL_CAPTCHA_TAKEOVER"],
+      ["https://untrusted.invalid/captcha/v1/fixture/static/hcaptcha-enclave.html", "hidden", "APPLICATION_FILL_CAPTCHA_TAKEOVER"],
+    ] as const) {
+      await page.setContent(`<html><body><form id="application-form"><iframe src="${src}" style="position:fixed;top:0;left:0;width:100%;height:100%;visibility:${visibility}"></iframe></form></body></html>`);
+      const tools = createAgentBrowserTools(page, "http://localhost/fixture", { leverLabels: true, invisibleHcaptcha: true });
+      assert.equal((await tools.inspect()).takeoverReason, expected, `${src} ${visibility}`);
     }
   } finally { await browser.close(); }
 });

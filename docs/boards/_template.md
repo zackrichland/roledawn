@@ -57,7 +57,7 @@ Rules for filling this template (from AGENTS.md):
 
 - CAPTCHA provider and when it appears:
 - Emailed codes, rate limits, bot detection, honeypots:
-- CAPTCHAs go to the session's solver (D-136); record the provider and whether it is invisible or shows a checkbox.
+- CAPTCHAs go to the session's solver (D-146); record the provider and whether it is invisible or shows a checkbox.
 
 ## Submission and proof
 
@@ -80,7 +80,7 @@ Do:
 -
 
 Don't:
-- Tick a consent or attestation box for the candidate, or treat a solved CAPTCHA as a receipt.
+- Treat a solved CAPTCHA as a receipt.
 - Invent an answer, date, employer, title or sensitive fact.
 
 ## Sources

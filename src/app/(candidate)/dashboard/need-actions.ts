@@ -12,7 +12,8 @@ export async function loadApplicationNeedAction(applicationId: string): Promise<
   if (!await getOptionalActor()) return { ok: false, message: "Your session ended. Reload the page." };
   if (!UUID.test(applicationId)) return { ok: false, message: "That application link is invalid." };
   try {
-    const view = await getApplicationAutopilot(await createSupabaseServerClient(), applicationId, process.env.ROLEDAWN_AUTOPILOT_ENABLED === "true");
+    // Turning off new sends must not hide an existing send's questions/codes.
+    const view = await getApplicationAutopilot(await createSupabaseServerClient(), applicationId);
     return { ok: true, view };
   } catch {
     return { ok: false, message: "This application couldn’t be loaded. Open it to continue." };

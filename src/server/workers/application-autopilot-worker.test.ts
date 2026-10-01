@@ -22,7 +22,7 @@ function fixture() {
     async bindRuntime(_lease, value) { events.push(value ? "runtime-bound" : "runtime-deleted"); },
     async setAgentSession() {},
     async readAllAnswers() { return []; },
-    async requestQuestions(_lease, questions) { assert.equal(questions.length, 1); events.push("questions-saved"); },
+    async requestQuestions(_lease, questions) { assert.ok(questions.length <= 1); events.push(questions.length ? "questions-saved" : "obsolete-questions-superseded"); },
     async seal(_lease, value) { assert.equal(value.requestFingerprint, HASH); events.push("sealed"); return HASH; },
     async beginSubmit() { events.push("attempt-created"); return { attemptId: ID, idempotencyKey: ID, sealHash: HASH, requestFingerprint: HASH }; },
     async finish(_lease, completion) { completions.push(completion); events.push(completion.outcome); },
@@ -41,6 +41,7 @@ test("autopilot stores exact final attempt before dispatch and receipt before te
   } });
   assert.equal(result.kind, "CONFIRMED");
   assert.ok(f.events.indexOf("attempt-created") < f.events.indexOf("employer-dispatch"));
+  assert.ok(f.events.indexOf("obsolete-questions-superseded") < f.events.indexOf("sealed"));
   assert.ok(f.events.indexOf("RECEIPT_OBSERVED") < f.events.indexOf("CONFIRMED"));
   assert.deepEqual(f.events.slice(-2), ["browser-release", "runtime-deleted"]);
   assert.deepEqual([...f.bytes], [0, 0, 0]);
@@ -69,6 +70,7 @@ test("candidate questions are persisted and browser is released without a short 
   assert.ok(f.events.includes("questions-saved"));
   assert.ok(f.events.includes("runtime-deleted"));
   assert.equal(f.events.includes("attempt-created"), false);
+  assert.equal(f.events.includes("obsolete-questions-superseded"), false);
   assert.equal(f.completions.length, 0);
 });
 
