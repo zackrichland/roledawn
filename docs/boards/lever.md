@@ -78,6 +78,8 @@ Single page.
 
 ## Known quirks
 
+- **Founder observation, 2026-10-01 UTC:** a watched run became stuck at LinkedIn connection. The base form-agent prompt now explicitly skips social sign-in and profile imports, uses the ordinary form and approved résumé upload, and retains the saved LinkedIn URL field (D-148). The exact cause and a live run after this change are not yet verified.
+
 - **Verified regression, 2026-09-30:** the SDK can request a check image before the visible frame opens Live View. Only the active unsent submit admits images from the reviewed provider origin; challenge-answer POSTs still require the bounded candidate window. A live embedded browser renders, but human completion and employer acceptance remain unproven (D-145).
 
 - 2026-09-30: A visible check after the final click opens the exact guarded tab inside RoleDawn for the candidate, up to five minutes; no model challenge tools run, and exact final readback still gates submission (D-144; synthetic completion/drift/expiry/cancel coverage).
@@ -98,6 +100,7 @@ Single page.
 
 Do:
 - Use only `https://jobs.lever.co/<site>/<uuid>/apply`; verify form method, encoding and action first.
+- Skip **Apply with LinkedIn** and account-connection/profile-import widgets; fill `urls[LinkedIn]` only from the approved profile URL.
 - Fill approved facts before the résumé upload; re-verify every value afterwards.
 - Treat any parser-filled value as unapproved until it matches a fact or a candidate answer.
 - Upload exactly one approved résumé artifact; confirm the displayed name and success marker.

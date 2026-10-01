@@ -2,7 +2,7 @@
 title: RoleDawn current state
 status: canonical project snapshot
 owner: founder, product, and engineering
-last_updated: 2026-09-30
+last_updated: 2026-10-01
 scope: current repository capability, recorded production evidence, and remaining single-account limits
 ---
 
@@ -179,3 +179,5 @@ Greenhouse rejected two unsupported narrative proposals, then a validated propos
 **Verified D-145 rollout:** migration `20260930234000` is applied and recorded; hosted readback confirms the fresh-inspection branch, unchanged resume checks, empty search path and no anonymous execution. Regenerated public types are identical. GitHub CI, the local production build and full-build production deployment pass. The exact deployed worker, private gate, approved career/story and all 14 checked assets pass. The local web dashboard restarted with both worker-execution flags off. The named zero-attempt Ashby send resumed through Home; the named Lever send's preceding generic expiry was resumed through the same owned control RPC in an ID-scoped transaction after confirming no attempt or active lease. Ashby is running and Lever is queued; new employer acceptance is still unproven. The older uncertain application and its resend block are untouched.
 
 **Live in-app verification, 23:43 UTC:** Ashby reused the saved facts, passed complete review and opened the owned browser check. The dashboard panel visibly renders the employer's real image challenge inside RoleDawn; the candidate was asked to complete it there. Hosted readback still shows zero attempts. No agent interacted with the challenge. Lever waits behind the retained delivery lane; human completion and new employer receipts remain pending.
+
+**D-148 LinkedIn guidance (local):** the base delivery-step prompt now directs the agent to skip social sign-in, account connection and LinkedIn profile/résumé imports, use the ordinary form and approved upload, and fill a plain LinkedIn URL only from its approved profile fact. The founder reported a Lever connection stall; its exact cause and live behavior after this change remain unverified. No interface, candidate record or submission authority changed. The full suite passed 910 tests before pulling the two observability commits from main; afterward, all 35 focused context, fact and runtime tests, typecheck, lint, documentation links and the final production build pass. This guidance has not been deployed.

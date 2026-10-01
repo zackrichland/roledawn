@@ -64,3 +64,5 @@ own answers.
 19. **Finish inside RoleDawn.** Never send the candidate to an employer site to finish a stopped application. Any required human verification belongs in the application’s embedded browser, with RoleDawn continuing and tracking the result. Unsupported forms stay visibly stopped until their delivery path is repaired. (2026-09-30, D-144)
 
 20. **CAPTCHAs never stop an application.** Turn on Browserbase's CAPTCHA solver for every board; RoleDawn ticks the "I'm not a robot" checkbox when shown and waits for the solve. The candidate's embedded-browser check (directive 19) is only the fallback when the solver fails. A solved CAPTCHA is never a receipt (D-146). (2026-10-01)
+
+21. **Skip LinkedIn connection.** Do not use Apply with LinkedIn, social sign-in, account connection or LinkedIn profile/résumé import widgets. Use the ordinary form and approved résumé upload. A plain LinkedIn URL field still uses the candidate's approved profile fact. (2026-10-01, D-148)
