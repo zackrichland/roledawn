@@ -2,7 +2,7 @@
 title: Application playbook
 status: canonical operating guide
 owner: founder and engineering
-last_updated: 2026-09-30
+last_updated: 2026-10-01
 scope: how one application moves from a job link to a confirmed receipt, what each Home status means, how to operate RoleDawn, and what comes next
 ---
 
@@ -92,7 +92,8 @@ The diagram is a summary; the table below is authoritative.
 - **Retry classes (D-133):** *automatic* (six pre-submit provider codes, twice), *manual* (Try again shown), *after a change* (a sign-in, unsupported field or board, refused answer or browser quota: the row explains the repair needed and keeps the application here), and *never* (an unknown outcome is reconciled first, so no Try again). `src/domain/application-stop-guidance.ts` owns every state's copy and action; add a stop code there, never inline.
 - **Open (needs a migration):** manual Try again and re-claimed expired-lease fill runs have no database cap, and browser-quota stops have no backoff. Proposed: `fill_claims` (park at 6), `manual_retries` (deny at 3) and a 30-minute quota backoff, three times.
 - **Unknown outcome after submitting**: RoleDawn reconciles before anything else is sent.
-- **Where to look**: `npm run ops:status` lists live applications, lanes, and recent failures with their cause; add `-- --app <id>` for one application's timeline and `-- --watch` to refresh (D-116).
+- **Where to look**: `npm run ops:why` explains each recent application's stop: stage, likely cause, next step, any proposal that needs a decision, the Browserbase replay link, refused requests and frames (D-149). `npm run ops:status` lists live applications, lanes, and recent failures with their cause; add `-- --app <id>` for one application's timeline and `-- --watch` to refresh (D-116).
+- **Self-heal (D-149)**: a send that stops before any submission on an infrastructure code (page never rendered, unexpected exception, model or provider error) gets one fresh browser inside the same run. Guard verdicts (drift, frames, CAPTCHA, unsupported controls, Ashby contract) never retry this way.
 - **Works locally, fails in production**: the hosted browser is Linux Chrome on Browserbase. Page scripts can behave differently by platform. React Select, for example, marks options `aria-selected` everywhere except on Apple devices, and that difference hid the GPA field on 2026-09-30. Reproduce with a Linux user agent and `navigator.platform` before concluding a form works.
 
 ## Rules that never change
@@ -127,7 +128,7 @@ Never use `supabase db push`; eight 2026-08-19 migrations are recorded remotely 
 | `OPENAI_API_KEY` | All models. |
 | `ROLEDAWN_APPLICATION_AGENT_MODEL` | Form agent; `gpt-6.1-sol` since 2026-09-29. |
 | `ROLEDAWN_DRAFTING_MODEL`, `ROLEDAWN_RESEARCH_MODEL`, `ROLEDAWN_VERIFICATION_MODEL` | Optional overrides; defaults are GPT-6 Astra, GPT-6 Sol, and GPT-5.6 Terra. |
-| `BROWSERBASE_API_KEY`, `ROLEDAWN_BROWSERBASE_ENABLED` | Cloud browser. The code requires exactly one Browserbase project. |
+| `BROWSERBASE_API_KEY`, `ROLEDAWN_BROWSERBASE_ENABLED` | Cloud browser. With one visible project it is used; otherwise set `BROWSERBASE_PROJECT_ID` (D-149). `BROWSERBASE_REGION` defaults to `us-east-1`, beside the Netlify functions. |
 | `ROLEDAWN_FORM_DRIVER=agents`, `ROLEDAWN_AUTOPILOT_ENABLED=true` | Sending. |
 | `ROLEDAWN_HOSTED_WORKERS_ENABLED`, `ROLEDAWN_WORKER_DISPATCH_SECRET`, `APP_BASE_URL` | Background workers. |
 | `ROLEDAWN_MAILBOX_TOKEN_KEY`, `GOOGLE_MAILBOX_CLIENT_ID`, `GOOGLE_MAILBOX_CLIENT_SECRET` | Gmail code reading. |

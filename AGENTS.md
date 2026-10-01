@@ -23,6 +23,7 @@ npm run typecheck && npm run lint && npm run check:docs
 npm run build                                 # stop the dev server first
 node scripts/migration-harness.mjs supabase/checks/<name>.sql   # migrations + one SQL check in local PGlite
 npm run ops:status                            # read-only production snapshot; -- --watch, -- --app <id>
+npm run ops:why                               # why each recent application stopped, with replay link; -- --app <id>, -- --json
 npm run deploy                               # sets deployment ID, then deploy --build --prod; no dev server
 ```
 
@@ -117,6 +118,9 @@ In order: (1) profile facts through anchored label rules (`application-field-fac
 - Workers, scripts and tests run under `node --experimental-strip-types`: use relative imports with `.ts` extensions there. `@/` imports and `import "server-only"` belong only in code that Next alone loads.
 - OpenAI credit exhaustion is terminal (`MODEL_CREDITS_EXHAUSTED`); a 429 rate limit remains transient. Browserbase HTTP 402/429 appear as `DELIVERY_BROWSER_QUOTA_EXHAUSTED` / `DELIVERY_BROWSER_CONCURRENCY_LIMIT`.
 - Tests are timing-sensitive under load. Keep concurrency at 3 and rerun a failing file alone before debugging it.
+- Browser tests skip without Chrome; in Linux containers run `ROLEDAWN_CHROME_PATH=/opt/pw-browsers/chromium npm test` (2026-10-01).
+- A third-party iframe the guard refuses becomes `chrome-error://chromewebdata/` and stops the send as a foreign frame (verified 2026-10-01); see P1 in the [reliability review](docs/execution/reliability-review-2026-10-01.md).
+- Every non-confirmed send records a `stop-diagnosis` worker event; read it with `npm run ops:why` before guessing a cause. Changing which requests or frames the guard admits is the founder's decision (D-149).
 - The GitHub repository is public. Never commit secrets, tokens, personal data or the founder's private details (employers, answers); name variables, not values.
 - Founder directive 11 pre-approves deploys, hosted migrations and settings. If your tool's permission mode still blocks one, say so in one line and stop; don't route around it.
 

@@ -1,7 +1,7 @@
 ---
 title: RoleDawn documentation map
 status: active
-last_updated: 2026-09-30
+last_updated: 2026-10-01
 ---
 
 # Documentation map
@@ -14,13 +14,14 @@ override accepted product or safety contracts.
 
 ### Founder or investor
 
-1. [Independent review and readiness](execution/codex-review-2026-09-30.md)
-2. [Current state](execution/current-state.md)
-3. [Application playbook](execution/application-playbook.md)
-4. [Founder directives](execution/founder-directives.md)
-5. [Founder brief](00-founder-brief.md)
-6. [Positioning and ICP](strategy/positioning-and-icp.md)
-7. [Roadmap](execution/roadmap.md)
+1. [Reliability review, 2026-10-01](execution/reliability-review-2026-10-01.md): why sends stop, the pipeline diagram and decisions P1–P6
+2. [Independent review and readiness](execution/codex-review-2026-09-30.md)
+3. [Current state](execution/current-state.md)
+4. [Application playbook](execution/application-playbook.md)
+5. [Founder directives](execution/founder-directives.md)
+6. [Founder brief](00-founder-brief.md)
+7. [Positioning and ICP](strategy/positioning-and-icp.md)
+8. [Roadmap](execution/roadmap.md)
 
 ### Product or design
 
@@ -38,13 +39,14 @@ override accepted product or safety contracts.
 2. [Founder directives](execution/founder-directives.md)
 3. [Application playbook](execution/application-playbook.md)
 4. [Current state](execution/current-state.md)
-5. [Independent review and readiness](execution/codex-review-2026-09-30.md)
-6. [Decision log](execution/decision-log.md): read the latest rows
-7. [ATS board templates](boards/README.md)
-8. [Backend architecture operating model](architecture/backend-operating-model.md)
-9. [Three-system product architecture](architecture/three-system-product-architecture.md)
-10. [Application quality system](architecture/application-quality-system.md)
-11. [Frontend-to-backend contract](architecture/frontend-backend-contract.md)
+5. [Reliability review, 2026-10-01](execution/reliability-review-2026-10-01.md): stop diagnosis, `ops:why`, guard proposals
+6. [Independent review and readiness](execution/codex-review-2026-09-30.md)
+7. [Decision log](execution/decision-log.md): read the latest rows
+8. [ATS board templates](boards/README.md)
+9. [Backend architecture operating model](architecture/backend-operating-model.md)
+10. [Three-system product architecture](architecture/three-system-product-architecture.md)
+11. [Application quality system](architecture/application-quality-system.md)
+12. [Frontend-to-backend contract](architecture/frontend-backend-contract.md)
 
 ### Historical snapshots and acceptance
 
