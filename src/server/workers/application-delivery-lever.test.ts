@@ -5,7 +5,7 @@ import test from "node:test";
 import { chromium } from "playwright-core";
 import { syntheticLeverDelivery, type SyntheticLeverMode } from "../../test-support/synthetic-lever-delivery.ts";
 import { createApplicationDeliveryDriver } from "./application-delivery-driver.ts";
-import { createApplicationDeliveryBrowser, type DeliveryPriorSubmission } from "./application-delivery-browser.ts";
+import { browserbaseHcaptchaSolverMethod, createApplicationDeliveryBrowser, type DeliveryPriorSubmission } from "./application-delivery-browser.ts";
 import type { ApplicationFillExecutionPackage } from "./application-fill-materializer.ts";
 import { createAgentBrowserTools } from "./agents-browser-tools.ts";
 import { frameShowsCaptchaChallenge } from "./agents-captcha.ts";
@@ -229,6 +229,35 @@ test("Lever's invisible hCaptcha scores on submit and one application is confirm
   assert.equal(state.begins, 1);
   // CAPTCHA provider traffic is admitted for the session's solver (D-146); it never carries candidate data.
   assert.ok(observed.captchaScores >= 1);
+});
+
+test("Browserbase's exact provider-local solver preflight and JSON request reach the provider before one submission", options, async () => {
+  const { result, observed, state } = await run("browserbase-solver");
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.ok(observed.requests.includes("POST http://127.0.0.1:8080/solve/hcaptcha/create"));
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+});
+
+test("the observed provider preflight passes, while foreign origins and changed endpoints remain blocked", () => {
+  const origin = "https://jobs.lever.co";
+  const preflight = { url: "http://127.0.0.1:8080/solve/hcaptcha/create", method: "OPTIONS", bytes: null,
+    headers: { origin, "access-control-request-method": "POST", "access-control-request-headers": "content-type" } };
+  assert.equal(browserbaseHcaptchaSolverMethod(preflight, origin), "OPTIONS");
+  for (const change of [{ url: preflight.url + "?extra=unapproved" }, { url: preflight.url.replace("8080", "8081") },
+    { url: preflight.url.replace("hcaptcha", "unreviewed") }, { headers: { ...preflight.headers, origin: "https://unapproved.invalid" } },
+    { headers: { ...preflight.headers, "access-control-request-method": "DELETE" } }, { bytes: Buffer.from("unapproved") }]) {
+    assert.equal(browserbaseHcaptchaSolverMethod({ ...preflight, ...change }, origin), null);
+  }
+});
+
+test("the provider-local solver exception rejects changed ports and query parameters before submission", options, async () => {
+  for (const mode of ["browserbase-solver-query", "browserbase-solver-port"] as const) {
+    const { observed, state } = await run(mode);
+    assert.equal(observed.requests.some(request => request.includes("127.0.0.1")), false);
+    assert.equal(observed.submits, 0);
+    assert.equal(state.begins, 0);
+  }
 });
 
 test("a hidden CAPTCHA from another provider no longer stops the send", options, async () => {

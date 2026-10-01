@@ -14,6 +14,18 @@ export const DELIVERY_BROWSER_RELEASE = "application-delivery-browser/1";
 export type DeliveryRequestRule = Readonly<{ method: "GET" | "POST" | "PUT"; url: string }>;
 /** Injected by controlled acceptance only, after the same policy/authority checks. */
 export type DeliveryRequestTransport = (route: Route) => Promise<void>;
+/** The observed Browserbase service in this session's own browser container. */
+export function browserbaseHcaptchaSolverMethod(request: Readonly<{ url: string; method: string; headers: Readonly<Record<string, string>>; bytes: Buffer | null }>, approvedOrigin: string): "OPTIONS" | "POST" | null {
+  const url = new URL(request.url), headers = request.headers;
+  if (url.origin !== "http://127.0.0.1:8080" || url.pathname !== "/solve/hcaptcha/create" || url.search || url.hash || url.username || url.password ||
+    headers.origin !== approvedOrigin) return null;
+  if (request.method === "OPTIONS") return headers["access-control-request-method"] === "POST" &&
+    headers["access-control-request-headers"]?.toLowerCase() === "content-type" && !request.bytes ? "OPTIONS" : null;
+  if (request.method !== "POST" || headers["content-type"]?.split(";")[0].trim().toLowerCase() !== "application/json" ||
+    !request.bytes || request.bytes.length > 64_000) return null;
+  const body = jsonObject(request.bytes);
+  return body && Object.keys(body).length <= 12 ? "POST" : null;
+}
 export type DeliveryUploadRule = Readonly<{
   fieldId?: string; fieldName?: string; selector: string;
   request?: DeliveryRequestRule;
@@ -372,6 +384,20 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   }
   const startHost = new URL(policy.startUrl).hostname;
   const hcaptchaKeys = new Set<string>();
+  let browserbaseSolverRequests = 0;
+  function browserbaseSolverRequest(request: Request): boolean {
+    // Browserbase's injected solver calls the service inside its own browser
+    // container. This is the already-authorized browser provider, not another
+    // external destination. Never admit arbitrary loopback URLs or form sends.
+    if (!policy.lever || !hcaptchaKeys.size || closed || submitConsumed || action?.admitted || action?.error || action?.signal?.aborted) return false;
+    if (canonical(page.url()) !== canonical(policy.startUrl)) return false;
+    const method = browserbaseHcaptchaSolverMethod({ url: request.url(), method: request.method(), headers: request.headers(), bytes: request.postDataBuffer() }, new URL(policy.startUrl).origin);
+    if (!method) return false;
+    if (method === "OPTIONS") return true;
+    if (browserbaseSolverRequests >= 4) return false;
+    browserbaseSolverRequests += 1;
+    return true;
+  }
   function isHcaptcha(request: Request): boolean {
     if (!policy.lever?.invisibleHcaptcha) return false;
     const url = new URL(request.url());
@@ -479,6 +505,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       }
       const recaptcha = isRecaptcha(request);
       const hcaptcha = isHcaptcha(request);
+      const providerSolver = browserbaseSolverRequest(request);
       try {
         if (request.frame().page() !== page) { blockedRequests += 1; await route.abort(); return; }
       } catch {
@@ -515,7 +542,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       const moveNavigation = current?.kind === "MOVE" && current.admitted && request.method() === "GET" && policy.steps.some((step) => canonical(step.url) === canonical(request.url()));
       // The CAPTCHA solver (D-146) needs the provider's own challenge traffic; it carries no candidate data.
       const captchaSolver = isCaptchaProviderRequestUrl(request.url()) && (request.postDataBuffer()?.length ?? 0) <= 2_000_000;
-      if (asset || ashbyManifest || translation || bootstrap || search || recaptcha || hcaptcha || captchaSolver || receiptNavigation || moveNavigation) { await dispatch(route); return; }
+      if (asset || ashbyManifest || translation || bootstrap || search || recaptcha || hcaptcha || captchaSolver || providerSolver || receiptNavigation || moveNavigation) { await dispatch(route); return; }
       // A CORS preflight has no candidate payload; it is limited to this exact
       // active action endpoint and requested method, never a wildcard origin.
       if (current?.request && request.method() === "OPTIONS" && canonical(request.url()) === canonical(current.request.url) &&
@@ -770,6 +797,9 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       let polledAt = 0;
       let solvedChallenge = false;
       const submitSelector = step.submit.selector;
+      // A provider solve can run without a visible widget. Allow its documented
+      // 5–30 s latency before declaring that no final request was dispatched.
+      const submitDeadline = Date.now() + (input.timeoutMs ?? 45_000);
       const challenged = async () => {
         if (current.admitted || current.error) return false;
         if (verificationOpened) {
@@ -800,7 +830,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         for (let round = 0; round < 3; round += 1) {
           solvedChallenge = false;
           const settled = await waitFor(async () => Boolean(current.error || current.submission && await receipt(current.submission) || await challenged() ||
-            current.challenge && await verificationShown()), signal, () => verificationDeadline);
+            current.challenge && await verificationShown()), signal, () => Math.max(submitDeadline, verificationDeadline));
           if (settled || !solvedChallenge) break;
         }
         await drain();
