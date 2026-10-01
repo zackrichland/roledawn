@@ -3,10 +3,10 @@ import { resolveLeverDeliveryPolicy } from "../server/workers/application-delive
 
 export type SyntheticLeverMode = "normal" | "bad-upload" | "uncertain" | "duplicate" | "altered-file" | "upload-extra-field" | "parser-autofill" | "captcha" | "form-drift"
   | "invisible-captcha" | "captcha-on-submit" | "captcha-solved-on-submit" | "foreign-captcha" | "parser-change-events" | "filename-uppercase" | "filename-changed"
-  | "parser-prefilled" | "parser-required" | "parser-other-slot" | "parser-repopulate" | "parser-required-location" | "parser-location-null" | "location-metadata-drift" | "location-query-leak" | "navigation-timeout" | "browserbase-solver" | "browserbase-solver-query" | "browserbase-solver-port";
+  | "parser-prefilled" | "parser-required" | "parser-other-slot" | "parser-repopulate" | "parser-required-location" | "parser-location-null" | "location-metadata-drift" | "location-query-leak" | "navigation-timeout" | "browserbase-solver" | "browserbase-solver-delayed" | "browserbase-solver-pending" | "browserbase-solver-query" | "browserbase-solver-port";
 const SITEKEY = "a0000000-0000-4000-8000-00000000000b";
 const HCAPTCHA_FRAME = "https://newassets.hcaptcha.com/captcha/v1/fixture/static/hcaptcha.html";
-const HCAPTCHA_MODES = new Set<SyntheticLeverMode>(["captcha", "invisible-captcha", "captcha-on-submit", "captcha-solved-on-submit", "browserbase-solver", "browserbase-solver-query", "browserbase-solver-port"]);
+const HCAPTCHA_MODES = new Set<SyntheticLeverMode>(["captcha", "invisible-captcha", "captcha-on-submit", "captcha-solved-on-submit", "browserbase-solver", "browserbase-solver-delayed", "browserbase-solver-pending", "browserbase-solver-query", "browserbase-solver-port"]);
 
 /**
  * In-memory stand-in for hCaptcha's loader. In passive mode the score request
@@ -110,7 +110,10 @@ export function syntheticLeverDelivery(mode: SyntheticLeverMode = "normal") {
     if(mode==="foreign-captcha" && r.method()==="GET" && r.url().startsWith("https://www.google.com/recaptcha/api2/anchor?")) return route.fulfill({status:200,contentType:"text/html",body:"<!doctype html><html><body>synthetic reCAPTCHA anchor</body></html>"});
     if(hcaptcha && r.method()==="GET" && r.url()===HCAPTCHA_FRAME) return route.fulfill({status:200,contentType:"text/html",body:"<!doctype html><html><body>synthetic hCaptcha frame</body></html>"});
     if(hcaptcha && r.method()==="GET" && r.url()==="https://imgs.hcaptcha.com/fixture-check.png") return route.fulfill({status:200,contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2mJ0AAAAASUVORK5CYII=","base64")});
-    if(mode==="browserbase-solver" && ["http://127.0.0.1:8080/solve/hcaptcha/create","http://127.0.0.1:8080/solve/hcaptcha/query"].includes(r.url()) && ["OPTIONS","POST"].includes(r.method())) return route.fulfill({status:200,contentType:"application/json",headers:{...cors,"access-control-allow-methods":"POST","access-control-allow-headers":"content-type"},body:r.url().endsWith("/query")?'{"token":"P1_synthetic-provider-pass"}':'{"query":{"taskIdEuler":123},"solveId":"90000000-0000-4000-8000-000000000009","tabId":"0123456789abcdef0123456789abcdef"}'});
+    if(["browserbase-solver","browserbase-solver-delayed","browserbase-solver-pending"].includes(mode) && ["http://127.0.0.1:8080/solve/hcaptcha/create","http://127.0.0.1:8080/solve/hcaptcha/query"].includes(r.url()) && ["OPTIONS","POST"].includes(r.method())) {
+      if(mode === "browserbase-solver-delayed" && r.method() === "POST" && r.url().endsWith("/query")) await new Promise(resolve => setTimeout(resolve, 800));
+      return route.fulfill({status:200,contentType:"application/json",headers:{...cors,"access-control-allow-methods":"POST","access-control-allow-headers":"content-type"},body:r.url().endsWith("/query") ? mode === "browserbase-solver-pending" ? '{"pending":true}' : '{"token":"P1_synthetic-provider-pass"}' : '{"query":{"taskIdEuler":123},"solveId":"90000000-0000-4000-8000-000000000009","tabId":"0123456789abcdef0123456789abcdef"}'});
+    }
     if(hcaptcha && r.method()==="POST" && r.url().startsWith("https://api.hcaptcha.com/checksiteconfig?")) return route.fulfill({status:200,contentType:"application/json",headers:cors,body:'{"pass":true}'});
     if(hcaptcha && r.method()==="POST" && r.url()===`https://api.hcaptcha.com/getcaptcha/${SITEKEY}`) {observed.captchaScores+=1;return route.fulfill({status:200,contentType:"application/json",headers:cors,body:'{"pass":true,"generated_pass_UUID":"P1_synthetic-pass"}'});}
     throw new Error("SYNTHETIC_LEVER_UNEXPECTED_REQUEST");

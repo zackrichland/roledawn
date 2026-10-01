@@ -78,6 +78,8 @@ Single page.
 
 ## Known quirks
 
+- **Verified, 2026-10-01:** a provider-local task can continue polling without a visible challenge after the 45 s dispatch wait. D-154 gives an observed task the existing fixed 120 s solve budget and records request/response counts at expiry; live acceptance still must be proved.
+
 - **Founder observation, 2026-10-01 UTC:** a watched run became stuck at LinkedIn connection. The base form-agent prompt now explicitly skips social sign-in and profile imports, uses the ordinary form and approved résumé upload, and retains the saved LinkedIn URL field (D-148). The exact cause and a live run after this change are not yet verified.
 
 - **Verified regression, 2026-09-30:** the SDK can request a check image before the visible frame opens Live View. Only the active unsent submit admits images from the reviewed provider origin; challenge-answer POSTs still require the bounded candidate window. A live embedded browser renders, but human completion and employer acceptance remain unproven (D-145).

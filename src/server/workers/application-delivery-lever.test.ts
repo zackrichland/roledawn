@@ -25,7 +25,7 @@ function packet(url: string): ApplicationFillExecutionPackage {
 async function run(mode: SyntheticLeverMode, after?: (result: Awaited<ReturnType<ReturnType<typeof createApplicationDeliveryDriver>["deliver"]>>, fixture: ReturnType<typeof syntheticLeverDelivery>, state: { begins: number; prior: DeliveryPriorSubmission | null }, page: import("playwright-core").Page) => Promise<void>, extraFacts: ApplicationFillExecutionPackage["facts"] = []) {
   const fixture = syntheticLeverDelivery(mode);
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
-  const state: { begins: number; prior: DeliveryPriorSubmission | null } = { begins: 0, prior: null };
+  const state: { begins: number; prior: DeliveryPriorSubmission | null; checkpoints: Readonly<Record<string, unknown>>[] } = { begins: 0, prior: null, checkpoints: [] };
   const context = await browser.newContext({ serviceWorkers: "block" });
   const page = await context.newPage();
   try {
@@ -33,7 +33,7 @@ async function run(mode: SyntheticLeverMode, after?: (result: Awaited<ReturnType
       harness: { async run() {} },
       submissionHooks: {
         async begin() { assert.equal(fixture.observed.submits, 0); state.begins += 1; return { attemptId: "attempt-1", idempotencyKey: "once-1" }; },
-        async checkpoint(record) { if (record.submission) state.prior = record.submission as DeliveryPriorSubmission; },
+        async checkpoint(record) { state.checkpoints.push(record); if (record.submission) state.prior = record.submission as DeliveryPriorSubmission; },
       },
     });
     const executionPackage = packet(fixture.policy.startUrl);
@@ -238,6 +238,24 @@ test("Browserbase's exact provider-local solver preflight and JSON request reach
   assert.ok(observed.requests.includes("POST http://127.0.0.1:8080/solve/hcaptcha/query"));
   assert.equal(observed.submits, 1);
   assert.equal(state.begins, 1);
+});
+
+test("an observed hidden provider task gets its bounded solve budget beyond the ordinary dispatch wait", options, async () => {
+  const { result, observed, state } = await run("browserbase-solver-delayed");
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+});
+
+test("an unfinished hidden provider task expires without authority and records counts without provider values", options, async () => {
+  const { result, observed, state } = await run("browserbase-solver-pending");
+  assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
+  assert.equal(observed.submits, 0);
+  assert.equal(state.begins, 0);
+  assert.deepEqual(state.checkpoints.find(record => record.phase === "BROWSERBASE_SOLVER_WAIT_FINISHED"), {
+    phase: "BROWSERBASE_SOLVER_WAIT_FINISHED", provider: "BROWSERBASE_HCAPTCHA", createRequests: 1,
+    queryRequests: 1, queryResponses: 1, httpFailures: 0, waitExpired: true,
+  });
 });
 
 test("the observed provider preflight passes, while foreign origins and changed endpoints remain blocked", () => {

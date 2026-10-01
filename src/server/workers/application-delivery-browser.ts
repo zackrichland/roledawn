@@ -301,7 +301,7 @@ function validatePolicy(policy: DeliverySitePolicy): void {
 export async function createApplicationDeliveryBrowser(input: Readonly<{
   page: Page; policy: DeliverySitePolicy; hooks: DeliverySubmissionHooks; timeoutMs?: number;
   requestTransport?: DeliveryRequestTransport;
-  /** How long a shown CAPTCHA may take to be solved before the send hands over (D-146). */
+  /** Bounded solve budget for visible challenges and observed provider-local tasks (D-146). */
   captchaSolveTimeoutMs?: number;
 }>) {
   const { page, policy, hooks } = input;
@@ -393,6 +393,9 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   const hcaptchaKeys = new Set<string>();
   let browserbaseSolverRequests = 0;
   let browserbaseSolverQueries = 0;
+  const browserbaseSolverMethods = new WeakMap<Request, "CREATE" | "QUERY">();
+  let browserbaseSolverQueryResponses = 0;
+  let browserbaseSolverHttpFailures = 0;
   function browserbaseSolverRequest(request: Request): boolean {
     // Browserbase's injected solver calls the service inside its own browser
     // container. This is the already-authorized browser provider, not another
@@ -405,10 +408,12 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     if (method === "QUERY") {
       if (browserbaseSolverQueries >= 120) return false;
       browserbaseSolverQueries += 1;
+      browserbaseSolverMethods.set(request, method);
       return true;
     }
     if (browserbaseSolverRequests >= 4) return false;
     browserbaseSolverRequests += 1;
+    browserbaseSolverMethods.set(request, method);
     return true;
   }
   function isHcaptcha(request: Request): boolean {
@@ -436,6 +441,11 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     return action?.kind === "SUBMIT" && Boolean(passive && hcaptchaKeys.has(passive[1]));
   }
   async function onResponse(response: Response) {
+    const solverMethod = browserbaseSolverMethods.get(response.request());
+    if (solverMethod) {
+      if (solverMethod === "QUERY") browserbaseSolverQueryResponses += 1;
+      if (!response.ok()) browserbaseSolverHttpFailures += 1;
+    }
     if (policy.lever && activeSearch && response.request().method() === "GET" &&
       policy.searches?.some(rule => searchPermitted(new URL(response.url()), rule, activeSearch!.query)) && response.ok()) {
       const body = await response.body();
@@ -813,6 +823,11 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       // A provider solve can run without a visible widget. Allow its documented
       // 5–30 s latency before declaring that no final request was dispatched.
       const submitDeadline = Date.now() + (input.timeoutMs ?? 45_000);
+      // Live provider tasks keep polling without presenting a visible widget.
+      // Their budget is fixed from this click, never reset by polling traffic.
+      const solverDeadline = Date.now() + captchaSolveTimeoutMs;
+      const dispatchDeadline = () => Math.max(submitDeadline, verificationDeadline,
+        browserbaseSolverRequests > 0 ? solverDeadline : 0);
       const challenged = async () => {
         if (current.admitted || current.error) return false;
         if (verificationOpened) {
@@ -843,10 +858,16 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         for (let round = 0; round < 3; round += 1) {
           solvedChallenge = false;
           const settled = await waitFor(async () => Boolean(current.error || current.submission && await receipt(current.submission) || await challenged() ||
-            current.challenge && await verificationShown()), signal, () => Math.max(submitDeadline, verificationDeadline));
+            current.challenge && await verificationShown()), signal, dispatchDeadline);
           if (settled || !solvedChallenge) break;
         }
         await drain();
+        if (!current.beginStarted && browserbaseSolverRequests > 0) {
+          await hooks.checkpoint?.({ phase: "BROWSERBASE_SOLVER_WAIT_FINISHED", provider: "BROWSERBASE_HCAPTCHA",
+            createRequests: browserbaseSolverRequests, queryRequests: browserbaseSolverQueries,
+            queryResponses: browserbaseSolverQueryResponses, httpFailures: browserbaseSolverHttpFailures,
+            waitExpired: Date.now() >= dispatchDeadline() });
+        }
         if (verificationOpened && !current.beginStarted && Date.now() >= verificationDeadline) current.error ??= "DELIVERY_BROWSER_VERIFICATION_TIMEOUT";
         if (current.submission) {
           const observed = await receipt(current.submission);

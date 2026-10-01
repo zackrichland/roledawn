@@ -113,6 +113,7 @@ In order: (1) profile facts through anchored label rules (`application-field-fac
 - Lever’s native Current location is a lookup, not free text: select an approved city result and seal its `selectedLocation` metadata before résumé upload (D-150).
 - Opening React Select menus is slow (about 22 s per full inspection); menu reads are cached while a control's visible state is unchanged (D-104).
 - Lever's résumé parser overwrites hidden city metadata even when visible text is protected; restore only the worker's own approved city after upload, through the native lookup/menu, never during final submit (D-151).
+- An observed Browserbase hCaptcha task gets a fixed 120 s budget from the submit click, even without a visible widget; polling never extends it. Its timeout checkpoint stores counts, never provider identifiers or tokens (D-154).
 - Saving a candidate fact, résumé or evidence item bumps `candidates.application_input_version`, invalidates older sends and pauses auto-apply. D-121 includes published career/voice/story edits; extraction/interview metadata and standing answers do not bump it. Don't edit facts during a live run.
 - Single-account sign-in: `https://roledawn.netlify.app/auth/test-session?key=<ROLEDAWN_TEST_ACCESS_KEY>`. Without the key: "This RoleDawn workspace is private."
 - `.env.local` points at the hosted database. Local `dev:full` and `worker:*` compete with production lanes and can send real applications; keep `ROLEDAWN_AUTOPILOT_ENABLED=false` locally unless you mean to send.

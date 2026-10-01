@@ -13,11 +13,13 @@ six employer-confirmed applications, including three fresh runs without
 candidate questions, verified by hosted readback on 2026-10-01 UTC. Lever and Ashby have delivery adapters; live employer
 acceptance remains unproven for both. Keep the product scoped to personal use.
 
-**Published release:** `c7a7c6b`, full-build Netlify deployment
-`6abea39f98dc8e43b8758b97` (2026-10-01 UTC). Authenticated worker health
-confirms that exact deploy with workers enabled. It includes D-150/D-151 form
-repairs and rejection diagnostics. D-152's exact provider-local solver rule is
-implemented with checks; publication and live acceptance remain pending.
+**Published release:** `a9bfe66`, full-build Netlify deployment
+`6abeacb24b61a8375253b336` (2026-10-01 UTC). Authenticated worker health
+confirms that exact deploy with workers enabled. It includes D-150–D-153 form
+repairs, rejection diagnostics and provider-local solver creation/polling.
+The next live Lever runs admit creation and polling but still stop after the
+45 s dispatch wait with zero submission attempts. D-154 gives observed tasks
+the existing fixed 120 s solve budget; publication and live acceptance remain pending.
 
 **2026-10-01 acceptance batch in progress:** nine fresh non-tech jobs (three per supported ATS) were pasted through the published Home with review-before-send off. All three new Greenhouse employer receipts are verified by hosted readback through 2026-10-01 18:26 UTC, with mailbox-supplied codes and no candidate questions. Home shows six total Applied and Sent today 3/24. Six applications remain unresolved. After D-151, all three Lever forms pass field readback but do not dispatch a final request; private session logs show a blocked Browserbase provider-local preflight (D-152). All three Ashby final responses return the exact low-score verification error; they have no receipts and remain blocked from resend. D-149 is published as `0e61dbd`, deployment `6abe96e6cf0efea8ddd597f8`, with exact authenticated worker health verified. Its initial city classification exposed Lever's actual dropdown selection contract; D-150 adds selection and metadata readback, exact saved phone-country reuse, and separate handling of Ashby's optional SMS preference. D-150 is published in deployment `6abe9df750bf79e298d9bdff`; authenticated health confirms that exact production deploy with workers enabled. Its phone-country migration `20261001180000` is applied, recorded and read back; regenerated public types are unchanged. All nine unsubmitted runs were requeued after publication. FAILED_SAFE sends used the candidate control RPC; the three WAITING_ANSWERS sends received an operator recheck scoped by application id, unchanged input version, no attempt, no seal, no lease and no stop request, with an audit event. Open questions remain intact until the worker records an answer or supersedes them after exact final readback. Greenhouse pages intermittently returned HTTP 503 and later 200; that is time-specific availability evidence, not a confirmed submission or platform-wide outage. One kit stopped at `LETTER_SHORT` and was retried through Home.
 
@@ -53,7 +55,7 @@ They do not override this snapshot or the [application playbook](application-pla
 | Site | Supported path | Proof |
 |---|---|---|
 | Greenhouse | Prepare, fill, submit, handle emailed code and confirm. | Three earlier confirmations plus three fresh 2026-10-01 confirmations without candidate questions; all six record mailbox-supplied codes. The live location probe (D-118) is field-interaction evidence, not another application. |
-| Lever | Delivery adapter and fixture coverage. | Three fresh runs pass complete field readback but a blocked provider-local solver call prevents final dispatch (D-152); no recorded live employer confirmation. |
+| Lever | Delivery adapter and fixture coverage. | Three fresh runs pass complete field readback. After D-153, provider creation/polling succeeds but the dispatch wait expires before an employer request; D-154 is pending. No recorded live employer confirmation. |
 | Ashby | Exact-schema drafts, attachments, single/multiple-form submission and receipt handling. | Two real-client replays pass with the actual pre-dispatch checks. An earlier attempt remains unknown; three fresh final responses return a low-score verification error and have no receipts. Their resend blocks remain. |
 | Other boards | Research templates only. | No delivery proof; see [board templates](../boards/README.md). |
 
