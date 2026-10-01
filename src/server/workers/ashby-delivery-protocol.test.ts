@@ -198,8 +198,23 @@ test("mixed location widgets bind their reviewed lookup types and still accept o
   Object.assign(changed.sections[0].fieldEntries.find(entry => entry.field.path === "_systemfield_location")!.field, { locationTypes: ["City"] });
   assert.throws(() => protocol.observe(save("_systemfield_location", {}),
     { data: { setFormValue: changed } }), /LOCATION_TYPES_DRIFT/u);
-  for (const types of [["Country"], ["Region", "City"], ["Country", "Region", "City", "Other"], ["City", "Country", "Region"]]) {
+  for (const types of [["Country"], ["Region", "City"], ["Country", "Region", "City", "Other"], ["City", "Country", "City"]]) {
     assert.equal(createAshbyProtocol(board, job).authorize(envelope("ApiAutocompleteGeoLocation", { text: "", locationTypes: types })), null);
+  }
+});
+
+test("mixed location type order varies by employer while search remains bound to the exact returned array", () => {
+  for (const types of [["Region", "City", "Country"], ["City", "Country", "Region"], ["Country", "City", "Region"]]) {
+    const mixedForm = form();
+    Object.assign(mixedForm.sections[0].fieldEntries.find(entry => entry.field.path === "_systemfield_location")!.field, { locationTypes: types });
+    const protocol = createAshbyProtocol(board, job);
+    assert.equal(protocol.authorize(envelope("ApiAutocompleteGeoLocation", { text: "", locationTypes: types })), "READ");
+    protocol.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: mixedForm, surveyForms: [] } } });
+    protocol.beginField(field("_systemfield_location", "SINGLE_SELECT"), "Springfield", { semantic: "CITY", source: "FACT", hints: { region: "IL", country: "US" } });
+    const search = envelope("ApiAutocompleteGeoLocation", { text: "Springfield", locationTypes: types });
+    assert.equal(protocol.authorize(search, "Springfield"), "SEARCH");
+    assert.equal(protocol.authorize({ ...search, variables: { ...search.variables, locationTypes: [...types].reverse() } }, "Springfield"), null);
+    assert.equal(protocol.authorize({ ...search, variables: { ...search.variables, text: "Unapproved city" } }, "Springfield"), null);
   }
 });
 

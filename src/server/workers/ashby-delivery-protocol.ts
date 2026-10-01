@@ -61,7 +61,11 @@ export function parseAshbyEnvelope(url: string, method: string, body: Buffer | n
 
 const CITY_LOOKUP = ["City"];
 const MIXED_LOCATION_LOOKUP = ["Country", "Region", "City"];
-const reviewedLocationTypes = (value: unknown) => equal(value, CITY_LOOKUP) || equal(value, MIXED_LOCATION_LOOKUP);
+// Employers order the same three location types differently. Retain the exact
+// server array in the field/search binding; recognize only this reviewed set.
+const reviewedLocationTypes = (value: unknown) => equal(value, CITY_LOOKUP) || Array.isArray(value) &&
+  value.length === MIXED_LOCATION_LOOKUP.length && new Set(value).size === value.length &&
+  value.every(type => MIXED_LOCATION_LOOKUP.includes(type));
 type Field = { path: string; type: string; many: boolean; options: { label: string; value: unknown }[]; value: unknown; required: boolean; hidden: boolean; locationTypes: unknown };
 type Form = { id: string; definition: string; action: string; fields: Map<string, Field> };
 function definitionId(value: unknown, compositeJobId?: string): value is string {

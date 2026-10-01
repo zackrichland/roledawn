@@ -2,7 +2,7 @@
 board: ashby
 status: fills-only
 difficulty: medium
-last_verified: 2026-09-30
+last_verified: 2026-10-01
 url_patterns:
   - jobs.ashbyhq.com/<org>
   - jobs.ashbyhq.com/<org>/<job_uuid>
@@ -146,3 +146,5 @@ Don't:
 - 2026-09-30 (D-140): the reviewed system location slot may ask which city and country the candidate intends to work from. That wording needs the candidate's explicit answer, not a residence default; city/region/country lookup matching accepts only fixed jurisdiction aliases and a unique exact result.
 
 - 2026-09-30 (D-141): shortening a saved city answer can drop its region and select a same-named state from the mixed lookup. Copy text verbatim when its saved topic is the exact question; retain all supplied location components for new wording. The city-only protocol check remains unchanged.
+
+- 2026-10-01 (D-149): one public insurance-employer form returns location types in the order Region, City, Country. Recognize permutations of exactly the reviewed Country/Region/City set, rejecting duplicates and unknown types; retain the exact server array for subsequent lookup and schema comparisons. City result, region/country and autosave checks remain required. See source AB-20261001-01; live acceptance is still pending.

@@ -2,7 +2,7 @@
 board: lever
 status: fills-only
 difficulty: medium
-last_verified: 2026-09-30
+last_verified: 2026-10-01
 url_patterns:
   - jobs.lever.co/<site>/<posting_uuid>
   - jobs.lever.co/<site>/<posting_uuid>/apply
@@ -130,3 +130,5 @@ Don't:
 - 2026-09-30 (D-139): the upload button uppercases its displayed filename through CSS. Check its exact DOM text, while retaining visible-marker, response, byte and final readback requirements. A real synthetic PDF parsed successfully but old innerText comparison falsely stopped; a different underlying filename remains rejected.
 
 - 2026-09-30 (D-140): optional native `org`/Current company and `location`/Current location fields can be populated by parsing. After approved uploads, omit unverified values only when the exact slot was initially empty; preserve initial values, approved writes and required questions. Reintroduced values fail final readback.
+
+- 2026-10-01 (D-149): a required native `location`/`location-input` slot labeled Current location was left for résumé parsing, then stopped when a saved answer differed from that unapproved value. The reviewed Lever observer now gives only this exact native slot city semantics, so the approved city is filled and blurred before upload. A fixture verifies one submit with that city and zero submits without an approved city; live acceptance is still pending.

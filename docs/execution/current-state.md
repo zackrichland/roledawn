@@ -21,6 +21,8 @@ and all 14 checked script/style assets return 200. The release includes the
 LinkedIn skip guidance (D-148) and the browser recording/log settings (D-147).
 No new employer submission was started for this deployment check.
 
+**2026-10-01 acceptance batch in progress:** fresh named jobs were pasted through the published Home with review-before-send off. No new employer receipt has been observed yet. Initial stops identify a required Lever current-location parser conflict and an Ashby location-type order mismatch (D-149); the local fixes are not yet published. Greenhouse public hosted and embedded pages independently return HTTP 503, so form-unavailable stops are provider evidence, not a confirmed submission.
+
 The sole previously recorded Ashby submission occurred on `b103640`. The last recorded readback
 shows one attempt, zero confirmed attempts/receipts, and
 `RECONCILING`/`UNCERTAIN` with `DELIVERY_RECEIPT_RECONCILIATION_REQUIRED`.

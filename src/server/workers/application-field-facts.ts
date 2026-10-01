@@ -17,7 +17,7 @@ export type FieldFactDescriptor = Readonly<{
   name?: string;
   domId?: string;
   /** Trusted observer metadata from the reviewed board adapter. */
-  provider?: "ASHBY";
+  provider?: "ASHBY" | "LEVER";
 }>;
 
 type FactLabelRule = Readonly<{
@@ -250,6 +250,10 @@ export function classifyFieldFact(field: FieldFactDescriptor): CandidateFactKey 
   // label. Generic "Location" controls retain no inferred location semantic.
   if (field.provider === "ASHBY" && label === "location" && field.domId === "_systemfield_location" &&
     field.name === "_systemfield_location" && field.kind === "SINGLE_SELECT" && field.inputType === "text") return "location.city";
+  // Lever's native system slot is the candidate's current city. Fill it before
+  // uploading, so résumé parsing cannot become authority for a required value.
+  if (field.provider === "LEVER" && label === "current location" && field.domId === "location-input" &&
+    field.name === "location" && field.kind === "TEXT" && field.inputType === "text") return "location.city";
   // The global exclusions govern the profile-fact table unchanged; saved
   // answers apply their own narrower exclusions (see ANSWER_LABEL_RULES).
   const matches = [

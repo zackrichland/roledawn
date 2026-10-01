@@ -3,7 +3,7 @@ import { resolveLeverDeliveryPolicy } from "../server/workers/application-delive
 
 export type SyntheticLeverMode = "normal" | "bad-upload" | "uncertain" | "duplicate" | "altered-file" | "upload-extra-field" | "parser-autofill" | "captcha" | "form-drift"
   | "invisible-captcha" | "captcha-on-submit" | "captcha-solved-on-submit" | "foreign-captcha" | "parser-change-events" | "filename-uppercase" | "filename-changed"
-  | "parser-prefilled" | "parser-required" | "parser-other-slot" | "parser-repopulate";
+  | "parser-prefilled" | "parser-required" | "parser-other-slot" | "parser-repopulate" | "parser-required-location";
 const SITEKEY = "a0000000-0000-4000-8000-00000000000b";
 const HCAPTCHA_FRAME = "https://newassets.hcaptcha.com/captcha/v1/fixture/static/hcaptcha.html";
 const HCAPTCHA_MODES = new Set<SyntheticLeverMode>(["captcha", "invisible-captcha", "captcha-on-submit", "captcha-solved-on-submit"]);
@@ -57,16 +57,19 @@ export function syntheticLeverDelivery(mode: SyntheticLeverMode = "normal") {
     <label><div class="application-label">Resume/CV <span class="required">✱</span></div><div class="application-field"><a class="visible-resume-upload"><span class="filename"></span><input type="file" name="resume" id="resume-upload-input" style="opacity:0;width:1px;height:1px"></a><span class="resume-upload-success" style="display:none">Resume analyzed</span></div></label>
     <label>Full name<input name="name" required></label><label>Current company<input name="${mode === "parser-other-slot" ? "otherOrg" : "org"}"${mode === "parser-required" ? " required" : ""}${mode === "parser-prefilled" ? ' value="Existing company"' : ""}></label>
     ${mode === "parser-autofill" ? '<label>Current location<input name="location"></label>' : ""}
+    ${mode === "parser-required-location" ? '<label>Current location<input name="location" id="location-input" required></label>' : ""}
     <input type="hidden" name="accountId" value="20000000-0000-4000-8000-000000000002">
     ${hcaptcha ? `<div id="h-captcha" class="h-captcha" data-sitekey="${SITEKEY}"${mode === "captcha" ? "" : ' data-size="invisible"'}></div><script src="https://js.hcaptcha.com/1/secure-api.js?render=explicit"></script>` : ""}
     ${mode === "foreign-captcha" ? '<iframe title="reCAPTCHA" src="https://www.google.com/recaptcha/api2/anchor?k=fixture&size=invisible" style="display:none"></iframe>' : ""}
     <button type="button" id="btn-submit">Submit application</button></form><script>
     const form=document.getElementById('application-form'),file=document.getElementById('resume-upload-input');
     ${mode === "parser-change-events" ? "let nameEdited=false;form.elements.name.addEventListener('change',()=>{nameEdited=true;});" : ""}
+    ${mode === "parser-required-location" ? "let locationEdited=false;form.elements.location.addEventListener('change',()=>{locationEdited=true;});" : ""}
     file.addEventListener('change',async()=>{const data=new FormData();data.append('resume',file.files[0]);data.append('accountId',form.elements.accountId.value);${mode === "upload-extra-field" ? "data.append('unauthorized','LEAK');" : ""}
       document.querySelector('.filename').textContent=${mode === "filename-changed" ? "'Other-Resume.pdf'" : "file.files[0].name"};
       const result=await fetch('/parseResume',{method:'POST',body:data});
       if(result.ok){document.querySelector('.resume-upload-success').style.display='block';${mode === "parser-autofill" ? "form.elements.org.value='Unverified employer';form.elements.location.value='Unverified city';" : ["parser-required", "parser-repopulate"].includes(mode) ? "form.elements.org.value='Unverified employer';" : mode === "parser-other-slot" ? "form.elements.otherOrg.value='Unverified employer';" : mode === "parser-change-events" ? "if(!nameEdited)form.elements.name.value='Unapproved parser name';" : ""}}
+      ${mode === "parser-required-location" ? "if(result.ok && !locationEdited)form.elements.location.value='Unverified city';" : ""}
     });
     async function send(){${mode === "parser-repopulate" ? "form.elements.org.value='Unverified employer';" : ""}const data=new FormData(form);${mode === "altered-file" ? "data.set('resume',new File(['wrong bytes'],'resume.pdf',{type:'application/pdf'}));" : ""}
       const result=await fetch(form.action,{method:'POST',body:data,redirect:'manual'});

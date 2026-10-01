@@ -22,7 +22,7 @@ function packet(url: string): ApplicationFillExecutionPackage {
   };
 }
 
-async function run(mode: SyntheticLeverMode, after?: (result: Awaited<ReturnType<ReturnType<typeof createApplicationDeliveryDriver>["deliver"]>>, fixture: ReturnType<typeof syntheticLeverDelivery>, state: { begins: number; prior: DeliveryPriorSubmission | null }, page: import("playwright-core").Page) => Promise<void>) {
+async function run(mode: SyntheticLeverMode, after?: (result: Awaited<ReturnType<ReturnType<typeof createApplicationDeliveryDriver>["deliver"]>>, fixture: ReturnType<typeof syntheticLeverDelivery>, state: { begins: number; prior: DeliveryPriorSubmission | null }, page: import("playwright-core").Page) => Promise<void>, extraFacts: ApplicationFillExecutionPackage["facts"] = []) {
   const fixture = syntheticLeverDelivery(mode);
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   const state: { begins: number; prior: DeliveryPriorSubmission | null } = { begins: 0, prior: null };
@@ -36,7 +36,9 @@ async function run(mode: SyntheticLeverMode, after?: (result: Awaited<ReturnType
         async checkpoint(record) { if (record.submission) state.prior = record.submission as DeliveryPriorSubmission; },
       },
     });
-    const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: fixture.policy.startUrl, executionPackage: packet(fixture.policy.startUrl) });
+    const executionPackage = packet(fixture.policy.startUrl);
+    const result = await driver.deliver({ binding, runtimeHandle: {}, startUrl: fixture.policy.startUrl,
+      executionPackage: { ...executionPackage, facts: [...executionPackage.facts, ...extraFacts] } });
     await after?.(result, fixture, state, page);
     return { result, observed: fixture.observed, state };
   } finally { await browser.close(); }
@@ -100,6 +102,22 @@ test("Lever completes the native field change before upload so its parser preser
   assert.equal(observed.uploads.length, 1);
   assert.equal(observed.submits, 1);
   assert.equal(state.begins, 1);
+});
+
+test("Lever fills a required current city before résumé parsing, using only the approved city fact", options, async () => {
+  const { result, observed, state } = await run("parser-required-location", undefined,
+    [{ factVersionId: "city-1", factKey: "location.city", value: "Springfield", valueHash: digest(JSON.stringify("Springfield")) }]);
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.uploads.length, 1);
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+  assert.match(observed.submissions[0].toString(), /name="location"\r\n\r\nSpringfield\r\n/u);
+  assert.equal(observed.submissions[0].includes("Unverified city"), false);
+  // With no candidate city, parsing cannot supply authority for the same slot.
+  const unknown = await run("parser-required-location");
+  assert.equal(unknown.result.kind, "QUESTIONS_REQUIRED", JSON.stringify(unknown.result));
+  assert.equal(unknown.observed.submits, 0);
+  assert.equal(unknown.state.begins, 0);
 });
 
 test("Lever verifies the exact uploaded filename through presentation case changes", options, async () => {

@@ -45,7 +45,7 @@ export type AgentBrowserField = Readonly<{
   /** Reviewed Ashby form render and field path, when the control has no native form. */
   formKey?: string;
   /** Supplied by the reviewed adapter, never by page attributes or model arguments. */
-  provider?: "ASHBY";
+  provider?: "ASHBY" | "LEVER";
   autocomplete: string;
   placeholder: string;
   /** Native UTF-16 text limit; omitted when the control has none. */
@@ -255,6 +255,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   }
   const expectedOrigin = destination.origin;
   const ashbyLabels = options?.ashbyLabels === true;
+  const leverLabels = options?.leverLabels === true;
   const permitsPassiveFrame = (url: string) => options?.isPermittedPassiveFrameUrl
     ? options.isPermittedPassiveFrameUrl(url) : options?.permittedPassiveFrameUrls?.includes(url) === true;
   const reviewedChallengeFrame = (url: string) => options?.isReviewedChallengeFrameUrl?.(url) === true;
@@ -412,6 +413,9 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
         const descriptor = {
           frameIndex, frameUrl: frame.url(), form: control.form, tag: control.tag, type: control.type, role: control.role,
           ...(ashbyLabels && control.form !== "outside-form" ? { provider: "ASHBY" as const } : {}),
+          ...(leverLabels && control.form.startsWith('["application-form",') &&
+            control.name === "location" && control.id === "location-input" && control.tag === "input" && control.type === "text"
+            ? { provider: "LEVER" as const } : {}),
           name: control.name, id: control.id, label, autocomplete: control.autocomplete,
           placeholder: control.placeholder, required: group.some((item) => item.required),
           ...(control.maxLength !== undefined ? { maxLength: control.maxLength } : {}),

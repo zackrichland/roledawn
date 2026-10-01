@@ -1,11 +1,19 @@
 ---
 title: Research source register
 status: active evidence index
-last_updated: 2026-09-30
+last_updated: 2026-10-01
 accessed_at: 2026-08-06 unless otherwise stated; backend architecture, Supabase, ATS endpoint, and Browserbase Live View sources refreshed through 2026-09-16
 ---
 
 # Source register
+
+## Hosted form diagnosis — checked 2026-10-01
+
+| ID | Primary source | Evidence class and observed use | Limit |
+|---|---|---|---|
+| AB-20261001-01 | [Leavitt Group public application](https://jobs.ashbyhq.com/leavitt/f0a351fb-b5f0-4e85-8f22-c3de7173c439/application) | **Verified read-only public form and posting-schema response:** the system Location field returns `locationTypes` as Region, City, Country. Same reviewed set, different order. | Initial schema evidence only; no candidate value was sent by this read and no employer acceptance is established. |
+| LV-20261001-01 | [Insomnia Cookies public application](https://jobs.lever.co/insomniacookies/d81eceab-5f28-4ab8-8c3c-0fc6b8336035/apply) | **Verified read-only DOM:** required native Current location slot uses `name=location`, `id=location-input`; optional LinkedIn connection is separate. | Public form observation supports narrow classification, not employer acceptance. |
+| GH-20261001-01 | [Everlane hosted posting](https://job-boards.greenhouse.io/everlane/jobs/7923955003), [embedded form](https://job-boards.greenhouse.io/embed/job_app?for=everlane&token=7923955003), [Bombas hosted posting](https://job-boards.greenhouse.io/bombas/jobs/8220881) | **Verified browser and HTTP observation:** these public hosted pages returned 503 during the acceptance batch. The public posting API still returned job metadata. | Time-specific availability snapshot; not a claim of a permanent or platform-wide outage. |
 
 ## Hosted ATS forms and branding — checked 2026-09-30
 
