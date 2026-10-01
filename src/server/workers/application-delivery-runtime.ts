@@ -137,7 +137,7 @@ export async function createApplicationDeliveryRuntimeForNodeWorker(
       list: (key) => sdk.sessions.list({ q: `user_metadata['roledawn_delivery_provision_key']:'${key}'` }),
       create: (key) => sdk.sessions.create({
         projectId, region: configuration.region, api_timeout: 900, keepAlive: false,
-        browserSettings: { solveCaptchas: false, recordSession: false, logSession: false, ignoreCertificateErrors: false },
+        browserSettings: { solveCaptchas: true, recordSession: false, logSession: false, ignoreCertificateErrors: false },
         userMetadata: { roledawn_delivery_provision_key: key, roledawn_adapter_release: RELEASE },
       }).catch((error: unknown) => { throw deliveryProviderError(error); }),
       retrieve: (id) => sdk.sessions.retrieve(id),
