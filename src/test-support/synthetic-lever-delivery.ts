@@ -2,15 +2,16 @@ import type { Route } from "playwright-core";
 import { resolveLeverDeliveryPolicy } from "../server/workers/application-delivery-browser.ts";
 
 export type SyntheticLeverMode = "normal" | "bad-upload" | "uncertain" | "duplicate" | "altered-file" | "upload-extra-field" | "parser-autofill" | "captcha" | "form-drift"
-  | "invisible-captcha" | "captcha-on-submit" | "foreign-captcha";
+  | "invisible-captcha" | "captcha-on-submit" | "captcha-solved-on-submit" | "foreign-captcha";
 const SITEKEY = "a0000000-0000-4000-8000-00000000000b";
 const HCAPTCHA_FRAME = "https://newassets.hcaptcha.com/captcha/v1/fixture/static/hcaptcha.html";
-const HCAPTCHA_MODES = new Set<SyntheticLeverMode>(["captcha", "invisible-captcha", "captcha-on-submit"]);
+const HCAPTCHA_MODES = new Set<SyntheticLeverMode>(["captcha", "invisible-captcha", "captcha-on-submit", "captcha-solved-on-submit"]);
 
 /**
- * In-memory stand-in for hCaptcha's loader. It never solves anything: in
- * passive mode the score request returns a pass token; in challenge mode
- * execute() shows a visible challenge frame and never calls back.
+ * In-memory stand-in for hCaptcha's loader. In passive mode the score request
+ * returns a pass token; in challenge mode execute() shows a visible challenge
+ * frame and never calls back; in solved mode it shows the challenge, then acts
+ * like the session's solver: fills the token, hides the challenge, calls back.
  */
 function hcaptchaScript(mode: SyntheticLeverMode) {
   return `(() => {
@@ -34,7 +35,9 @@ function hcaptchaScript(mode: SyntheticLeverMode) {
       return 0;
     },
     async execute() {
-      ${mode === "captcha-on-submit" ? "challenge.parentElement.style.cssText = 'visibility:visible;position:absolute;top:20px;left:20px;opacity:1'; return;" : ""}
+      ${mode === "captcha-on-submit" || mode === "captcha-solved-on-submit" ? "challenge.parentElement.style.cssText = 'visibility:visible;position:absolute;top:20px;left:20px;opacity:1';" : ""}
+      ${mode === "captcha-on-submit" ? "return;" : ""}
+      ${mode === "captcha-solved-on-submit" ? "await new Promise((resolve) => setTimeout(resolve, 400)); document.querySelector('[name=\"h-captcha-response\"]').value = 'P1_synthetic-solved'; challenge.parentElement.style.cssText = 'visibility:hidden;position:absolute;top:-10000px;left:0;opacity:0'; callback('P1_synthetic-solved'); return;" : ""}
       const result = await fetch('https://api.hcaptcha.com/getcaptcha/${SITEKEY}', { method: 'POST', body: 'v=fixture&host=jobs.lever.co' }).then((r) => r.json());
       if (result.pass) { document.querySelector('[name="h-captcha-response"]').value = result.generated_pass_UUID; callback(result.generated_pass_UUID); }
     },
@@ -77,6 +80,7 @@ export function syntheticLeverDelivery(mode: SyntheticLeverMode = "normal") {
     if(r.method()==="POST" && r.url()===destination) {observed.submits+=1;return route.fulfill({status:200,contentType:"application/json",body:'{"ok":true}'});}
     if(r.method()==="GET" && r.url()===policy.receipt.url) return route.fulfill({status:200,contentType:"text/html",body:'<h3 data-qa="msg-submit-success">Application submitted!</h3>'});
     if(hcaptcha && r.method()==="GET" && r.url()==="https://js.hcaptcha.com/1/secure-api.js?render=explicit") return route.fulfill({status:200,contentType:"text/javascript",body:hcaptchaScript(mode)});
+    if(mode==="foreign-captcha" && r.method()==="GET" && r.url().startsWith("https://www.google.com/recaptcha/api2/anchor?")) return route.fulfill({status:200,contentType:"text/html",body:"<!doctype html><html><body>synthetic reCAPTCHA anchor</body></html>"});
     if(hcaptcha && r.method()==="GET" && r.url()===HCAPTCHA_FRAME) return route.fulfill({status:200,contentType:"text/html",body:"<!doctype html><html><body>synthetic hCaptcha frame</body></html>"});
     if(hcaptcha && r.method()==="POST" && r.url().startsWith("https://api.hcaptcha.com/checksiteconfig?")) return route.fulfill({status:200,contentType:"application/json",headers:cors,body:'{"pass":true}'});
     if(hcaptcha && r.method()==="POST" && r.url()===`https://api.hcaptcha.com/getcaptcha/${SITEKEY}`) {observed.captchaScores+=1;return route.fulfill({status:200,contentType:"application/json",headers:cors,body:'{"pass":true,"generated_pass_UUID":"P1_synthetic-pass"}'});}

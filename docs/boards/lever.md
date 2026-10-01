@@ -88,7 +88,7 @@ Single page.
 - **Fills-only** (see [README](README.md)). Release `lever-hosted-global/2026-09-16` in `resolveLeverDeliveryPolicy` (`src/server/workers/application-delivery-browser.ts`); `application-delivery-driver.ts` demands provenance for every non-file Lever value; card labels (`leverLabels`) and passive hCaptcha handling live in `agents-browser-tools.ts` and `agents-captcha.ts`.
 - **Verified:** the adapter fills, uploads and includes a one-use multipart submit, exercised only against synthetic fixtures (`application-delivery-lever.test.ts`). Autopilot accepts `jobs.lever.co` destinations, so a live send **would submit**.
 - **Verified:** no live Lever submission or receipt exists. The 2026-09-16 read-only probe (Aledade, 28 fields) stopped at CAPTCHA takeover with zero non-GET requests, before the D-104 loader fix.
-- Gaps: no live proof; EU host and custom domains excluded; any visible hCaptcha hands over; custom success-page redirects are not recognized as receipts; `liveEmployerAccepted: false` (correctly) in the capability registry.
+- Gaps: no live proof; EU host and custom domains excluded; a visible hCaptcha goes to the session's solver and hands over only if still unsolved after 120 s (D-136); custom success-page redirects are not recognized as receipts; `liveEmployerAccepted: false` (correctly) in the capability registry.
 
 ## Agent guidance
 
@@ -97,10 +97,10 @@ Do:
 - Fill approved facts before the résumé upload; re-verify every value afterwards.
 - Treat any parser-filled value as unapproved until it matches a fact or a candidate answer.
 - Upload exactly one approved résumé artifact; confirm the displayed name and success marker.
-- Stop and hand over the moment a visible hCaptcha challenge or checkbox appears.
+- Tick a consent or attestation checkbox for the candidate. The server, not the agent, handles hCaptcha (D-136).
 
 Don't:
-- Call hCaptcha answer endpoints, solve, or resubmit to get a better score.
+- Resubmit to get a better score, or count a solved challenge as a receipt.
 - Treat `/thanks`, a LinkedIn import or an email as proof.
 - Use the Postings API `POST` (it needs the employer's key).
 - Fill EEO, disability or pronoun fields without a saved voluntary answer (D-091).

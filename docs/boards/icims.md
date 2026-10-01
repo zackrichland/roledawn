@@ -99,7 +99,7 @@ Do:
 - Count an application only with the confirmation page plus a Dashboard status.
 
 Don't:
-- Solve hCaptcha or ask the employer to allowlist RoleDawn's IPs on the candidate's behalf.
+- Ask the employer to allowlist RoleDawn's IPs on the candidate's behalf.
 - Sign the certification or e-signature, or answer EEO or WOTC questions, without candidate authority and saved answers.
 - Use social sign-in, or unsubscribe the candidate from employer email.
 - Continue into a third-party assessment or WOTC site; stop and hand over.

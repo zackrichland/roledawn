@@ -4,7 +4,7 @@ import type { Page, Request, Response, Route } from "playwright-core";
 
 import { parseAutopilotDestination, parseAshbyAutopilotDestination, parseGreenhouseAutopilotDestination, parseLeverAutopilotDestination } from "../../domain/application-autopilot-eligibility.ts";
 import type { AgentBrowserField, AgentFieldValue } from "./agents-browser-tools.ts";
-import { APPLICATION_FILL_CAPTCHA_TAKEOVER, pageShowsCaptchaChallenge } from "./agents-captcha.ts";
+import { APPLICATION_FILL_CAPTCHA_TAKEOVER, CAPTCHA_SOLVE_TIMEOUT_MS, captchaPending, isCaptchaProviderRequestUrl, waitForCaptchaSolved } from "./agents-captcha.ts";
 import type { MaterializedApplicationArtifact } from "./application-fill-materializer.ts";
 
 import type { OptionMatch } from "./agents-option-match.ts";
@@ -274,10 +274,13 @@ function validatePolicy(policy: DeliverySitePolicy): void {
 export async function createApplicationDeliveryBrowser(input: Readonly<{
   page: Page; policy: DeliverySitePolicy; hooks: DeliverySubmissionHooks; timeoutMs?: number;
   requestTransport?: DeliveryRequestTransport;
+  /** How long a shown CAPTCHA may take to be solved before the send hands over (D-136). */
+  captchaSolveTimeoutMs?: number;
 }>) {
   const { page, policy, hooks } = input;
   validatePolicy(policy);
   const timeoutMs = input.timeoutMs ?? 15_000;
+  const captchaSolveTimeoutMs = input.captchaSolveTimeoutMs ?? CAPTCHA_SOLVE_TIMEOUT_MS;
   const dispatch = input.requestTransport ?? ((route: Route) => route.continue());
   const context = page.context();
   if (context.serviceWorkers().length) throw new Error("DELIVERY_SERVICE_WORKER_UNSUPPORTED");
@@ -432,6 +435,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         // Worker requests have no frame: only fixed CAPTCHA script assets pass.
         if (recaptcha && request.method() === "GET" && new URL(request.url()).origin === "https://www.gstatic.com") { await dispatch(route); return; }
         if (hcaptcha && request.method() === "GET" && new URL(request.url()).origin === "https://newassets.hcaptcha.com") { await dispatch(route); return; }
+        if (isCaptchaProviderRequestUrl(request.url())) { await dispatch(route); return; }
         blockedRequests += 1; await route.abort(); return;
       }
       // Ashby chains each mutation from the previous response. Complete its
@@ -459,7 +463,9 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         Boolean(policy.searches?.some((rule) => searchPermitted(url, rule, activeSearch!.query)));
       const receiptNavigation = current?.kind === "SUBMIT" && current.admitted && request.method() === "GET" && canonical(request.url()) === canonical(policy.receipt.url);
       const moveNavigation = current?.kind === "MOVE" && current.admitted && request.method() === "GET" && policy.steps.some((step) => canonical(step.url) === canonical(request.url()));
-      if (asset || ashbyManifest || translation || bootstrap || search || recaptcha || hcaptcha || receiptNavigation || moveNavigation) { await dispatch(route); return; }
+      // The CAPTCHA solver (D-136) needs the provider's own challenge traffic; it carries no candidate data.
+      const captchaSolver = isCaptchaProviderRequestUrl(request.url()) && (request.postDataBuffer()?.length ?? 0) <= 2_000_000;
+      if (asset || ashbyManifest || translation || bootstrap || search || recaptcha || hcaptcha || captchaSolver || receiptNavigation || moveNavigation) { await dispatch(route); return; }
       // A CORS preflight has no candidate payload; it is limited to this exact
       // active action endpoint and requested method, never a wildcard origin.
       if (current?.request && request.method() === "OPTIONS" && canonical(request.url()) === canonical(current.request.url) &&
@@ -673,18 +679,31 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       if (!step?.submit) return { kind: "TAKEOVER", reasonCode: "DELIVERY_SUBMIT_POLICY_REQUIRED" };
       const current: ActionWindow = { kind: "SUBMIT", request: step.submit.request, admitted: false, reviewHash, review, signal, verifyReview };
       action = current;
-      // A passive CAPTCHA may turn into a visible challenge after the click. Stop
-      // before the final request is admitted; never interact with the challenge.
+      // A passive CAPTCHA may turn into a visible challenge after the click. The
+      // solver (D-136) gets the time to clear it; the send hands over only if it
+      // is still unsolved. Solving it is never a receipt, and the network guard
+      // still admits one final request for this sealed attempt.
+      let solvedChallenge = false;
+      const submitSelector = step.submit.selector;
       const challenged = async () => {
-        if (!(policy.lever?.invisibleHcaptcha || ashby) || current.admitted || current.error || !await pageShowsCaptchaChallenge(page, ashby ? passiveFrameUrls() : [])) return false;
+        if (current.admitted || current.error || !await captchaPending(page, passiveFrameUrls())) return false;
+        const solved = await waitForCaptchaSolved(page, { timeoutMs: captchaSolveTimeoutMs, signal, permittedPassiveFrameUrls: passiveFrameUrls });
         if (current.admitted || current.error) return false;
-        current.error = APPLICATION_FILL_CAPTCHA_TAKEOVER;
-        return true;
+        if (!solved) { current.error = APPLICATION_FILL_CAPTCHA_TAKEOVER; return true; }
+        solvedChallenge = true;
+        // The page's own callback usually sends after a solve; if it has not within a few seconds, click once more.
+        for (const until = Date.now() + 3_000; !current.admitted && !current.error && Date.now() < until;) await new Promise((resolve) => setTimeout(resolve, 100));
+        if (!current.admitted && !current.error) await page.locator(submitSelector).click({ timeout: timeoutMs }).catch(() => undefined);
+        return false;
       };
       try {
         await page.locator(step.submit.selector).click({ timeout: timeoutMs });
-        await waitFor(async () => Boolean(current.error || current.submission && await receipt(current.submission) || await challenged() ||
-          current.challenge && await verificationShown()), signal);
+        for (let round = 0; round < 3; round += 1) {
+          solvedChallenge = false;
+          const settled = await waitFor(async () => Boolean(current.error || current.submission && await receipt(current.submission) || await challenged() ||
+            current.challenge && await verificationShown()), signal);
+          if (settled || !solvedChallenge) break;
+        }
         await drain();
         if (current.submission) {
           const observed = await receipt(current.submission);

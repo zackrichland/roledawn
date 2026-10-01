@@ -120,7 +120,7 @@ Do:
 - Confirm "Submitted" in Candidate Home (or "You applied…" on the posting) before marking Applied.
 
 Don't:
-- Fill `beecatcher` or any robots-only field; solve or wait out a CAPTCHA.
+- Fill `beecatcher` or any robots-only field.
 - Reuse one password across tenants, create a second account on a tenant, or use Google, Apple or LinkedIn sign-in.
 - Tick terms or consent boxes, or answer disclosures, without candidate authority; use only saved voluntary answers (D-091).
 - Resubmit after "already applied" or a withdrawal.

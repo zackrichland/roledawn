@@ -1,13 +1,92 @@
 import type { Frame, Page } from "playwright-core";
 
 /**
- * Passive CAPTCHA handling. RoleDawn never solves, clicks, or otherwise
- * interacts with a CAPTCHA. For a site whose invisible hCaptcha only scores the
- * browser on submit (Lever), work may continue while nothing asks the person
- * to do anything; any visible challenge, checkbox widget or prompt hands the
- * application to the candidate.
+ * CAPTCHA handling (founder decision D-136, 2026-10-01). Delivery sessions run
+ * with Browserbase's CAPTCHA solver on. When a challenge shows, RoleDawn ticks
+ * the provider's own "I'm not a robot" checkbox and waits for the solver; the
+ * application is handed over only if the challenge is still unsolved when the
+ * wait ends. A solved challenge is never a receipt: only the employer's own
+ * response is. Form checkboxes (consent, privacy, attestation) are never
+ * ticked here; they stay with the candidate.
  */
 export const APPLICATION_FILL_CAPTCHA_TAKEOVER = "APPLICATION_FILL_CAPTCHA_TAKEOVER";
+
+/** How long to wait for the solver before handing over. Browserbase documents solves taking up to about 30 s. */
+export const CAPTCHA_SOLVE_TIMEOUT_MS = 120_000;
+
+/** Requests that belong to a CAPTCHA provider itself. They carry the challenge, never candidate data. */
+export function isCaptchaProviderRequestUrl(value: string): boolean {
+  let url: URL;
+  try { url = new URL(value); } catch { return false; }
+  if (url.protocol !== "https:" || url.username || url.password) return false;
+  if (["www.google.com", "www.recaptcha.net", "recaptcha.net", "www.gstatic.com"].includes(url.hostname)) return url.pathname.startsWith("/recaptcha/");
+  if (url.hostname === "hcaptcha.com" || url.hostname.endsWith(".hcaptcha.com")) return true;
+  return url.hostname === "challenges.cloudflare.com";
+}
+
+/** A CAPTCHA provider's own document (checkbox, challenge or widget frame). */
+export function isCaptchaFrameUrl(value: string): boolean {
+  return isCaptchaProviderRequestUrl(value) || isHcaptchaFrameUrl(value);
+}
+
+/**
+ * Ticks the provider's own checkbox ("I'm not a robot") when it is shown and
+ * not yet checked. Only elements inside a CAPTCHA provider's frame are
+ * touched, so no form field, consent or attestation box can be clicked here.
+ */
+export async function tickCaptchaCheckbox(page: Page): Promise<boolean> {
+  let ticked = false;
+  for (const frame of page.frames()) {
+    const url = frame.url();
+    if (!isCaptchaFrameUrl(url)) continue;
+    const selector = /recaptcha/u.test(url) ? "#recaptcha-anchor[aria-checked='false']"
+      : /hcaptcha/u.test(url) ? "#checkbox[aria-checked='false']"
+        : "input[type='checkbox']:not(:checked)";
+    const box = frame.locator(selector).first();
+    if (!await box.isVisible().catch(() => false)) continue;
+    await box.click({ timeout: 5_000 }).then(() => { ticked = true; }).catch(() => undefined);
+  }
+  return ticked;
+}
+
+/** Every response-token field on the page is filled: the provider accepted the solve. */
+async function captchaTokensFilled(page: Page): Promise<boolean> {
+  let seen = 0;
+  for (const frame of page.frames()) {
+    const result = await frame.evaluate(() => {
+      const fields = [...document.querySelectorAll<HTMLTextAreaElement | HTMLInputElement>(
+        "textarea[name^='g-recaptcha-response'], textarea[name='h-captcha-response'], input[name='cf-turnstile-response']")];
+      return { count: fields.length, filled: fields.filter((field) => field.value.trim().length > 0).length };
+    }).catch(() => ({ count: 0, filled: 0 }));
+    if (result.filled < result.count) return false;
+    seen += result.count;
+  }
+  return seen > 0;
+}
+
+/** A challenge still asks for a person: one is shown and the provider has not issued its token. */
+export async function captchaPending(page: Page, permittedPassiveFrameUrls: readonly string[] = []): Promise<boolean> {
+  if (!await pageShowsCaptchaChallenge(page, permittedPassiveFrameUrls)) return false;
+  return !await captchaTokensFilled(page);
+}
+
+/**
+ * Waits for a shown challenge to be solved, ticking the provider's checkbox
+ * along the way. True when nothing is pending; false when the wait ran out.
+ */
+export async function waitForCaptchaSolved(page: Page, options: Readonly<{
+  timeoutMs?: number; signal?: AbortSignal; permittedPassiveFrameUrls?: () => readonly string[];
+}> = {}): Promise<boolean> {
+  const deadline = Date.now() + (options.timeoutMs ?? CAPTCHA_SOLVE_TIMEOUT_MS);
+  let lastTick = 0;
+  while (true) {
+    if (options.signal?.aborted) throw new Error("AGENTS_FILL_CANCELLED");
+    if (!await captchaPending(page, options.permittedPassiveFrameUrls?.() ?? [])) return true;
+    if (Date.now() >= deadline) return false;
+    if (Date.now() - lastTick >= 5_000) { lastTick = Date.now(); await tickCaptchaCheckbox(page); }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
 
 /** hCaptcha's own widget/challenge document. Visibility of its iframe decides whether it presents a challenge. */
 export function isHcaptchaFrameUrl(value: string): boolean {

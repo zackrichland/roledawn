@@ -2,7 +2,7 @@
 title: Founder directives
 status: canonical; read before changing product behavior
 owner: founder
-last_updated: 2026-09-30
+last_updated: 2026-10-01
 scope: standing instructions from the founder that every contributor and coding agent must follow
 ---
 
@@ -56,3 +56,4 @@ own answers.
 14. **Lean and modular.** Keep the repository easy for coding agents to read; keep AGENTS.md current with lessons learned. (2026-09-30)
 15. **Push to GitHub once it works,** with documentation that explains how everything works. (2026-09-29)
 16. **Remember everything.** Record every instruction here, in the decision log, and in agent memory. (2026-09-30)
+17. **CAPTCHAs never stop an application.** Turn on Browserbase's CAPTCHA solver for every board; RoleDawn ticks the "I'm not a robot" checkbox when shown and waits for the solve. Consent and attestation checkboxes still go to the candidate, and a solved CAPTCHA is never a receipt (D-136). (2026-10-01)

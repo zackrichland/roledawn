@@ -95,7 +95,7 @@ Do:
 Don't:
 - Enter an SSN, date of birth, religion, marital status or background-check consent without explicit candidate authority for that application.
 - Answer disqualification or prescreening questions by inference.
-- Solve hCaptcha, retry codes (five failures lock the candidate out), or accept legal disclaimers for the candidate.
+- Retry codes (five failures lock the candidate out), or accept legal disclaimers for the candidate.
 
 ## Sources
 

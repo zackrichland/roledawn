@@ -57,7 +57,7 @@ Rules for filling this template (from AGENTS.md):
 
 - CAPTCHA provider and when it appears:
 - Emailed codes, rate limits, bot detection, honeypots:
-- RoleDawn never solves CAPTCHAs.
+- CAPTCHAs go to the session's solver (D-136); record the provider and whether it is invisible or shows a checkbox.
 
 ## Submission and proof
 
@@ -80,7 +80,7 @@ Do:
 -
 
 Don't:
-- Solve, click or wait out a CAPTCHA; stop on any visible challenge.
+- Tick a consent or attestation box for the candidate, or treat a solved CAPTCHA as a receipt.
 - Invent an answer, date, employer, title or sensitive fact.
 
 ## Sources

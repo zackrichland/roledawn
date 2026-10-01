@@ -47,7 +47,7 @@ The status is documentation, not permission. Delivery authority comes from `ATS_
 
 ## Rules on every board
 
-- Never solve, click, refresh or wait out a CAPTCHA. Stop on any visible challenge and hand over.
+- CAPTCHAs: the session's Browserbase solver handles them on every board (D-136). The server ticks only the provider's own "I'm not a robot" checkbox and waits; a challenge still unsolved after 120 s stops the send. Never tick a consent, privacy or attestation box for the candidate, and never treat a solved CAPTCHA as a receipt.
 - Never invent an answer. Names, contact details, employers, titles, dates, authorization and demographic answers come only from approved candidate records. Other questions come from the candidate's remembered or standing answers (D-112, D-117). Anything they don't cover goes to the candidate.
 - Use the candidate's application email; employer codes and verification links go there.
 - One sealed submission per named application. Reconcile an unknown outcome before any retry.

@@ -65,7 +65,7 @@ Single page.
 ## Verification and anti-bot
 
 - Spam protection levels per employer: Strict, Less Permissive, Permissive (default), No Protection (vendor docs).
-- The reviewed public form uses standard reCAPTCHA. RoleDawn admits its passive invisible badge and native scoring requests. Any visible challenge stops delivery; it never solves, suppresses or retries a challenge to improve its score.
+- The reviewed public form uses standard reCAPTCHA. RoleDawn admits its invisible badge and scoring requests; a visible challenge goes to the session's solver and stops delivery only if it is still unsolved after 120 s (D-136). A solved challenge is not a receipt.
 - The page's own device fingerprint is an opaque, bounded vendor-format field on the final request. It supplies no application authority.
 - No account sign-in or employer API key is used.
 
@@ -113,7 +113,7 @@ Do:
 Don't:
 - Use Ashby's employer-authenticated APIs or an employer's key.
 - Broadly allow GraphQL, arbitrary S3 destinations, resume autofill, surveys or legal notices.
-- Solve reCAPTCHA, retry to improve its score, or infer that an application-limit response authorizes another attempt.
+- Retry to improve a reCAPTCHA score, or infer that an application-limit response authorizes another attempt.
 - Restore an earlier closed send intent automatically when a new adapter ships. A fresh candidate request is required; uncertain and attempted deliveries keep their own recovery controls.
 
 ## Sources

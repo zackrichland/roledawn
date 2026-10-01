@@ -29,7 +29,7 @@ async function run(mode: SyntheticLeverMode, after?: (result: Awaited<ReturnType
   const context = await browser.newContext({ serviceWorkers: "block" });
   const page = await context.newPage();
   try {
-    const driver = createApplicationDeliveryDriver({ resolvePage: () => page, requestTransport: fixture.transport, browserTimeoutMs: 500,
+    const driver = createApplicationDeliveryDriver({ resolvePage: () => page, requestTransport: fixture.transport, browserTimeoutMs: 500, captchaSolveTimeoutMs: 1_500,
       harness: { async run() {} },
       submissionHooks: {
         async begin() { assert.equal(fixture.observed.submits, 0); state.begins += 1; return { attemptId: "attempt-1", idempotencyKey: "once-1" }; },
@@ -72,9 +72,9 @@ test("Lever parser cannot add unapproved optional company answers", options, asy
   assert.equal(state.begins, 0);
 });
 
-test("Lever CAPTCHA and changed employer form contract fail before uploads or submission", options, async () => {
-  // "captcha" renders a visible checkbox widget; "foreign-captcha" is another provider.
-  for (const mode of ["captcha", "foreign-captcha", "form-drift"] as const) {
+test("an unsolved Lever CAPTCHA and a changed employer form contract stop before uploads or submission", options, async () => {
+  // "captcha" renders a visible checkbox widget the fixture never solves, so the solver wait runs out.
+  for (const mode of ["captcha", "form-drift"] as const) {
     const { result, observed, state } = await run(mode);
     assert.equal(result.kind, mode === "form-drift" ? "FAILED_SAFE" : "TAKEOVER", JSON.stringify(result));
     if (result.kind === "TAKEOVER") assert.equal(result.reasonCode, "APPLICATION_FILL_CAPTCHA_TAKEOVER");
@@ -122,25 +122,36 @@ test("Lever question wrappers retain sensitive question text and file fingerprin
   } finally { await browser.close(); }
 });
 
-test("Lever's invisible hCaptcha scores passively on submit; nothing is solved and one application is confirmed", options, async () => {
+test("Lever's invisible hCaptcha scores on submit and one application is confirmed", options, async () => {
   const { result, observed, state } = await run("invisible-captcha");
   assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
   assert.equal(observed.submits, 1);
   assert.equal(state.begins, 1);
-  // Exactly one passive score request, made during the final submit only.
-  assert.equal(observed.captchaScores, 1);
-  assert.equal(observed.requests.some((request) => request.includes("/checkcaptcha/")), false, "challenge answers never leave the browser");
-  assert.equal(observed.requests.filter((request) => request.includes("/getcaptcha/")).length, 1, "the early score request was blocked");
+  // CAPTCHA provider traffic is admitted for the session's solver (D-136); it never carries candidate data.
+  assert.ok(observed.captchaScores >= 1);
 });
 
-test("a CAPTCHA challenge that appears after the submit click hands over before the final request", options, async () => {
+test("a hidden CAPTCHA from another provider no longer stops the send", options, async () => {
+  const { result, observed, state } = await run("foreign-captcha");
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+});
+
+test("a challenge that appears after the submit click and is solved sends exactly once", options, async () => {
+  const { result, observed, state } = await run("captcha-solved-on-submit");
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.submits, 1, "one final request, never a duplicate after the solve");
+  assert.equal(state.begins, 1);
+});
+
+test("a challenge that appears after the submit click and is never solved stops before the final request", options, async () => {
   const { result, observed, state } = await run("captcha-on-submit");
   assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
   assert.equal(result.kind === "TAKEOVER" && result.reasonCode, "APPLICATION_FILL_CAPTCHA_TAKEOVER");
   assert.equal(observed.uploads.length, 1, "the approved upload happened before the challenge");
   assert.equal(observed.submits, 0);
   assert.equal(state.begins, 0);
-  assert.equal(observed.captchaScores, 0);
 });
 
 test("the CAPTCHA detector treats hidden, zero-size and off-page widgets as passive and anything asking the person as a challenge", options, async () => {

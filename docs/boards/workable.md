@@ -94,7 +94,7 @@ Do:
 - Read jobs through the documented accounts API, read-only.
 - Use the candidate's application email and real details; never a relay address.
 - Leave the GDPR consent box to the candidate's explicit decision.
-- Stop on any CAPTCHA, browser-integrity interstitial or block page.
+- Stop on any browser-integrity interstitial or block page; CAPTCHAs go to the session's solver (D-136).
 
 Don't:
 - Re-apply to the same job to "fix" an answer; it overwrites or silently no-ops. Reconcile first.

@@ -111,7 +111,7 @@ Do:
 - Fill multi-selects only from candidate, remembered or standing answers and confirm the chips match exactly (D-113, D-117). Fill the location typeahead only from the city fact, confirmed by region and country (D-118).
 
 Don't:
-- Solve, refresh or "score-shop" reCAPTCHA; never request a new token to retry.
+- "Score-shop" reCAPTCHA or request a new token to retry; a solved CAPTCHA is not a receipt (D-136).
 - Use MyGreenhouse, the API `POST`, or Dropbox/Drive pickers.
 - Guess EEOC or demographic answers; fill only saved voluntary answers whose wording matches (D-091).
 - Treat the confirmation URL, a model judgment or an email alone as proof; probe many boards in a burst; resend after an unknown outcome.

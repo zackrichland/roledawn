@@ -83,7 +83,7 @@ In order: (1) profile facts through anchored label rules (`application-field-fac
 - One sealed, single-use submit permission per attempt, bound to one named application and the exact answers and files that were read back (`begin_application_autopilot_submit`). A retry gets a new key (`autopilot:<id>:<n>`) and a new permission. Never loosen this.
 - Reconcile an uncertain outcome before any new send. Unknown is not failed. Record `NOT_ACCEPTED` only when the employer explicitly refused (D-111).
 - Only the employer's own response is a receipt. A model never decides that a submission or any other side effect happened.
-- No CAPTCHA solving or evasion. A visible challenge stops the send; the emailed code is the legitimate path.
+- CAPTCHAs are solved by Browserbase's solver on every board (founder decision D-136, 2026-10-01): the server ticks only the provider's own checkbox and waits up to 120 s; a challenge still unsolved stops the send. A solved CAPTCHA is never a receipt, and consent, privacy and attestation checkboxes stay with the candidate.
 - Exact facts (name, contact, employers, titles, dates, work authorization, EEO answers) come from structured, provenance-linked candidate records, never from a model or an embedding. Vector retrieval supports narrative only.
 - Models read forms, map questions to the candidate's own saved answers, and draft prose. They never authorize themselves, change policy, or infer a sensitive answer the candidate hasn't given. Demographic, legal, consent and signature questions go to the candidate (D-117).
 - Answers belong to one candidate and are never shared or inferred across candidates.

@@ -97,7 +97,7 @@ Do:
 Don't:
 - Accept the data privacy statement, Terms of Use or job alerts on the candidate's behalf.
 - Enter referee contacts without the candidate supplying them for this application.
-- Reuse a password across employers, or solve any CAPTCHA.
+- Reuse a password across employers.
 
 ## Sources
 

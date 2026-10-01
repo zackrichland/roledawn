@@ -9,7 +9,7 @@ import {
   type AriaComboboxState, type RemoteSearchComboboxState,
 } from "./agents-aria-combobox.ts";
 import { chooseSearchResult, MAX_SEARCHABLE_OPTIONS, MODEL_OPTION_SAMPLE, resolveOptionValue, type OptionMatch, type OptionSemantic } from "./agents-option-match.ts";
-import { APPLICATION_FILL_CAPTCHA_TAKEOVER, frameShowsCaptchaChallenge, isHcaptchaFrameUrl } from "./agents-captcha.ts";
+import { APPLICATION_FILL_CAPTCHA_TAKEOVER, frameShowsCaptchaChallenge, isCaptchaFrameUrl, isHcaptchaFrameUrl, waitForCaptchaSolved } from "./agents-captcha.ts";
 import { readAshbyLocation, selectAshbyLocation } from "./agents-ashby-controls.ts";
 
 const CONTROL_SELECTOR = 'input, select, textarea, [role="combobox"], [role="textbox"], [role="checkbox"], [role="radio"], .ashby-application-form-input-yesno';
@@ -234,6 +234,13 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
    * widget, prompt or other CAPTCHA provider still hands over. Never solved.
    */
   invisibleHcaptcha?: boolean;
+  /**
+   * The session's CAPTCHA solver is on (D-136). A shown challenge gets its
+   * provider checkbox ticked and is waited out; only one still unsolved after
+   * `captchaSolveTimeoutMs` hands over.
+   */
+  solveCaptchas?: boolean;
+  captchaSolveTimeoutMs?: number;
 }>) {
   const destination = new URL(destinationUrl);
   if (destination.username || destination.password || (destination.protocol !== "https:" &&
@@ -269,6 +276,11 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     const next = new Map<string, LocatedField>();
     let takeoverReason: string | null = null;
     let navigationRequired = false;
+    const solving = options?.solveCaptchas === true;
+    const captchaUnsolved = solving && !await waitForCaptchaSolved(page, {
+      timeoutMs: options?.captchaSolveTimeoutMs, signal,
+      permittedPassiveFrameUrls: () => page.frames().map((frame) => frame.url()).filter((url) => url && permitsPassiveFrame(url)),
+    });
     for (const [frameIndex, frame] of page.frames().entries()) {
       const frameUrl = frame.url();
       // A newly attached frame can have no URL yet. It contributes no controls;
@@ -281,13 +293,20 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       }
       if (frameUrl !== "about:blank" && frameOrigin !== expectedOrigin) {
         if (permitsPassiveFrame(frameUrl)) continue;
+        // With the solver on, a provider's own frame stops only while its challenge is unsolved.
+        if (solving && isCaptchaFrameUrl(frameUrl)) {
+          if (captchaUnsolved) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
+          continue;
+        }
         // hCaptcha's own documents are judged by their iframe's visibility below.
         if (options?.invisibleHcaptcha && isHcaptchaFrameUrl(frameUrl)) continue;
         if (/captcha|turnstile/iu.test(frameUrl)) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
         else takeoverReason ??= "AGENTS_FILL_CROSS_ORIGIN_FRAME_TAKEOVER";
         continue;
       }
-      if (options?.invisibleHcaptcha) {
+      if (solving) {
+        if (captchaUnsolved) takeoverReason = APPLICATION_FILL_CAPTCHA_TAKEOVER;
+      } else if (options?.invisibleHcaptcha) {
         const foreignCaptcha = await frame.locator('iframe[src*="captcha"], iframe[src*="turnstile"], [data-sitekey]').evaluateAll((elements) => elements.some((element) =>
           element instanceof HTMLIFrameElement
             ? !/^https:\/\/newassets\.hcaptcha\.com\/captcha\/v1\/[A-Za-z0-9._-]{1,80}\/static\/hcaptcha\.html(?:[?#]|$)/u.test(element.src)

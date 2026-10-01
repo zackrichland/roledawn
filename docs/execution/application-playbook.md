@@ -59,7 +59,7 @@ The diagram is a summary; the table below is authoritative.
 | Site | Today | Evidence |
 |---|---|---|
 | Greenhouse | Fills, submits, and confirms | **Verified** end to end twice on 2026-09-30: Carvana Specialist, Inventory Quality (code read from Gmail 7 s after the request), and Carvana Strategy Analyst with a required GPA multi-select (code read in 6 s; final pass 262 s). The required "Location (City)" typeahead is filled from your city, confirmed by region and country (D-118). See the [Greenhouse template](../boards/greenhouse.md). |
-| Lever | Fills and submits | Fixture tests only; **not yet proven live**. Passive hCaptcha is allowed; a visible challenge stops for you. |
+| Lever | Fills and submits | Fixture tests only; **not yet proven live**. Passive hCaptcha is allowed; a visible challenge goes to the solver (D-136). |
 | Ashby | Hosted-form delivery adapter | Named draft saves, location lookups, uploads and final submission share the existing approval and receipt controls. Public-client observation and fixture checks are separate from live employer acceptance; see the [Ashby template](../boards/ashby.md). |
 | Workday, iCIMS, SmartRecruiters, others | Not supported | Per-board templates for the agent: [docs/boards/](../boards/README.md). See [Next: any site](#next-any-site-including-workday). |
 
@@ -100,7 +100,7 @@ The diagram is a summary; the table below is authoritative.
 - Only the employer's own response proves an application was received.
 - One permission per submission, tied to the exact answers and files that were checked.
 - An uncertain result is reconciled before anything is sent again.
-- No CAPTCHA solving. A visible challenge stops the send.
+- CAPTCHAs are solved by the session's solver (D-136). A challenge still unsolved after 120 s stops the send, and a solved one is never a receipt.
 - Your name, contact details, employers, titles, and dates always come from your profile, never from a model.
 
 ## Operating RoleDawn
@@ -175,4 +175,4 @@ When Greenhouse's code never arrives, or every code is refused, the employer has
 
 - **Recommendation:** add a general form path that uses the same guards (exact values, byte-checked uploads, readback, one sealed submission) on sites without a dedicated adapter, and accept a confirmation page or a confirmation email as the receipt.
 - **Accounts (Workday and similar):** use the candidate's application email and a unique, generated password per site, stored encrypted like the Gmail token and viewable by the candidate in RoleDawn. One password reused across every employer site would expose all of them after a single breach. Email verification links would come through the same Gmail connection.
-- **Out of scope:** CAPTCHA solving, and inventing answers to sensitive questions.
+- **Out of scope:** inventing answers to sensitive questions.
