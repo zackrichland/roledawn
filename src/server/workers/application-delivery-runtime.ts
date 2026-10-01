@@ -137,7 +137,8 @@ export async function createApplicationDeliveryRuntimeForNodeWorker(
       list: (key) => sdk.sessions.list({ q: `user_metadata['roledawn_delivery_provision_key']:'${key}'` }),
       create: (key) => sdk.sessions.create({
         projectId, region: configuration.region, api_timeout: 900, keepAlive: false,
-        browserSettings: { solveCaptchas: true, recordSession: false, logSession: false, ignoreCertificateErrors: false },
+        // Recording gives every send a replay in Browserbase for diagnosis (D-147); it holds what the form showed, so it stays in the founder's private Browserbase project.
+        browserSettings: { solveCaptchas: true, recordSession: true, logSession: false, ignoreCertificateErrors: false },
         userMetadata: { roledawn_delivery_provision_key: key, roledawn_adapter_release: RELEASE },
       }).catch((error: unknown) => { throw deliveryProviderError(error); }),
       retrieve: (id) => sdk.sessions.retrieve(id),
