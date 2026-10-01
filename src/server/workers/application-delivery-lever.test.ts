@@ -5,7 +5,7 @@ import test from "node:test";
 import { chromium } from "playwright-core";
 import { syntheticLeverDelivery, type SyntheticLeverMode } from "../../test-support/synthetic-lever-delivery.ts";
 import { createApplicationDeliveryDriver } from "./application-delivery-driver.ts";
-import { browserbaseHcaptchaSolverMethod, createApplicationDeliveryBrowser, type DeliveryPriorSubmission } from "./application-delivery-browser.ts";
+import { browserbaseHcaptchaSolverMethod, browserbaseSolverResponseKind, createApplicationDeliveryBrowser, type DeliveryPriorSubmission } from "./application-delivery-browser.ts";
 import type { ApplicationFillExecutionPackage } from "./application-fill-materializer.ts";
 import { createAgentBrowserTools } from "./agents-browser-tools.ts";
 import { frameShowsCaptchaChallenge } from "./agents-captcha.ts";
@@ -241,10 +241,13 @@ test("Browserbase's exact provider-local solver preflight and JSON request reach
 });
 
 test("an observed hidden provider task gets its bounded solve budget beyond the ordinary dispatch wait", options, async () => {
-  const { result, observed, state } = await run("browserbase-solver-delayed");
-  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
-  assert.equal(observed.submits, 1);
-  assert.equal(state.begins, 1);
+  for (const mode of ["browserbase-solver-delayed", "browserbase-solver-existing-task"] as const) {
+    const { result, observed, state } = await run(mode);
+    assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+    assert.equal(observed.submits, 1);
+    assert.equal(state.begins, 1);
+    if (mode === "browserbase-solver-existing-task") assert.equal(observed.requests.some(request => request.endsWith("/create")), false);
+  }
 });
 
 test("an unfinished hidden provider task expires without authority and records counts without provider values", options, async () => {
@@ -255,7 +258,22 @@ test("an unfinished hidden provider task expires without authority and records c
   assert.deepEqual(state.checkpoints.find(record => record.phase === "BROWSERBASE_SOLVER_WAIT_FINISHED"), {
     phase: "BROWSERBASE_SOLVER_WAIT_FINISHED", provider: "BROWSERBASE_HCAPTCHA", createRequests: 1,
     queryRequests: 1, queryResponses: 1, httpFailures: 0, waitExpired: true,
+    responseKinds: { TOKEN_MARKER: 0, WAITING_MARKER: 0, ERROR_MARKER: 0, UNCLASSIFIED: 1 },
   });
+});
+
+test("provider response markers expose no token, identifier or arbitrary error message", () => {
+  for (const [payload, expected] of [
+    [{ token: "private-provider-token" }, "TOKEN_MARKER"],
+    [{ solution: { gRecaptchaResponse: "private-provider-token" } }, "TOKEN_MARKER"],
+    [{ status: "processing" }, "WAITING_MARKER"],
+    [{ status: "failed", message: "private-error" }, "ERROR_MARKER"],
+    [{ errorId: 1, errorCode: "private-error" }, "ERROR_MARKER"],
+    [{ arbitrary: "private-provider-token" }, "UNCLASSIFIED"],
+  ] as const) assert.equal(browserbaseSolverResponseKind(Buffer.from(JSON.stringify(payload))), expected);
+  assert.equal(browserbaseSolverResponseKind(Buffer.from("x".repeat(64_001))), "UNCLASSIFIED");
+  assert.equal(browserbaseSolverResponseKind(Buffer.from("not-json")), "UNCLASSIFIED");
+  assert.equal(browserbaseSolverResponseKind(null), "UNCLASSIFIED");
 });
 
 test("the observed provider preflight passes, while foreign origins and changed endpoints remain blocked", () => {

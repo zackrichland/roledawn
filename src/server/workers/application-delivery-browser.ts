@@ -33,6 +33,16 @@ export function browserbaseHcaptchaSolverMethod(request: Readonly<{ url: string;
     typeof body.solveId === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(body.solveId) &&
     typeof body.tabId === "string" && /^[a-f0-9]{32}$/iu.test(body.tabId) && Number.isInteger(body.solveAttempts) && Number(body.solveAttempts) >= 0 && Number(body.solveAttempts) <= 4 ? "QUERY" : null;
 }
+/** Diagnostic markers only: never receipt, rejection or retry authority. */
+export function browserbaseSolverResponseKind(bytes: Buffer | null): "TOKEN_MARKER" | "WAITING_MARKER" | "ERROR_MARKER" | "UNCLASSIFIED" {
+  const body = bytes && bytes.length <= 64_000 ? jsonObject(bytes) : null;
+  if (!body) return "UNCLASSIFIED";
+  const status = typeof body.status === "string" ? body.status.toLowerCase() : "";
+  if (["error", "failed"].includes(status) || typeof body.errorId === "number" && body.errorId > 0) return "ERROR_MARKER";
+  const solution = body.solution && typeof body.solution === "object" && !Array.isArray(body.solution) ? body.solution as Record<string, unknown> : {};
+  if ([body.token, solution.token, solution.gRecaptchaResponse].some(value => typeof value === "string" && value.length > 0)) return "TOKEN_MARKER";
+  return ["processing", "pending", "waiting"].includes(status) ? "WAITING_MARKER" : "UNCLASSIFIED";
+}
 export type DeliveryUploadRule = Readonly<{
   fieldId?: string; fieldName?: string; selector: string;
   request?: DeliveryRequestRule;
@@ -396,6 +406,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   const browserbaseSolverMethods = new WeakMap<Request, "CREATE" | "QUERY">();
   let browserbaseSolverQueryResponses = 0;
   let browserbaseSolverHttpFailures = 0;
+  const browserbaseSolverResponseKinds = { TOKEN_MARKER: 0, WAITING_MARKER: 0, ERROR_MARKER: 0, UNCLASSIFIED: 0 };
   function browserbaseSolverRequest(request: Request): boolean {
     // Browserbase's injected solver calls the service inside its own browser
     // container. This is the already-authorized browser provider, not another
@@ -445,6 +456,12 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     if (solverMethod) {
       if (solverMethod === "QUERY") browserbaseSolverQueryResponses += 1;
       if (!response.ok()) browserbaseSolverHttpFailures += 1;
+      if (solverMethod === "QUERY") {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const bytes = await Promise.race([response.body().catch(() => null), new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 500); })]);
+        if (timer) clearTimeout(timer);
+        browserbaseSolverResponseKinds[browserbaseSolverResponseKind(bytes)] += 1;
+      }
     }
     if (policy.lever && activeSearch && response.request().method() === "GET" &&
       policy.searches?.some(rule => searchPermitted(new URL(response.url()), rule, activeSearch!.query)) && response.ok()) {
@@ -827,7 +844,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       // Their budget is fixed from this click, never reset by polling traffic.
       const solverDeadline = Date.now() + captchaSolveTimeoutMs;
       const dispatchDeadline = () => Math.max(submitDeadline, verificationDeadline,
-        browserbaseSolverRequests > 0 ? solverDeadline : 0);
+        browserbaseSolverRequests + browserbaseSolverQueries > 0 ? solverDeadline : 0);
       const challenged = async () => {
         if (current.admitted || current.error) return false;
         if (verificationOpened) {
@@ -862,10 +879,11 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
           if (settled || !solvedChallenge) break;
         }
         await drain();
-        if (!current.beginStarted && browserbaseSolverRequests > 0) {
+        if (!current.beginStarted && browserbaseSolverRequests + browserbaseSolverQueries > 0) {
           await hooks.checkpoint?.({ phase: "BROWSERBASE_SOLVER_WAIT_FINISHED", provider: "BROWSERBASE_HCAPTCHA",
             createRequests: browserbaseSolverRequests, queryRequests: browserbaseSolverQueries,
             queryResponses: browserbaseSolverQueryResponses, httpFailures: browserbaseSolverHttpFailures,
+            responseKinds: { ...browserbaseSolverResponseKinds },
             waitExpired: Date.now() >= dispatchDeadline() });
         }
         if (verificationOpened && !current.beginStarted && Date.now() >= verificationDeadline) current.error ??= "DELIVERY_BROWSER_VERIFICATION_TIMEOUT";

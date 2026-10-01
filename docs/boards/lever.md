@@ -79,6 +79,7 @@ Single page.
 ## Known quirks
 
 - **Verified, 2026-10-01:** a provider-local task can continue polling without a visible challenge after the 45 s dispatch wait. D-154 gives an observed task the existing fixed 120 s solve budget and records request/response counts at expiry; live acceptance still must be proved.
+- **Verified, 2026-10-01:** the full 120 s wait still ended without a send despite successful polling responses. D-155 records fixed response-marker counts; HTTP 200 is not solve or application proof.
 
 - **Founder observation, 2026-10-01 UTC:** a watched run became stuck at LinkedIn connection. The base form-agent prompt now explicitly skips social sign-in and profile imports, uses the ordinary form and approved résumé upload, and retains the saved LinkedIn URL field (D-148). The exact cause and a live run after this change are not yet verified.
 
