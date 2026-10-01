@@ -15,16 +15,23 @@ export type DeliveryRequestRule = Readonly<{ method: "GET" | "POST" | "PUT"; url
 /** Injected by controlled acceptance only, after the same policy/authority checks. */
 export type DeliveryRequestTransport = (route: Route) => Promise<void>;
 /** The observed Browserbase service in this session's own browser container. */
-export function browserbaseHcaptchaSolverMethod(request: Readonly<{ url: string; method: string; headers: Readonly<Record<string, string>>; bytes: Buffer | null }>, approvedOrigin: string): "OPTIONS" | "POST" | null {
+export function browserbaseHcaptchaSolverMethod(request: Readonly<{ url: string; method: string; headers: Readonly<Record<string, string>>; bytes: Buffer | null }>, approvedOrigin: string): "OPTIONS" | "CREATE" | "QUERY" | null {
   const url = new URL(request.url), headers = request.headers;
-  if (url.origin !== "http://127.0.0.1:8080" || url.pathname !== "/solve/hcaptcha/create" || url.search || url.hash || url.username || url.password ||
+  if (url.origin !== "http://127.0.0.1:8080" || !["/solve/hcaptcha/create", "/solve/hcaptcha/query"].includes(url.pathname) || url.search || url.hash || url.username || url.password ||
     headers.origin !== approvedOrigin) return null;
   if (request.method === "OPTIONS") return headers["access-control-request-method"] === "POST" &&
     headers["access-control-request-headers"]?.toLowerCase() === "content-type" && !request.bytes ? "OPTIONS" : null;
   if (request.method !== "POST" || headers["content-type"]?.split(";")[0].trim().toLowerCase() !== "application/json" ||
     !request.bytes || request.bytes.length > 64_000) return null;
   const body = jsonObject(request.bytes);
-  return body && Object.keys(body).length <= 12 ? "POST" : null;
+  if (!body) return null;
+  if (url.pathname.endsWith("/create")) return Object.keys(body).length <= 12 ? "CREATE" : null;
+  const query = body.query;
+  return Object.keys(body).length === 4 && ["query", "solveId", "tabId", "solveAttempts"].every(key => Object.hasOwn(body, key)) &&
+    query && typeof query === "object" && !Array.isArray(query) && Object.keys(query).length === 1 &&
+    Object.hasOwn(query, "taskIdEuler") && Number.isSafeInteger((query as Record<string, unknown>).taskIdEuler) && Number((query as Record<string, unknown>).taskIdEuler) > 0 &&
+    typeof body.solveId === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(body.solveId) &&
+    typeof body.tabId === "string" && /^[a-f0-9]{32}$/iu.test(body.tabId) && Number.isInteger(body.solveAttempts) && Number(body.solveAttempts) >= 0 && Number(body.solveAttempts) <= 4 ? "QUERY" : null;
 }
 export type DeliveryUploadRule = Readonly<{
   fieldId?: string; fieldName?: string; selector: string;
@@ -385,15 +392,21 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   const startHost = new URL(policy.startUrl).hostname;
   const hcaptchaKeys = new Set<string>();
   let browserbaseSolverRequests = 0;
+  let browserbaseSolverQueries = 0;
   function browserbaseSolverRequest(request: Request): boolean {
     // Browserbase's injected solver calls the service inside its own browser
     // container. This is the already-authorized browser provider, not another
     // external destination. Never admit arbitrary loopback URLs or form sends.
-    if (!policy.lever || !hcaptchaKeys.size || closed || submitConsumed || action?.admitted || action?.error || action?.signal?.aborted) return false;
+    if (!policy.lever || !hcaptchaKeys.size || closed || submitConsumed || action?.kind === "SUBMIT" && action.admitted || action?.error || action?.signal?.aborted) return false;
     if (canonical(page.url()) !== canonical(policy.startUrl)) return false;
     const method = browserbaseHcaptchaSolverMethod({ url: request.url(), method: request.method(), headers: request.headers(), bytes: request.postDataBuffer() }, new URL(policy.startUrl).origin);
     if (!method) return false;
     if (method === "OPTIONS") return true;
+    if (method === "QUERY") {
+      if (browserbaseSolverQueries >= 120) return false;
+      browserbaseSolverQueries += 1;
+      return true;
+    }
     if (browserbaseSolverRequests >= 4) return false;
     browserbaseSolverRequests += 1;
     return true;

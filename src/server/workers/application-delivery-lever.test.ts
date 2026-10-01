@@ -235,6 +235,7 @@ test("Browserbase's exact provider-local solver preflight and JSON request reach
   const { result, observed, state } = await run("browserbase-solver");
   assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
   assert.ok(observed.requests.includes("POST http://127.0.0.1:8080/solve/hcaptcha/create"));
+  assert.ok(observed.requests.includes("POST http://127.0.0.1:8080/solve/hcaptcha/query"));
   assert.equal(observed.submits, 1);
   assert.equal(state.begins, 1);
 });
@@ -248,6 +249,17 @@ test("the observed provider preflight passes, while foreign origins and changed 
     { url: preflight.url.replace("hcaptcha", "unreviewed") }, { headers: { ...preflight.headers, origin: "https://unapproved.invalid" } },
     { headers: { ...preflight.headers, "access-control-request-method": "DELETE" } }, { bytes: Buffer.from("unapproved") }]) {
     assert.equal(browserbaseHcaptchaSolverMethod({ ...preflight, ...change }, origin), null);
+  }
+});
+
+test("provider polling accepts only the observed task shape and cannot carry extra candidate fields", () => {
+  const origin = "https://jobs.lever.co", payload = { query: { taskIdEuler: 123 }, solveId: "90000000-0000-4000-8000-000000000009",
+    tabId: "0123456789abcdef0123456789abcdef", solveAttempts: 0 };
+  const request = { url: "http://127.0.0.1:8080/solve/hcaptcha/query", method: "POST", headers: { origin, "content-type": "application/json" }, bytes: Buffer.from(JSON.stringify(payload)) };
+  assert.equal(browserbaseHcaptchaSolverMethod(request, origin), "QUERY");
+  for (const change of [{ candidate: "unapproved" }, { query: { taskIdEuler: "unapproved" } }, { query: { taskIdEuler: 123, candidate: "unapproved" } },
+    { solveId: "unapproved" }, { tabId: "unapproved" }, { solveAttempts: 5 }]) {
+    assert.equal(browserbaseHcaptchaSolverMethod({ ...request, bytes: Buffer.from(JSON.stringify({ ...payload, ...change })) }, origin), null);
   }
 });
 
