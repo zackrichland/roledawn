@@ -13,12 +13,16 @@ three employer-confirmed applications across two employers, verified by hosted
 readback on 2026-09-30 UTC. Lever and Ashby have delivery adapters; live employer
 acceptance remains unproven for both. Keep the product scoped to personal use.
 
-**Published release:** `ec709d5` (includes Claude main `0364902`), Netlify deployment
-`6abd9d321ada7333d5c66ea1`. Authenticated worker health verified that exact release
-at 23:38:00 UTC; the private gate returns 404 without access, all 14 checked page
-assets return 200 and the approved private profile/story content remains
-visible. The sole new Ashby submission occurred on `b103640`. Final readback
-still shows one attempt, zero confirmed attempts/receipts, and
+**Published release:** `c6ab9d5` (includes Claude main `de49be9`), Netlify deployment
+`6abdc547bc314493d3678828`, published with a full build on 2026-10-01 UTC.
+Authenticated worker health confirms that exact deploy with workers enabled;
+the private gate returns 404 without access, and the authenticated dashboard
+and all 14 checked script/style assets return 200. The release includes the
+LinkedIn skip guidance (D-148) and the browser recording/log settings (D-147).
+No new employer submission was started for this deployment check.
+
+The sole previously recorded Ashby submission occurred on `b103640`. The last recorded readback
+shows one attempt, zero confirmed attempts/receipts, and
 `RECONCILING`/`UNCERTAIN` with `DELIVERY_RECEIPT_RECONCILIATION_REQUIRED`.
 The retained evidence establishes neither acceptance nor rejection; do not resend.
 A deployment or mocked submission is not an employer receipt.
@@ -180,4 +184,4 @@ Greenhouse rejected two unsupported narrative proposals, then a validated propos
 
 **Live in-app verification, 23:43 UTC:** Ashby reused the saved facts, passed complete review and opened the owned browser check. The dashboard panel visibly renders the employer's real image challenge inside RoleDawn; the candidate was asked to complete it there. Hosted readback still shows zero attempts. No agent interacted with the challenge. Lever waits behind the retained delivery lane; human completion and new employer receipts remain pending.
 
-**D-148 LinkedIn guidance (local):** the base delivery-step prompt now directs the agent to skip social sign-in, account connection and LinkedIn profile/résumé imports, use the ordinary form and approved upload, and fill a plain LinkedIn URL only from its approved profile fact. The founder reported a Lever connection stall; its exact cause and live behavior after this change remain unverified. No interface, candidate record or submission authority changed. The full suite passed 910 tests before pulling the two observability commits from main; afterward, all 35 focused context, fact and runtime tests, typecheck, lint, documentation links and the final production build pass. This guidance has not been deployed.
+**D-148 LinkedIn guidance:** the base delivery-step prompt now directs the agent to skip social sign-in, account connection and LinkedIn profile/résumé imports, use the ordinary form and approved upload, and fill a plain LinkedIn URL only from its approved profile fact. The founder reported a Lever connection stall; its exact cause and live behavior after this change remain unverified. No interface, candidate record or submission authority changed. The full suite passed 910 tests before pulling the two observability commits from main; afterward, all 35 focused context, fact and runtime tests, typecheck, lint, documentation links and the final production build pass. The full-build production deployment and authenticated release/assets checks above pass. Local web development restarted with both worker-execution flags off.
