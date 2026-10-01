@@ -52,6 +52,12 @@ export class ApplicationWritingError extends Error {
 type Dependencies = Readonly<{
   write: (input: Readonly<{ revision?: Readonly<{ previous: DraftingProposalV2; problems: readonly DraftingIssue[] }> }>) => Promise<WriterResult>;
   verify: (segments: ReturnType<typeof proposalSegments>) => Promise<VerificationResult>;
+  /**
+   * Whether another write-check round fits the run's time budget, given how
+   * long the last round took. When it does not, the last complete draft is
+   * finished with salvage, exactly as after the final round (D-149).
+   */
+  canAttemptAgain?: (lastAttemptMs: number) => boolean;
   lintStyle: StyleLinter;
   onAttempt?: (attempt: WritingAttempt) => Promise<void>;
 }>;
@@ -81,6 +87,16 @@ function verificationIssues(results: readonly SegmentVerification[]): DraftingIs
  * anything in the résumé or answers that still fails verification. A cover
  * letter that still contains an unverified statement blocks the packet.
  */
+/**
+ * A verifier failure follows the writer's rule: a provider error the model
+ * client marks terminal (credit exhaustion, refusal, invalid output) stops
+ * writing at once; timeouts and unknown errors retry (D-149).
+ */
+export function verifierFailure(error: unknown, attempts: readonly WritingAttempt[] = []): ApplicationWritingError {
+  const retryable = error instanceof StructuredResponseError ? error.retryable : true;
+  return new ApplicationWritingError(error instanceof Error && /^[A-Z][A-Z0-9_]{3,}$/u.test(error.message) ? error.message : "APPLICATION_VERIFIER_FAILED", retryable, attempts);
+}
+
 export async function generateApplicationWriting(
   input: Readonly<{ context: DraftingContextV2; research: EmployerResearch; sources: ReadonlyMap<string, DraftingSource>; policyRelease: string }>,
   dependencies: Dependencies,
@@ -95,6 +111,7 @@ export async function generateApplicationWriting(
   let verifierModel: string | null = null;
 
   for (let attempt = 1; attempt <= MAX_WRITING_ATTEMPTS; attempt += 1) {
+    const attemptStarted = Date.now();
     try {
       written = await dependencies.write({ revision });
     } catch (error) {
@@ -117,7 +134,7 @@ export async function generateApplicationWriting(
           if (result) verified.set(verificationKey(segment.text, segment.sourceIds), result);
         });
       } catch (error) {
-        throw new ApplicationWritingError(error instanceof Error && /^[A-Z][A-Z0-9_]{3,}$/u.test(error.message) ? error.message : "APPLICATION_VERIFIER_FAILED", true, attempts);
+        throw verifierFailure(error, attempts);
       }
     }
     results = segments.map((segment) => {
@@ -133,7 +150,7 @@ export async function generateApplicationWriting(
       ...verificationIssues(results),
     ];
     const clean = problems.length === 0;
-    const last = attempt === MAX_WRITING_ATTEMPTS;
+    const last = attempt === MAX_WRITING_ATTEMPTS || !clean && dependencies.canAttemptAgain?.(Date.now() - attemptStarted) === false;
     attempts.push(Object.freeze({
       attempt,
       deterministicCodes: Object.freeze([...new Set(deterministic.map((problem) => problem.code))].sort()),

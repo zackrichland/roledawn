@@ -20,7 +20,9 @@ const INITIAL_STATIC_RESOURCE_TYPES = new Set(["stylesheet", "script", "image", 
 const MIN_TTL_SECONDS = 60;
 const MAX_TTL_SECONDS = 30 * 60;
 const DEFAULT_API_TIMEOUT_MS = 20_000;
-const DEFAULT_REGION = "us-west-2" as const;
+// Netlify functions run in the US East; a browser in the same region saves a
+// cross-country round trip on every CDP command (D-149). BROWSERBASE_REGION overrides.
+const DEFAULT_REGION = "us-east-1" as const;
 const DEFAULT_RELEASE_POLL_INTERVAL_MS = 250;
 const DEFAULT_RELEASE_POLL_ATTEMPTS = 40;
 
@@ -168,7 +170,15 @@ export function parseBrowserbaseRuntimeEnvironment(
 
 export function resolveBrowserbaseProjectId(
   projects: readonly Readonly<{ id: string }>[],
+  /** BROWSERBASE_PROJECT_ID: names the delivery project when the key can see several (D-149). */
+  preferred?: string | null,
 ): string {
+  const named = preferred?.trim();
+  if (named) {
+    assertProviderReference(named, "BROWSERBASE_PROJECT_SCOPE_INVALID");
+    if (!projects.some((project) => project.id === named)) throw new Error("BROWSERBASE_PROJECT_SCOPE_INVALID");
+    return named;
+  }
   if (projects.length !== 1 || !projects[0]) {
     throw new Error("BROWSERBASE_PROJECT_SCOPE_INVALID");
   }

@@ -197,3 +197,55 @@ test("a refused standing answer never costs the others: the batch falls back to 
   assert.deepEqual(resolved, [{ answerId: ID, fieldId: "field_4", fingerprint: "c".repeat(64), value: "no" }]);
   assert.deepEqual(events.filter((event) => event.stage === "standing_answers").map((event) => [event.outcome, event.code]), [["OK", "APPLICATION_AUTOPILOT_STANDING_ANSWERS_INVALID"]]);
 });
+
+test("a transient pre-submit stop gets one fresh browser in the same run, recorded with its diagnostics (D-149)", async () => {
+  const f = fixture();
+  const recorded: { stage: string; code?: string | null; detail?: Readonly<Record<string, unknown>> }[] = [];
+  const repository = { ...f.repository, async recordEvent(_lease: ApplicationAutopilotClaim, event: { stage: string; code?: string | null; detail?: Readonly<Record<string, unknown>> }) { recorded.push(event); } };
+  let drives = 0;
+  const result = await coordinateApplicationAutopilot({ ...f, repository, claim, async drive(task) {
+    drives += 1;
+    if (drives === 1) return { kind: "FAILED_SAFE", reasonCode: "DELIVERY_STEP_UNSUPPORTED", diagnostics: { phase: "open", blocked: { "unreviewed GET script https://cdn.vendor.test/app.js": 2 } } };
+    await task.begin({ reviewHash: HASH, requestFingerprint: HASH, review: {} });
+    return { kind: "CONFIRMED", receipt };
+  } });
+  assert.equal(result.kind, "CONFIRMED");
+  assert.equal(drives, 2);
+  assert.equal(f.events.filter((event) => event === "browser-open").length, 2);
+  // The first browser is released before the second is provisioned under a new intent key.
+  const firstRelease = f.events.indexOf("browser-release");
+  assert.ok(firstRelease >= 0 && firstRelease < f.events.lastIndexOf("browser-open"));
+  assert.ok(f.events.lastIndexOf("PROVISIONING") > firstRelease);
+  const heal = recorded.find((event) => event.stage === "self-heal");
+  assert.equal(heal?.code, "DELIVERY_STEP_UNSUPPORTED");
+  assert.equal(heal?.detail?.browserSession, "provider-session");
+  assert.equal(heal?.detail?.phase, "open");
+  assert.equal(recorded.some((event) => event.stage === "stop-diagnosis"), false, "a confirmed send records no stop");
+});
+
+test("guard verdicts, permitted submissions and open questions never self-heal; it runs at most once", async () => {
+  const cases: { name: string; outcomes: DeliveryWorkerOutcome[]; begin?: boolean; ask?: boolean; expectDrives: number }[] = [
+    { name: "guard verdict", outcomes: [{ kind: "TAKEOVER", reasonCode: "AGENTS_FILL_CROSS_ORIGIN_FRAME_TAKEOVER" }], expectDrives: 1 },
+    { name: "captcha", outcomes: [{ kind: "TAKEOVER", reasonCode: "APPLICATION_FILL_CAPTCHA_TAKEOVER" }], expectDrives: 1 },
+    { name: "after permit", outcomes: [{ kind: "FAILED_SAFE", reasonCode: "DELIVERY_EXECUTION_FAILED" }], begin: true, expectDrives: 1 },
+    { name: "questions open", outcomes: [{ kind: "FAILED_SAFE", reasonCode: "DELIVERY_EXECUTION_FAILED" }], ask: true, expectDrives: 1 },
+    { name: "twice transient", outcomes: [{ kind: "FAILED_SAFE", reasonCode: "DELIVERY_EXECUTION_FAILED" }, { kind: "FAILED_SAFE", reasonCode: "OPENAI_AGENTS_NETWORK_ERROR" }], expectDrives: 2 },
+  ];
+  for (const scenario of cases) {
+    const f = fixture();
+    const recorded: { stage: string; code?: string | null; detail?: Readonly<Record<string, unknown>> }[] = [];
+    const repository = { ...f.repository, async recordEvent(_lease: ApplicationAutopilotClaim, event: { stage: string; code?: string | null; detail?: Readonly<Record<string, unknown>> }) { recorded.push(event); } };
+    let drives = 0;
+    await coordinateApplicationAutopilot({ ...f, repository, claim, async drive(task) {
+      const outcome = scenario.outcomes[drives]!;
+      drives += 1;
+      if (scenario.begin) await task.begin({ reviewHash: HASH, requestFingerprint: HASH, review: {} });
+      if (scenario.ask) await task.questions.requestQuestions({ binding: task.executionPackage.binding, questions: [{ fieldId: "f", fingerprint: HASH, label: "Question", kind: "TEXT", required: true, options: [], reasonCode: "MISSING_EXACT_ANSWER" }] as unknown as AgentQuestionDescriptor[] });
+      return outcome;
+    } });
+    assert.equal(drives, scenario.expectDrives, scenario.name);
+    const stop = recorded.find((event) => event.stage === "stop-diagnosis");
+    assert.equal(stop?.code, scenario.outcomes[scenario.expectDrives - 1]!.reasonCode, scenario.name);
+    assert.equal(stop?.detail?.browserSession, "provider-session", scenario.name);
+  }
+});

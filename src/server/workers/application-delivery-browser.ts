@@ -9,6 +9,7 @@ import type { MaterializedApplicationArtifact } from "./application-fill-materia
 
 import type { OptionMatch } from "./agents-option-match.ts";
 import { ashbySubmissionAccepted, createAshbyProtocol, inspectAshbyEnvelope, inspectAshbySubmissionResponse, type AshbyEnvelope, type AshbySubmissionDiagnostics } from "./ashby-delivery-protocol.ts";
+import { createBlockedRequestLedger, watchCaptchaSolver } from "./delivery-diagnostics.ts";
 
 export const DELIVERY_BROWSER_RELEASE = "application-delivery-browser/1";
 export type DeliveryRequestRule = Readonly<{ method: "GET" | "POST" | "PUT"; url: string }>;
@@ -281,6 +282,8 @@ function validatePolicy(policy: DeliverySitePolicy): void {
  */
 export async function createApplicationDeliveryBrowser(input: Readonly<{
   page: Page; policy: DeliverySitePolicy; hooks: DeliverySubmissionHooks; timeoutMs?: number;
+  /** The first page load in a fresh cloud browser; defaults to 45 s in production (D-149). */
+  openTimeoutMs?: number;
   requestTransport?: DeliveryRequestTransport;
   /** How long a shown CAPTCHA may take to be solved before the send hands over (D-146). */
   captchaSolveTimeoutMs?: number;
@@ -288,6 +291,9 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   const { page, policy, hooks } = input;
   validatePolicy(policy);
   const timeoutMs = input.timeoutMs ?? 15_000;
+  // A cold cloud browser plus a heavy ATS page can exceed the per-action wait
+  // before the form first renders; only that first load gets longer (D-149).
+  const openTimeoutMs = input.openTimeoutMs ?? (input.timeoutMs === undefined ? 45_000 : timeoutMs);
   const captchaSolveTimeoutMs = input.captchaSolveTimeoutMs ?? CAPTCHA_SOLVE_TIMEOUT_MS;
   const dispatch = input.requestTransport ?? ((route: Route) => route.continue());
   const context = page.context();
@@ -301,6 +307,10 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   let loading = false;
   let submitConsumed = false;
   let blockedRequests = 0;
+  // Observation only (D-149): what was refused and whether the solver engaged. Admission is unchanged.
+  const ledger = createBlockedRequestLedger();
+  const solver = watchCaptchaSolver(page);
+  const refuse = (request: Request, reason: string) => { blockedRequests += 1; ledger.record(request, reason); };
   let submittedRequests = 0;
   let closed = false;
   let pendingVerification: PendingVerification | null = null;
@@ -459,18 +469,18 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       if (closed) { await route.abort("blockedbyclient"); return; }
       if (current?.humanVerification && (Date.now() >= (current.humanVerificationDeadline ?? 0) || current.signal?.aborted)) {
         current.error ??= "DELIVERY_BROWSER_VERIFICATION_TIMEOUT";
-        blockedRequests += 1; await route.abort("blockedbyclient"); return;
+        refuse(request, "verification-window-closed"); await route.abort("blockedbyclient"); return;
       }
       const recaptcha = isRecaptcha(request);
       const hcaptcha = isHcaptcha(request);
       try {
-        if (request.frame().page() !== page) { blockedRequests += 1; await route.abort(); return; }
+        if (request.frame().page() !== page) { refuse(request, "other-page"); await route.abort(); return; }
       } catch {
         // Worker requests have no frame: only fixed CAPTCHA script assets pass.
         if (recaptcha && request.method() === "GET" && new URL(request.url()).origin === "https://www.gstatic.com") { await dispatch(route); return; }
         if (hcaptcha && request.method() === "GET" && new URL(request.url()).origin === "https://newassets.hcaptcha.com") { await dispatch(route); return; }
         if (isCaptchaProviderRequestUrl(request.url())) { await dispatch(route); return; }
-        blockedRequests += 1; await route.abort(); return;
+        refuse(request, "worker"); await route.abort(); return;
       }
       // Ashby chains each mutation from the previous response. Complete its
       // server-side readback before admitting the browser's next chained step.
@@ -506,7 +516,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         request.headers()["access-control-request-method"] === current.request.method) { await dispatch(route); return; }
       // An action that already stopped (for example on a visible CAPTCHA) admits nothing.
       if (!current?.request || !requestMatches(request, current.request) || current.admitted || current.error || current.signal?.aborted) {
-        blockedRequests += 1; await route.abort("blockedbyclient"); return;
+        refuse(request, current?.request ? "outside-action" : "unreviewed"); await route.abort("blockedbyclient"); return;
       }
       current.admitted = true;
       current.requestObject = request;
@@ -553,7 +563,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       // windows, or a later chained request fails because that rejection stopped us.
       if (ashby && reason.startsWith("DELIVERY_ASHBY_")) ashbyError ??= reason;
       if (current) current.error ??= reason;
-      blockedRequests += 1;
+      refuse(request, reason);
       await route.abort("blockedbyclient").catch(() => undefined);
     }
   };
@@ -643,9 +653,10 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       // all prior values/uploads. An empty in-memory review can never inherit
       // a retained later step. Submitted attempts use reconcile(), not open().
       loading = true;
-      try { await page.goto(policy.startUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs }); }
+      const openDeadline = Date.now() + openTimeoutMs;
+      try { await page.goto(policy.startUrl, { waitUntil: "domcontentloaded", timeout: openTimeoutMs }); }
       finally { loading = false; }
-      await waitFor(async () => Boolean(await currentStep()), signal);
+      await waitFor(async () => Boolean(await currentStep()), signal, () => openDeadline);
       if (policy.greenhouse) await page.waitForLoadState("networkidle", { timeout: timeoutMs }).catch(() => undefined);
       await drain();
       if (!await currentStep()) throw new Error("DELIVERY_STEP_UNSUPPORTED");
@@ -855,11 +866,14 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     },
     uploadProofs: () => [...uploadProofs].map(([fieldId, proof]) => ({ fieldId, ...proof })),
     usage: () => ({ blockedRequests, submittedRequests }),
+    /** Bounded stop diagnostics: refused requests by reason and destination, solver console events. */
+    diagnostics: () => ({ ...ledger.summary(), solverStarted: solver.counts().started, solverFinished: solver.counts().finished, ...(ashbyError ? { ashbyRejection: ashbyError } : {}) }),
     async dispose() {
       closed = true;
       pendingVerification = null;
       await drain();
       page.off("response", responseListener);
+      solver.stop();
       // Keep the context locked until its owner closes it. Returning an outcome
       // must never create an unguarded interval before provider cleanup.
     },

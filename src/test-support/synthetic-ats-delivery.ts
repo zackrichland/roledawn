@@ -2,7 +2,9 @@ import { createServer } from "node:http";
 import type { DeliverySitePolicy } from "../server/workers/application-delivery-browser.ts";
 
 export type SyntheticDeliveryMode = "normal" | "uncertain" | "double" | "bad-upload" | "prefilled" | "greenhouse" | "traps" | "shortened-ack" | "wrong-ack"
-  | "large-select" | "large-select-ambiguous" | "greenhouse-location" | "greenhouse-location-leak" | "greenhouse-verification" | "greenhouse-verification-tamper";
+  | "large-select" | "large-select-ambiguous" | "greenhouse-location" | "greenhouse-location-leak" | "greenhouse-verification" | "greenhouse-verification-tamper"
+  /** The first page answers after 1.2 s, like a cold cloud browser on a heavy ATS page. */
+  | "slow-render";
 
 /** The emailed code the synthetic employer accepts. */
 export const SYNTHETIC_VERIFICATION_CODE = "ABCD1234";
@@ -95,6 +97,7 @@ export async function startSyntheticAtsDelivery(mode: SyntheticDeliveryMode = "n
     for await (const chunk of request) data.push(Buffer.from(chunk));
     const body = Buffer.concat(data);
     const html = (value: string) => { response.writeHead(200, { "content-type": "text/html" }); response.end(`<!doctype html><html><body>${value}</body></html>`); };
+    if (request.url === "/step1" && request.method === "GET" && mode === "slow-render") await new Promise((resolve) => setTimeout(resolve, 1_200));
     if (request.url === "/step1" && request.method === "GET") return html(`<form id="first"><label>Name<input name="name" required></label>
       <div id="resume-field" class="file-upload"><h3 id="upload-label-resume">Resume/CV</h3><label>Resume<input id="resume" type="file" required accept="application/pdf"></label><p id="upload-ack" class="file-upload__filename"></p></div>
       <label>Candidate note<input name="note" value="Keep my note"></label>${extraFields}<button id="next" type="button">Next</button></form>

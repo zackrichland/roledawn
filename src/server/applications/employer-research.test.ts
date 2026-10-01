@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { DraftingContextV2, EmployerResearch } from "../../domain/application-drafting-v2.ts";
 import { emptyCareerProfile } from "../../domain/career-profile.ts";
-import { buildEmployerResearchBundle } from "./employer-research.ts";
+import { buildEmployerResearchBundle, researchEmployer } from "./employer-research.ts";
 
 const context = {
   binding: {
@@ -56,4 +56,17 @@ test("lists each research page once and cites the posting for facts read from it
   const citation = (claimId: string) => manifest.research.claims.find((claim) => claim.claim_id === claimId)?.citations[0]?.source_id;
   assert.equal(citation("f1"), citation("f2"), "facts from one page share its source");
   assert.equal(citation("f3"), "job-version:00000000-0000-4000-8000-000000000006", "a fact from the posting cites the posting");
+});
+
+test("research past its deadline starts no model call and uses the posting-only brief (D-149)", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => { calls += 1; throw new Error("no network in this test"); }) as typeof fetch;
+  try {
+    const research = await researchEmployer(context as unknown as DraftingContextV2, { apiKey: "sk-test", environment: {} as NodeJS.ProcessEnv, deadline: Date.now() - 1 });
+    assert.equal(calls, 0);
+    assert.equal(research.coverage, "OFFICIAL_POSTING_ONLY");
+    assert.equal(research.model, null);
+    assert.match(research.brief.roleSummary, /Staff Forward Deployed Engineer at GitLab/u);
+  } finally { globalThis.fetch = originalFetch; }
 });

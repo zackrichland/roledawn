@@ -107,6 +107,20 @@ function firstRow(value: unknown): Record<string, unknown> | null {
   return value[0] as Record<string, unknown>;
 }
 
+/**
+ * The kit lane holds a 900 s lease inside Netlify's 15-minute background
+ * limit. A run that outlives either is killed before it can record anything
+ * and loops on reclaim. Research gets at most four minutes; a repair round
+ * starts only if one more round like the last, plus rendering and commit,
+ * still finishes inside 13 minutes (D-149).
+ */
+export const KIT_BUDGET_MS = 780_000;
+export const KIT_RESEARCH_BUDGET_MS = 240_000;
+const KIT_RENDER_RESERVE_MS = 90_000;
+export function kitHasTimeForAnotherAttempt(elapsedMs: number, lastAttemptMs: number): boolean {
+  return elapsedMs + lastAttemptMs * 1.25 + KIT_RENDER_RESERVE_MS < KIT_BUDGET_MS;
+}
+
 export async function handleApplicationDraftingRequested(
   supabase: SupabaseClient<Database>,
   message: Readonly<{ outboxId: string; payload: Json }>,
@@ -126,8 +140,10 @@ export async function handleApplicationDraftingRequested(
   });
   if (context.binding.snapshotHash !== payload.snapshotHash) throw new Error("DRAFTING_OUTBOX_SNAPSHOT_HASH_MISMATCH");
 
-  // 1. Research the employer (web, with a posting-only fallback).
-  const research = await researchEmployer(context, { apiKey, environment });
+  // 1. Research the employer (web, with a posting-only fallback). Research is
+  // capped so writing always starts well inside the 900 s lease (D-149).
+  const started = Date.now();
+  const research = await researchEmployer(context, { apiKey, environment, deadline: started + KIT_RESEARCH_BUDGET_MS });
   const completedAt = new Date().toISOString();
   const bundle = buildEmployerResearchBundle(context, research, completedAt);
   const researchValidation = validateApplicationResearchBundle(bundle, {
@@ -147,6 +163,7 @@ export async function handleApplicationDraftingRequested(
       write: ({ revision }) => writeApplicationDraft({ context, research, sources, revision, apiKey, environment }),
       verify: (segments) => verifyApplicationDraft({ segments, sources, apiKey, environment }),
       lintStyle: lintApplicationStyle,
+      canAttemptAgain: (lastAttemptMs) => kitHasTimeForAnotherAttempt(Date.now() - started, lastAttemptMs),
       onAttempt: async (attempt) => {
         await recordWorkerEvent(supabase as never, { lane: "kit", stage: "writing-check", outcome: "INFO",
           applicationId: payload.applicationId, detail: {
@@ -304,10 +321,12 @@ function firstBoolean(value: unknown): boolean {
 export function decideApplicationKitFailureDisposition(attemptCount: number, error: unknown) {
   const errorCode = error instanceof Error && /^[A-Z][A-Z0-9_]{3,99}(?::ATTEMPTS_[0-2])?$/u.test(error.message)
     ? error.message : "WORKER_UNEXPECTED_FAILURE";
+  // A context read that failed transiently (DRAFTING_*_READ_FAILED) retries like any other outage (D-149).
+  const retryableContext = error instanceof DraftingContextV2Error && error.retryable;
   const permanent = (error instanceof StructuredResponseError && !error.retryable)
     || (error instanceof ApplicationWritingError && !error.retryable)
     || (error instanceof DraftingContextV2Error && !error.retryable)
-    || errorCode.startsWith("DRAFTING_") || errorCode === "APPLICATION_KIT_NAME_REQUIRED";
+    || !retryableContext && errorCode.startsWith("DRAFTING_") || errorCode === "APPLICATION_KIT_NAME_REQUIRED";
   return permanent
     ? { action: "DEAD_LETTER" as const, errorCode }
     : decideOutboxFailureDisposition(attemptCount, errorCode);

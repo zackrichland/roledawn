@@ -11,6 +11,9 @@ test("event details keep codes and browser timeouts but never raw provider or ca
   assert.equal("message" in leaky, false);
   assert.match(leaky.messageSha256 ?? "", /^[0-9a-f]{12}$/u);
   assert.equal(JSON.stringify(leaky).includes("candidate"), false);
+  // Fixed driver phrases name a crash without page text.
+  assert.equal(errorDetail(new Error("page.goto: Target page, context or browser has been closed\nCall log: https://example.test/?email=a@b.c")).message, "Target page, context or browser has been closed");
+  assert.equal(errorDetail(new Error("Navigation failed because page crashed!")).message, "Navigation failed because page crashed");
 });
 
 test("recording is best effort and bounded", async () => {
@@ -18,7 +21,8 @@ test("recording is best effort and bounded", async () => {
   const database = { async rpc(_name: string, args: Record<string, unknown>) { calls.push(args); return { data: null, error: null }; } };
   await recordWorkerEvent(database, { lane: "autopilot", stage: "send", outcome: "FAILED", code: "not a code", detail: { big: "x".repeat(10_000) }, durationMs: -5 });
   assert.equal(calls[0]!.p_code, null);
-  assert.deepEqual(calls[0]!.p_detail, { truncated: true });
+  // Oversized details keep their plain fields, shortened, instead of losing everything (D-149).
+  assert.deepEqual(calls[0]!.p_detail, { big: "x".repeat(120), truncated: true });
   assert.equal(calls[0]!.p_duration_ms, 0);
   await recordWorkerEvent({ async rpc() { throw new Error("down"); } }, { lane: "kit", stage: "kit", outcome: "FAILED" });
   await recordWorkerEvent(database, { lane: "Bad Lane!", stage: "x", outcome: "INFO" });

@@ -288,6 +288,10 @@ test("Browserbase resolves exactly one API-key-scoped project", () => {
     () => resolveBrowserbaseProjectId([{ id: "" }]),
     /BROWSERBASE_PROJECT_SCOPE_INVALID/u,
   );
+  // BROWSERBASE_PROJECT_ID picks the delivery project when the key sees several, and must exist (D-149).
+  assert.equal(resolveBrowserbaseProjectId([{ id: "project-1" }, { id: "project-2" }], "project-2"), "project-2");
+  assert.equal(resolveBrowserbaseProjectId([{ id: "project-1" }], " "), "project-1");
+  assert.throws(() => resolveBrowserbaseProjectId([{ id: "project-1" }], "project-9"), /BROWSERBASE_PROJECT_SCOPE_INVALID/u);
 });
 
 test("provision creates one short-lived, unrecorded, no-CAPTCHA exact-domain session", async () => {

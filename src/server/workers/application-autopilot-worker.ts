@@ -8,6 +8,7 @@ import type { ApplicationDeliveryRuntime, ApplicationDeliveryRuntimeAdapter } fr
 import type { Page } from "playwright-core";
 import type { StandingAnswerResolver } from "./standing-answers.ts";
 import { errorCode, errorDetail } from "./worker-events.ts";
+import { boundDiagnostics } from "./delivery-diagnostics.ts";
 
 export type DeliveryWorkerReceipt = Readonly<{
   url: string; observedAt: string; bodyHash: string; requestFingerprint: string; attemptId: string;
@@ -20,6 +21,8 @@ export type DeliveryWorkerOutcome = Readonly<{
   /** Milliseconds per delivery phase, recorded with the send's worker event. */
   timings?: Readonly<Record<string, number>>;
   questions?: readonly AgentQuestionDescriptor[];
+  /** Where the send stopped and what the browser saw, shapes only (D-149). */
+  diagnostics?: Readonly<Record<string, unknown>>;
 }>;
 export type DeliveryWorkerDriveInput = Readonly<{
   claim: ApplicationAutopilotClaim;
@@ -57,6 +60,27 @@ function receiptEvidence(receipt: DeliveryWorkerReceipt, claim: ApplicationAutop
   };
 }
 
+/**
+ * Pre-submit stops caused by the browser provider, the model provider, a slow
+ * page or an unexpected exception. Guard verdicts (drift, origin, CAPTCHA,
+ * unsupported controls, Ashby protocol) are deliberately absent: a fresh run
+ * would meet the same check, and it is not this retry's place to look again.
+ */
+export const SELF_HEAL_CODES: ReadonlySet<string> = new Set([
+  "DELIVERY_STEP_UNSUPPORTED", "DELIVERY_EXECUTION_FAILED", "DELIVERY_BROWSER_ACTION_FAILED", "APPLICATION_DELIVERY_FAILED",
+  "DELIVERY_AGENT_TURN_FAILED", "DELIVERY_AGENT_TOOL_ARGUMENTS_INVALID", "OPENAI_AGENTS_NETWORK_ERROR", "OPENAI_AGENTS_HTTP_ERROR", "MODEL_RATE_LIMITED",
+]);
+/** The second attempt needs most of the run budget; later stops end the run as before. */
+export const SELF_HEAL_BEFORE_MS = 240_000;
+
+export function selfHealable(outcome: DeliveryWorkerOutcome, state: Readonly<{
+  mode: ApplicationAutopilotClaim["mode"]; attemptId: string | null; permitted: boolean; asked: number; elapsedMs: number; aborted: boolean; healed?: boolean;
+}>): boolean {
+  return state.mode === "FILL" && !state.attemptId && !state.permitted && state.asked === 0 && !state.aborted && !state.healed &&
+    state.elapsedMs < SELF_HEAL_BEFORE_MS && (outcome.kind === "FAILED_SAFE" || outcome.kind === "TAKEOVER") &&
+    SELF_HEAL_CODES.has(outcome.reasonCode ?? "");
+}
+
 /** Coordinates one durable job. Model output never directly changes submission status. */
 export async function coordinateApplicationAutopilot(input: Readonly<{
   claim: ApplicationAutopilotClaim;
@@ -77,6 +101,9 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
   let cleanupPending = false;
   const timings = { started: Date.now(), browserMs: null as number | null, driveMs: null as number | null };
   const requested = new Map<string, AgentQuestionDescriptor>();
+  // The coordinator stage a stop happened in, for diagnostics only (D-149).
+  let stage = "lease";
+  let browserSession: string | null = null;
   try {
     await repository.assertLease(claim, claim.mode === "FILL");
     if (signal.aborted) throw new Error("APPLICATION_DELIVERY_CANCELED");
@@ -99,6 +126,7 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
       // Reuse the byte/fact validation shape only. These IDs never enter fill-only RPCs.
       fillAttemptId: claim.id, computerSessionId: claim.id,
     };
+    stage = "materialize";
     execution = await input.materializer.materialize({
       context: { ...binding, destinationUrl: claim.destinationUrl, artifactManifest: claim.artifactManifest, disclosureManifest: claim.disclosureManifest },
       binding,
@@ -112,6 +140,7 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
         await repository.checkpoint(claim, { stage: "BROWSER_BOUND", data: { runtimeProvisionKey: provisionKey, runtimeState: "BOUND", browserExpiresAt: expiresAt } });
     };
     const browserStarted = Date.now();
+    stage = "browser-start";
     try {
       runtime = await input.runtimeAdapter.open({
         provisionKey, runtimeReference: claim.runtimeReference,
@@ -126,6 +155,8 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
       await repository.checkpoint(claim, { stage: "PROVISIONING", data: { runtimeProvisionKey: provisionKey, runtimeState: "INTENT" } });
       runtime = await input.runtimeAdapter.open({ provisionKey, runtimeReference: null, allowCreate: true, onBound });
     }
+    browserSession = runtime.sessionId;
+    stage = "answers";
     const answers: AgentQuestionAnswer[] = [...await repository.readAllAnswers(claim)];
     // Each askable field is looked up in the candidate's remembered answers at
     // most once per run, so repeat questions are filled in this same pass.
@@ -185,8 +216,10 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
     };
     timings.browserMs = Date.now() - browserStarted;
     const driveStarted = Date.now();
-    outcome = await input.drive({
-      claim, page: runtime.page, runtimeExpiresAt: runtime.expiresAt, executionPackage: execution, questions, signal,
+    stage = "form";
+    const packet = execution;
+    const driveWith = (active: ApplicationDeliveryRuntime) => input.drive({
+      claim, page: active.page, runtimeExpiresAt: active.expiresAt, executionPackage: packet, questions, signal,
       async begin(request) {
         if (signal.aborted || claim.mode !== "FILL") throw new Error("DELIVERY_SUBMIT_NOT_AUTHORIZED");
         // Exact final readback found no unresolved fields. Previously asked
@@ -206,6 +239,25 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
         await repository.checkpoint(claim, { stage: "DELIVERY_PROGRESS", data: { delivery: jsonObject(state) as Json } });
       },
     });
+    outcome = await driveWith(runtime);
+    // Self-healing (D-149): one fresh browser inside this run for a stop that
+    // happened before any submission and looks like infrastructure, not a
+    // guard verdict. Same guards, same sealed permission rules; nothing was sent.
+    if (selfHealable(outcome, { mode: claim.mode, attemptId: claim.attemptId, permitted: Boolean(submission.permit) || submission.authorizationRequested,
+      asked: requested.size, elapsedMs: Date.now() - timings.started, aborted: signal.aborted })) {
+      await repository.recordEvent?.(claim, { stage: "self-heal", outcome: "INFO", code: outcome.reasonCode ?? null,
+        detail: boundDiagnostics({ stage, ...(browserSession ? { browserSession } : {}), ...(outcome.diagnostics ?? {}) }) });
+      try { await runtime.release(); await repository.bindRuntime(claim, null); }
+      catch { cleanupPending = true; }
+      runtime = null;
+      provisionKey = randomUUID();
+      await repository.checkpoint(claim, { stage: "PROVISIONING", data: { runtimeProvisionKey: provisionKey, runtimeState: "INTENT" } });
+      stage = "browser-start";
+      runtime = await input.runtimeAdapter.open({ provisionKey, runtimeReference: null, allowCreate: true, onBound });
+      browserSession = runtime.sessionId;
+      stage = "form";
+      outcome = await driveWith(runtime);
+    }
     timings.driveMs = Date.now() - driveStarted;
     if (outcome.kind === "CONFIRMED") {
       if (!outcome.receipt || outcome.receipt.attemptId !== (submission.permit?.attemptId ?? claim.attemptId)) throw new Error("DELIVERY_RECEIPT_ATTEMPT_MISMATCH");
@@ -235,6 +287,13 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
       } catch { cleanupPending = true; }
     }
     if (execution) eraseApplicationFillExecutionPackage(execution);
+  }
+  if (outcome.kind !== "CONFIRMED" && outcome.kind !== "QUESTIONS_REQUIRED") {
+    // A second, separately bounded row keeps the send event within its size limit.
+    await repository.recordEvent?.(claim, {
+      stage: "stop-diagnosis", outcome: "INFO", code: outcome.reasonCode ?? null,
+      detail: boundDiagnostics({ stage, ...(browserSession ? { browserSession } : {}), ...(outcome.diagnostics ?? {}) }),
+    });
   }
   await repository.recordEvent?.(claim, {
     stage: claim.mode === "RECONCILE" ? "reconcile" : "send",

@@ -140,9 +140,13 @@ export function postingOnlyBrief(context: DraftingContextV2): NeedsBrief {
 
 export async function researchEmployer(
   context: DraftingContextV2,
-  options: Readonly<{ apiKey?: string; environment?: NodeJS.ProcessEnv; webSearch?: boolean }> = {},
+  options: Readonly<{ apiKey?: string; environment?: NodeJS.ProcessEnv; webSearch?: boolean;
+    /** Epoch ms after which no new research call starts; the posting-only brief is used instead (D-149). */
+    deadline?: number; now?: () => number }> = {},
 ): Promise<EmployerResearch> {
   const environment = options.environment ?? process.env;
+  const now = options.now ?? Date.now;
+  const remaining = () => options.deadline === undefined ? Number.POSITIVE_INFINITY : options.deadline - now();
   const input = JSON.stringify({
     employer: context.job.employerName,
     role: context.job.title,
@@ -160,7 +164,7 @@ export async function researchEmployer(
     schema: RESEARCH_SCHEMA as unknown as Record<string, unknown>,
     reasoningEffort: "low",
     maxOutputTokens: 9_000,
-    timeoutMs: 150_000,
+    timeoutMs: Math.max(10_000, Math.min(150_000, remaining())),
     ...(webSearch ? { tools: [{ type: "web_search" as const }] } : {}),
   });
   const debug = (error: unknown) => {
@@ -198,6 +202,7 @@ export async function researchEmployer(
   let best: Readonly<{ result: Attempt; facts: ResearchFact[] }> | null = null;
   if (options.webSearch !== false) {
     for (let round = 1; round <= 2; round += 1) {
+      if (remaining() < 30_000) break;
       try {
         const result = await attempt(true);
         const facts = verifiedFacts(result);
@@ -209,6 +214,9 @@ export async function researchEmployer(
         debug(error);
       }
     }
+  }
+  if (!best && remaining() < 20_000) {
+    return Object.freeze({ coverage: "OFFICIAL_POSTING_ONLY", facts: Object.freeze([]), brief: postingOnlyBrief(context), model: null });
   }
   if (!best) {
     try {

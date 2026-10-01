@@ -1,4 +1,5 @@
 import { errorDetail } from "./worker-events.ts";
+import { boundDiagnostics, describeFrames, describeUrl } from "./delivery-diagnostics.ts";
 import { createHash } from "node:crypto";
 import type { Page } from "playwright-core";
 
@@ -37,6 +38,8 @@ export type ApplicationDeliveryInput = Readonly<{
 }>;
 type OutcomeCounts = Readonly<{
   filledFieldCount: number; uploadedArtifactCount: number; completedStepCount: number;
+  /** Where a non-confirmed send stopped and what the browser saw, shapes only (D-149). */
+  diagnostics?: Readonly<Record<string, unknown>>;
   /** Milliseconds per phase (open, first read of each step, model, submit and code) for worker events (D-116). */
   timings?: Readonly<Record<string, number>>;
 }>;
@@ -138,10 +141,13 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
         await dependencies.assertLease?.();
         if (input.signal?.aborted || signal?.aborted) throw new Error("DELIVERY_CANCELED");
       }
-      try {
-        if (input.priorSubmission) return { ...counts(), ...await runtime.reconcile(input.priorSubmission) };
+      // The phase a stop happened in, for diagnostics only (D-149).
+      let phase = "open";
+      const run = async (): Promise<ApplicationDeliveryOutcome> => {
+        if (input.priorSubmission) { phase = "reconcile"; return { ...counts(), ...await runtime.reconcile(input.priorSubmission) }; }
         await active();
         await timed("openMs", () => runtime.open(input.signal));
+        phase = "inspect";
         if ((await runtime.currentStep())?.id !== policy.steps[0]?.id) return { ...counts(), kind: "TAKEOVER", reasonCode: "DELIVERY_PRIOR_STEP_REVIEW_REQUIRED" };
         const readbacks: Readonly<Record<string, unknown>>[] = [];
         const visited = new Set<string>();
@@ -240,6 +246,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           // Candidate answers are already exact, bound authority. Applying them
           // must not depend on whether the model elects to issue a tool call.
           await timed("readMs", () => inspect());
+          phase = "fill";
           // Saved answers, facts and files filled before any model turn.
           const fillStarted = Date.now();
           for (const answer of answers) {
@@ -301,6 +308,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           // justify a model run (D-115).
           const stepAlreadyFilled = missingFields(snapshot).length === 0 && requiredUploads.every((id) => runtime.uploaded(id)) &&
             snapshot.fields.every((field) => !field.required || field.readOnly || field.hasValue || field.kind === "FILE" && runtime.uploaded(field.fieldId));
+          phase = "model";
           if (!stepAlreadyFilled && !failedUpload) await timed("modelMs", () => dependencies.harness.run({
             binding: input.binding, signal: input.signal, maxActions: dependencies.maxActions ?? 80,
             instructions: deliveryStepInstructions(input.startUrl),
@@ -387,6 +395,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           filledFieldCount += browser.counts().filledFieldCount;
           if (fatal) return { ...counts(), kind: "FAILED_SAFE", reasonCode: fatal };
           if (failedUpload) return { ...counts(), kind: "TAKEOVER", reasonCode: failedUpload };
+          phase = "review";
           await active();
           snapshot = await browser.verifyWrites(input.signal);
           await runtime.verifyCurrentUploads();
@@ -407,10 +416,11 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           readbacks.push(readback);
           completedStepCount += 1;
           await dependencies.submissionHooks.checkpoint?.({ phase: "STEP_REVIEWED", ...readback });
-          if (step.forward) { await active(); await runtime.move("FORWARD", input.signal); continue; }
+          if (step.forward) { phase = "next-step"; await active(); await runtime.move("FORWARD", input.signal); phase = "inspect"; continue; }
           if (!step.submit) return { ...counts(), kind: "TAKEOVER", reasonCode: "DELIVERY_FINAL_CONTROL_UNSUPPORTED" };
           const review = { schemaRelease: APPLICATION_DELIVERY_DRIVER_RELEASE, applicationId: input.binding.applicationId, revisionId: input.binding.revisionId, destinationUrl: input.startUrl, readbacks };
           await active();
+          phase = "submit";
           submitStarted = Date.now();
           let result = await runtime.submit(hash(review), review, input.signal, async () => {
             await active();
@@ -424,6 +434,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           // The employer emailed the candidate a code instead of accepting the
           // request. Only the candidate's own code, resent with this same
           // attempt's content, can complete it; nothing else is retried.
+          if (result.kind === "VERIFICATION_REQUIRED") phase = "emailed-code";
           for (let round = 0; result.kind === "VERIFICATION_REQUIRED" && round < 3; round += 1) {
             const code = await dependencies.verification?.requestCode({ recipient: result.recipient, retry: round > 0, signal: input.signal }) ?? null;
             if (!code) return { ...counts(), kind: "NOT_ACCEPTED", reasonCode: "DELIVERY_EMAIL_VERIFICATION_TIMEOUT", submission: result.submission };
@@ -433,8 +444,19 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
           return { ...counts(), ...result };
         }
         return { ...counts(), kind: "TAKEOVER", reasonCode: "DELIVERY_STEP_LIMIT" };
-      } catch (error) { return { ...counts(), kind: "FAILED_SAFE", reasonCode: safeCode(error), detail: errorDetail(error) }; }
+      };
+      let outcome: ApplicationDeliveryOutcome;
+      try { outcome = await run(); }
+      catch (error) { outcome = { ...counts(), kind: "FAILED_SAFE", reasonCode: safeCode(error), detail: errorDetail(error) }; }
+      try {
+        if (outcome.kind !== "CONFIRMED") {
+          let pageAt = "(unavailable)";
+          try { pageAt = describeUrl(page.url()); } catch { /* closed page */ }
+          outcome = { ...outcome, diagnostics: boundDiagnostics({ phase, page: pageAt, steps: completedStepCount, frames: describeFrames(page), ...runtime.diagnostics() }) };
+        }
+      } catch { /* Diagnostics never change the outcome. */ }
       finally { await runtime.dispose(); }
+      return outcome;
     },
   });
 }

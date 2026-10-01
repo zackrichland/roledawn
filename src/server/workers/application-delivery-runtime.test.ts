@@ -89,3 +89,44 @@ test("provider plan limits fail with a plain reason instead of a generic error",
   assert.equal(deliveryProviderError(other), other);
   assert.equal(deliveryProviderError("offline").message, "DELIVERY_RUNTIME_PROVIDER_FAILED");
 });
+
+test("a definitive provider rejection of the standard settings retries once with the proven settings; uncertain failures never retry", async () => {
+  const { createBrowserbaseDeliveryProvider, PROVEN_BROWSER_SETTINGS, STANDARD_BROWSER_SETTINGS } = await import("./application-delivery-runtime.ts");
+  const rejection = (status: number) => Object.assign(new Error("provider said no"), { status });
+  for (const scenario of [
+    { first: rejection(400), existing: 0, expect: "PROVEN" },
+    { first: rejection(422), existing: 0, expect: "PROVEN" },
+    { first: rejection(400), existing: 1, expect: /provider said no/u },
+    { first: rejection(402), existing: 0, expect: /DELIVERY_BROWSER_QUOTA_EXHAUSTED/u },
+    { first: rejection(429), existing: 0, expect: /DELIVERY_BROWSER_CONCURRENCY_LIMIT/u },
+    { first: rejection(500), existing: 0, expect: /provider said no/u },
+    { first: new Error("socket hang up"), existing: 0, expect: /socket hang up/u },
+  ] as const) {
+    const creates: Record<string, unknown>[] = [];
+    const provider = createBrowserbaseDeliveryProvider({ projectId: "project-one", region: "us-east-1", sleep: async () => undefined, sessions: {
+      async list() { return Array.from({ length: scenario.existing }, () => record); },
+      async create(input) {
+        creates.push(input);
+        if (creates.length === 1) throw scenario.first;
+        return { ...record, userMetadata: input.userMetadata as Record<string, unknown> };
+      },
+      async retrieve() { return record; }, async update() { return null; },
+    } });
+    if (typeof scenario.expect === "string") {
+      const session = await provider.create(provisionKey);
+      assert.equal(session.userMetadata?.roledawn_session_settings, scenario.expect);
+      assert.deepEqual(creates.map((input) => input.browserSettings), [STANDARD_BROWSER_SETTINGS, PROVEN_BROWSER_SETTINGS]);
+      assert.ok(creates.every((input) => (input.userMetadata as Record<string, unknown>).roledawn_delivery_provision_key === provisionKey));
+    } else {
+      await assert.rejects(provider.create(provisionKey), scenario.expect);
+      assert.equal(creates.length, 1, "an uncertain or non-definitive failure is never created twice");
+    }
+  }
+});
+
+test("the opened runtime reports which provider settings its session runs with", async () => {
+  const { adapter, request } = fixture({ async create() { return { ...record, userMetadata: { ...record.userMetadata, roledawn_session_settings: "PROVEN" } }; } });
+  const runtime = await adapter.open(request);
+  assert.equal(runtime.sessionSettings, "PROVEN");
+  await runtime.release();
+});

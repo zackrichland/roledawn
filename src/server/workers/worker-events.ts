@@ -7,6 +7,8 @@
  */
 import { createHash } from "node:crypto";
 
+import { boundDiagnostics } from "./delivery-diagnostics.ts";
+
 type EventDatabase = Readonly<{
   rpc(name: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;
 }>;
@@ -41,7 +43,9 @@ export function errorDetail(error: unknown): Record<string, string> {
   const firstLine = error.message.split("\n")[0]!.trim();
   const timeout = /^((?:page|locator|frame|browserContext|browser|elementHandle)\.[A-Za-z]+): (Timeout \d+ms exceeded)/u.exec(firstLine);
   const network = /\bnet::ERR_[A-Z_]+/u.exec(firstLine);
-  const safe = /^[A-Z][A-Z0-9_]{2,119}$/u.test(firstLine) ? firstLine : timeout ? `${timeout[1]}: ${timeout[2]}` : network ? network[0] : null;
+  // Fixed browser-driver phrases (no page or candidate text) that name a crash or lost connection.
+  const browser = /\b(Target page, context or browser has been closed|Target closed|Navigation failed because page crashed|Browser has been closed|Execution context was destroyed|Frame was detached|WebSocket error|connectOverCDP: Timeout \d+ms exceeded)\b/u.exec(firstLine);
+  const safe = /^[A-Z][A-Z0-9_]{2,119}$/u.test(firstLine) ? firstLine : timeout ? `${timeout[1]}: ${timeout[2]}` : network ? network[0] : browser ? browser[1] : null;
   return {
     error: (error.name || "Error").slice(0, 60),
     ...(typeof code === "string" && CODE.test(code) ? { code } : {}),
@@ -61,7 +65,8 @@ export async function recordWorkerEvent(database: EventDatabase, event: WorkerEv
   if (!LANE.test(event.lane)) return;
   try {
     const detail = event.detail ?? {};
-    const bounded = Buffer.byteLength(JSON.stringify(detail)) <= MAX_DETAIL_BYTES ? detail : { truncated: true };
+    // Shrink the largest nested records first so plain fields survive (D-149).
+    const bounded = Buffer.byteLength(JSON.stringify(detail)) <= MAX_DETAIL_BYTES ? detail : boundDiagnostics(detail, MAX_DETAIL_BYTES);
     await database.rpc("record_worker_event", {
       p_lane: event.lane,
       p_stage: event.stage.slice(0, 80) || "unknown",

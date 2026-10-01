@@ -19,6 +19,8 @@ export type ApplicationDeliveryRuntime = Readonly<{
   page: Page;
   sessionId: string;
   expiresAt: string;
+  /** Which provider settings this session runs with (D-149): STANDARD, or PROVEN after a definitive rejection. */
+  sessionSettings?: string | null;
   release(): Promise<void>;
 }>;
 
@@ -93,8 +95,10 @@ export function createApplicationDeliveryRuntimeAdapter(input: Readonly<{
         // The driver installs its narrowly scoped request policy before its first navigation.
         const page = context.pages()[0] ?? await context.newPage();
         let released = false;
+        const settings = session.userMetadata?.roledawn_session_settings;
         return {
           page, sessionId: session.id, expiresAt: session.expiresAt,
+          sessionSettings: typeof settings === "string" && /^[A-Z_]{1,20}$/u.test(settings) ? settings : null,
           async release() {
             if (released) return;
             // Request provider release before dropping the CDP connection. A disconnected
@@ -124,33 +128,74 @@ export function deliveryProviderError(error: unknown): Error {
   return error instanceof Error ? error : new Error("DELIVERY_RUNTIME_PROVIDER_FAILED");
 }
 
+/** The provider settings every send asks for first (D-146 solver, D-147 recording and logs). */
+export const STANDARD_BROWSER_SETTINGS = Object.freeze({ solveCaptchas: true, recordSession: true, logSession: true, ignoreCertificateErrors: false });
+/** The settings that produced the three confirmed Greenhouse applications (before D-146/D-147). */
+export const PROVEN_BROWSER_SETTINGS = Object.freeze({ solveCaptchas: false, recordSession: false, logSession: false, ignoreCertificateErrors: false });
+
+/** A client error proves Browserbase created nothing; quota (402) and rate (429) keep their own codes. */
+function definitiveRejection(error: unknown): boolean {
+  const status = typeof error === "object" && error !== null && "status" in error ? Number((error as { status: unknown }).status) : Number.NaN;
+  return [400, 403, 404, 422].includes(status);
+}
+
+type BrowserbaseSessions = Readonly<{
+  list(input: { q: string }): Promise<readonly ProviderSession[]>;
+  create(input: Record<string, unknown>): Promise<ProviderSession>;
+  retrieve(id: string): Promise<ProviderSession>;
+  update(id: string, input: { status: "REQUEST_RELEASE" }): Promise<unknown>;
+}>;
+
+/**
+ * Browserbase sessions for delivery. If Browserbase definitively rejects the
+ * standard settings (a 4xx, so no session exists), confirm nothing was made
+ * under this provision key and ask once more with the proven settings, so a
+ * plan or settings change can never stop every send before the form opens (D-149).
+ */
+export function createBrowserbaseDeliveryProvider(input: Readonly<{
+  sessions: BrowserbaseSessions; projectId: string; region: string; sleep?: (ms: number) => Promise<void>;
+}>): DeliverySessionProvider {
+  const { sessions, projectId, region } = input;
+  const sleep = input.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const list = (key: string) => sessions.list({ q: `user_metadata['roledawn_delivery_provision_key']:'${key}'` });
+  const create = (key: string, label: "STANDARD" | "PROVEN") => sessions.create({
+    projectId, region, api_timeout: 900, keepAlive: false,
+    // Recording and console/network logs give every send a replay and request log in Browserbase for diagnosis (D-147); it holds what the form showed, so it stays in the founder's private Browserbase project.
+    browserSettings: label === "STANDARD" ? STANDARD_BROWSER_SETTINGS : PROVEN_BROWSER_SETTINGS,
+    userMetadata: { roledawn_delivery_provision_key: key, roledawn_adapter_release: RELEASE, roledawn_session_settings: label },
+  });
+  return {
+    list,
+    async create(key) {
+      try { return await create(key, "STANDARD"); }
+      catch (error) {
+        if (!definitiveRejection(error)) throw deliveryProviderError(error);
+        if ((await list(key)).length) throw deliveryProviderError(error);
+        return await create(key, "PROVEN").catch((retry: unknown) => { throw deliveryProviderError(retry); });
+      }
+    },
+    retrieve: (id) => sessions.retrieve(id),
+    async release(id) {
+      await sessions.update(id, { status: "REQUEST_RELEASE" });
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const session = await sessions.retrieve(id);
+        if (!["RUNNING", "PENDING"].includes(session.status)) return;
+        await sleep(250);
+      }
+      throw new Error("DELIVERY_RUNTIME_RELEASE_PENDING");
+    },
+  };
+}
+
 export async function createApplicationDeliveryRuntimeForNodeWorker(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<ApplicationDeliveryRuntimeAdapter> {
   const configuration = parseBrowserbaseRuntimeEnvironment(environment);
   const sdk = new Browserbase({ apiKey: configuration.apiKey, timeout: configuration.apiTimeoutMs, maxRetries: 0 });
-  const projectId = resolveBrowserbaseProjectId(await sdk.projects.list());
+  const projectId = resolveBrowserbaseProjectId(await sdk.projects.list(), environment.BROWSERBASE_PROJECT_ID);
   return createApplicationDeliveryRuntimeAdapter({
     projectId,
     connect: (url) => chromium.connectOverCDP(url, { timeout: configuration.apiTimeoutMs }),
-    provider: {
-      list: (key) => sdk.sessions.list({ q: `user_metadata['roledawn_delivery_provision_key']:'${key}'` }),
-      create: (key) => sdk.sessions.create({
-        projectId, region: configuration.region, api_timeout: 900, keepAlive: false,
-        // Recording and console/network logs give every send a replay and request log in Browserbase for diagnosis (D-147); it holds what the form showed, so it stays in the founder's private Browserbase project.
-        browserSettings: { solveCaptchas: true, recordSession: true, logSession: true, ignoreCertificateErrors: false },
-        userMetadata: { roledawn_delivery_provision_key: key, roledawn_adapter_release: RELEASE },
-      }).catch((error: unknown) => { throw deliveryProviderError(error); }),
-      retrieve: (id) => sdk.sessions.retrieve(id),
-      async release(id) {
-        await sdk.sessions.update(id, { status: "REQUEST_RELEASE" });
-        for (let attempt = 0; attempt < 10; attempt += 1) {
-          const session = await sdk.sessions.retrieve(id);
-          if (!["RUNNING", "PENDING"].includes(session.status)) return;
-          await new Promise((resolve) => setTimeout(resolve, 250));
-        }
-        throw new Error("DELIVERY_RUNTIME_RELEASE_PENDING");
-      },
-    },
+    provider: createBrowserbaseDeliveryProvider({ sessions: sdk.sessions as unknown as BrowserbaseSessions, projectId, region: configuration.region }),
   });
 }
