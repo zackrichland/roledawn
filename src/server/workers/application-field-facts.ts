@@ -253,7 +253,7 @@ export function classifyFieldFact(field: FieldFactDescriptor): CandidateFactKey 
   // Lever's native system slot is the candidate's current city. Fill it before
   // uploading, so résumé parsing cannot become authority for a required value.
   if (field.provider === "LEVER" && label === "current location" && field.domId === "location-input" &&
-    field.name === "location" && field.kind === "TEXT" && field.inputType === "text") return "location.city";
+    field.name === "location" && field.kind === "SINGLE_SELECT" && field.inputType === "text") return "location.city";
   // The global exclusions govern the profile-fact table unchanged; saved
   // answers apply their own narrower exclusions (see ANSWER_LABEL_RULES).
   const matches = [
@@ -321,6 +321,8 @@ export function optionMatchForField(field: FieldFactDescriptor, factKey: string 
   const intendedCityAnswer = factKey === null && field.provider === "ASHBY" && field.domId === "_systemfield_location" &&
     field.name === "_systemfield_location" && field.kind === "SINGLE_SELECT" && field.inputType === "text" &&
     normalizeFieldLabel(field.label) === "which city and country do you intend to work from";
-  return { semantic: intendedCityAnswer ? "CITY" : key ? OPTION_SEMANTICS[key] ?? null : null, source: factKey === null ? "ANSWER" : "FACT",
+  const phoneCountryAnswer = factKey === null && normalizeFieldLabel(field.label) === "phone country" &&
+    field.kind === "SINGLE_SELECT";
+  return { semantic: intendedCityAnswer ? "CITY" : phoneCountryAnswer ? "COUNTRY" : key ? OPTION_SEMANTICS[key] ?? null : null, source: factKey === null ? "ANSWER" : "FACT",
     hints: { region: approved("location.region"), country: approved("location.country_code") } };
 }

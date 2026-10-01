@@ -37,8 +37,18 @@ const MAX_TEXT = 1_000;
 
 /** Explicit candidate subscription, restricted to this exact clearance scope. */
 export const EXACT_CLEARANCE_TOPIC = "Active TS/SCI with FSP or CI";
+export const PHONE_COUNTRY_TOPIC = "Phone number country code";
 const EXACT_CLEARANCE_QUESTION = /^do you (?:have an active ts\/sci clearance|currently possess an active ts\/sci) with fsp or ci\??\s*\*?$/u;
 const exactText = (value: string) => value.trim().replace(/\s+/gu, " ").toLowerCase();
+
+/** Optional phone-country defaults still require the candidate's own answer.
+ * No residence or phone-number inference, and no model-generated replacement. */
+export function phoneCountryStandingValue(question: AgentQuestionDescriptor, answer: Pick<StandingAnswer, "topic" | "answer">): string | null {
+  if (!/^phone country\s*\*?$/u.test(exactText(question.label)) || question.kind !== "TEXT" || question.options.length ||
+    exactText(answer.topic) !== exactText(PHONE_COUNTRY_TOPIC) || !answer.answer.trim() || answer.answer.length > MAX_TEXT) return null;
+  try { validateAgentQuestionAnswer(question, answer.answer); } catch { return null; }
+  return answer.answer;
+}
 
 /** No model interpretation or inference about other clearance levels. SQL repeats this check. */
 export function exactStandingAnswerValue(question: AgentQuestionDescriptor, answer: Pick<StandingAnswer, "topic" | "answer">): AgentQuestionValue | null {
@@ -173,6 +183,11 @@ export function createStandingAnswerResolver(options: Readonly<{ apiKey?: string
     async resolve({ questions, context, facts, signal }) {
       const exactAnswers = context.answers.filter(answer => exactText(answer.topic) === exactText(EXACT_CLEARANCE_TOPIC));
       const accepted: StandingAnswerProposal[] = [];
+      const phoneCountries = context.answers.filter(answer => exactText(answer.topic) === exactText(PHONE_COUNTRY_TOPIC));
+      if (phoneCountries.length === 1) for (const question of questions.slice(0, 24)) {
+        const value = phoneCountryStandingValue(question, phoneCountries[0]);
+        if (value !== null) accepted.push({ descriptor: question, value, basis: [phoneCountries[0].id] });
+      }
       if (exactAnswers.length === 1) for (const question of questions.slice(0, 24)) {
         const value = exactStandingAnswerValue(question, exactAnswers[0]);
         if (value !== null) accepted.push({ descriptor: question, value, basis: [exactAnswers[0].id] });
@@ -186,7 +201,7 @@ export function createStandingAnswerResolver(options: Readonly<{ apiKey?: string
         }
       }
       // Exact sensitive subscriptions never enter the model's context or basis.
-      const modelAnswers = context.answers.filter(answer => ![exactText(EXACT_CLEARANCE_TOPIC), exactText(APPLICATION_ACKNOWLEDGEMENTS_TOPIC)].includes(exactText(answer.topic))).slice(0, 100);
+      const modelAnswers = context.answers.filter(answer => ![exactText(EXACT_CLEARANCE_TOPIC), exactText(APPLICATION_ACKNOWLEDGEMENTS_TOPIC), exactText(PHONE_COUNTRY_TOPIC)].includes(exactText(answer.topic))).slice(0, 100);
       // An exact question already has the candidate's own text. Rewording it
       // can discard a disambiguating region and select a different location.
       // Eligibility and the database basis check still apply unchanged.

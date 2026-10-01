@@ -370,6 +370,7 @@ export type AshbySubmissionDiagnostics = Readonly<{
   surveyOtherCount: number;
   graphqlErrors: "ABSENT" | "ARRAY" | "OTHER";
   graphqlErrorCount: number;
+  verificationRejection: "ABSENT" | "SCORE_BELOW_THRESHOLD";
   blockMessage: "ABSENT" | "PRESENT";
 }>;
 
@@ -381,7 +382,7 @@ export function inspectAshbySubmissionResponse(operation: AshbyOperation, bytes:
   const diagnostic: AshbySubmissionDiagnostics = {
     classification: "BODY_UNAVAILABLE", mainResult: "MISSING", surveyResults: "MISSING", expectedSurveyCount: count(surveyCount),
     surveyResultCount: 0, surveySuccessCount: 0, surveyFormRenderCount: 0, surveyOtherCount: 0,
-    graphqlErrors: "ABSENT", graphqlErrorCount: 0, blockMessage: "ABSENT",
+    graphqlErrors: "ABSENT", graphqlErrorCount: 0, verificationRejection: "ABSENT", blockMessage: "ABSENT",
   };
   const result = (classification: AshbySubmissionDiagnostics["classification"], dimensions: Partial<AshbySubmissionDiagnostics> = {}): AshbySubmissionDiagnostics =>
     ({ ...diagnostic, ...dimensions, classification });
@@ -406,6 +407,8 @@ export function inspectAshbySubmissionResponse(operation: AshbyOperation, bytes:
     surveyOtherCount: Array.isArray(surveys) ? count(surveys.filter(value => !["SUCCESS", "FORM_RENDER"].includes(category(value))).length) : 0,
     graphqlErrors: body.errors == null ? "ABSENT" : Array.isArray(body.errors) ? "ARRAY" : "OTHER",
     graphqlErrorCount: Array.isArray(body.errors) ? count(body.errors.length) : 0,
+    verificationRejection: Array.isArray(body.errors) && body.errors.some(error => object(object(error)?.extensions)?.ashbyErrorType === "RECAPTCHA_SCORE_BELOW_THRESHOLD")
+      ? "SCORE_BELOW_THRESHOLD" : "ABSENT",
     blockMessage: object(response?.messages)?.blockMessageForCandidateHtml ? "PRESENT" : "ABSENT",
   };
   if (body.errors != null) return result("GRAPHQL_ERRORS", dimensions);

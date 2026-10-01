@@ -61,6 +61,23 @@ async function fill(data: Parameters<Parameters<typeof fixture>[1]>[0]) {
  assert.ok(data.requests.uploadBytes[0].includes(bytes));
 }
 
+test("Ashby optional texting consent inside a required phone entry never becomes a second phone question", options, async () => {
+ await fixture("normal", async data => {
+  await data.page.locator("body").evaluate(element => {
+   const entry = document.createElement("div");
+   entry.className = "ashby-application-form-field-entry";
+   entry.dataset.fieldPath = "fixture-phone"; entry.dataset.fieldEntryId = "fixture-form_fixture-phone";
+   entry.innerHTML = '<label class="ashby-application-form-question-title _required_fixture" for="fixture-phone">Phone number to reach you?</label><input id="fixture-phone" type="tel" required><div class="ashby-application-form-texting-consent-description"><label><input type="radio" name="communicationConsent" value="given">Yes - I consent to receiving text messages</label><label><input type="radio" name="communicationConsent" value="notGiven">No - I do not consent to receiving text messages</label></div>';
+   element.appendChild(entry);
+  });
+  const phoneFields = (await data.browserTools.inspect()).fields.filter(field => field.name === "fixture-phone");
+  assert.equal(phoneFields.length, 1);
+  assert.equal(phoneFields[0].inputType, "tel");
+  assert.equal(phoneFields[0].required, true);
+  assert.equal(await data.page.locator('[name="communicationConsent"]:checked').count(), 0);
+ });
+});
+
 for (const mode of ["normal", "multiple"] as const) test("Ashby " + mode + " saves exact fields/uploads then submits once with employer receipt", options, async () => {
  await fixture(mode, async data => {
   await fill(data);
@@ -74,7 +91,7 @@ for (const mode of ["normal", "multiple"] as const) test("Ashby " + mode + " sav
   assert.equal(data.requests.submits, 1);
  });
 });
-for (const [mode, classification] of [["submit-graphql-error", "GRAPHQL_ERRORS"], ["submit-invalid-json", "JSON_INVALID"]] as const) {
+for (const [mode, classification] of [["submit-graphql-error", "GRAPHQL_ERRORS"], ["submit-low-score", "GRAPHQL_ERRORS"], ["submit-invalid-json", "JSON_INVALID"]] as const) {
  test("Ashby " + mode + " persists only bounded response diagnostics and remains uncertain without a retry", options, async () => {
   await fixture(mode, async data => {
    await fill(data);
@@ -85,6 +102,8 @@ for (const [mode, classification] of [["submit-graphql-error", "GRAPHQL_ERRORS"]
    assert.equal(response?.status, 200);
    assert.equal(response?.ashbyAccepted, false);
    assert.equal(response?.ashbyDiagnostic?.classification, classification);
+   assert.equal(response?.ashbyDiagnostic?.verificationRejection, mode === "submit-low-score" ? "SCORE_BELOW_THRESHOLD" : "ABSENT");
+   if (mode === "submit-low-score") assert.equal(result.reasonCode, "DELIVERY_ASHBY_VERIFICATION_REJECTED");
    const observed = data.checkpoints.find(state => state.phase === "SUBMIT_RESPONSE_OBSERVED");
    assert.ok(observed);
    assert.deepEqual((observed.submission as { response: unknown }).response, response);

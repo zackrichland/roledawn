@@ -1,4 +1,4 @@
-import { errorDetail } from "./worker-events.ts";
+import { errorCode, errorDetail } from "./worker-events.ts";
 import { createHash } from "node:crypto";
 import type { Page } from "playwright-core";
 
@@ -73,7 +73,7 @@ export type ApplicationDeliveryDependencies = Readonly<{
 }>;
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const safeCode = (error: unknown) => error instanceof Error && /^[A-Z][A-Z0-9_]{2,119}$/u.test(error.message) ? error.message : "DELIVERY_EXECUTION_FAILED";
+const safeCode = (error: unknown) => errorCode(error, "DELIVERY_EXECUTION_FAILED");
 function question(field: AgentBrowserField): AgentQuestionDescriptor | null {
   if (field.kind === "FILE" || field.kind === "UNSUPPORTED" || field.readOnly) return null;
   // A long list or search-only control is asked in free text; the server then
@@ -268,7 +268,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
               const matches = offeredArtifacts.filter((artifact) => artifact.variant === variant);
               if (matches.length !== 1) continue;
               await active();
-              try { await runtime.upload(field, matches[0], input.signal); }
+              try { await runtime.upload(field, matches[0], input.signal); await browser.restoreLeverLocationAfterUpload(input.signal); }
               catch (error) { failedUpload = safeCode(error); break; }
             } else {
               const matches = input.executionPackage.facts.filter((fact) => {
@@ -353,6 +353,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
                   if (!artifact) throw new Error("DELIVERY_ARTIFACT_NOT_AUTHORIZED");
                   await active(signal);
                   await runtime.upload(field, artifact, signal ?? input.signal);
+                  await browser.restoreLeverLocationAfterUpload(signal ?? input.signal);
                 } else if (name === "answer_field") {
                   await inspect(signal);
                   const answer = answers.find((item) => item.answerId === args.answerId && item.fieldId === field.fieldId && item.fingerprint === field.fingerprint);

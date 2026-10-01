@@ -105,7 +105,7 @@ const SELF_ID = aliasTable(SELF_ID_ALIASES);
 
 /** Every exact spelling accepted for an approved value of this semantic. */
 export function optionAliases(value: string, semantic: OptionSemantic | null | undefined): ReadonlySet<string> {
-  const normalized = normalizeOptionText(value);
+  const normalized = normalizeOptionText(semantic === "COUNTRY" ? value.replace(/\s*\(?\+\d{1,4}(?:[\s-]\d{1,4})?\)?\s*$/u, "").trim() : value);
   const table = semantic === "COUNTRY" ? COUNTRIES : semantic === "REGION" ? REGIONS : semantic === "SELF_ID" ? SELF_ID : null;
   return table?.get(normalized) ?? new Set(normalized ? [normalized] : []);
 }
@@ -182,5 +182,10 @@ export function chooseSearchResult(labels: readonly string[], query: string, mat
     if (match?.source === "ANSWER") return true;
     return rest.every((part) => allowed.has(part));
   });
-  return new Set(qualifying).size === 1 && qualifying.length === 1 ? qualifying[0] : null;
+  // A broad country-only result can also name a state. Prefer a unique result
+  // carrying the approved region when both are returned for a bare city fact.
+  const regional = semantic === "CITY" && match?.source === "FACT" && match.hints?.region && wanted.length === 1
+    ? qualifying.filter(label => segments(label).slice(1).some(part => optionAliases(match.hints!.region!, "REGION").has(part))) : [];
+  const resolved = regional.length ? regional : qualifying;
+  return new Set(resolved).size === 1 && resolved.length === 1 ? resolved[0] : null;
 }

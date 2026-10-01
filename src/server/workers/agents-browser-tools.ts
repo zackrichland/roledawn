@@ -11,6 +11,7 @@ import {
 import { chooseSearchResult, MAX_SEARCHABLE_OPTIONS, MODEL_OPTION_SAMPLE, resolveOptionValue, type OptionMatch, type OptionSemantic } from "./agents-option-match.ts";
 import { APPLICATION_FILL_CAPTCHA_TAKEOVER, frameShowsCaptchaChallenge, isCaptchaFrameUrl, isHcaptchaFrameUrl, waitForCaptchaSolved } from "./agents-captcha.ts";
 import { readAshbyLocation, selectAshbyLocation } from "./agents-ashby-controls.ts";
+import { readLeverLocation, selectLeverLocation } from "./agents-lever-controls.ts";
 
 const CONTROL_SELECTOR = 'input, select, textarea, [role="combobox"], [role="textbox"], [role="checkbox"], [role="radio"], .ashby-application-form-input-yesno';
 // "Ethnicity", "Hispanic/Latino", "Pronouns" and "Veterans" are demographic
@@ -31,6 +32,7 @@ type RawControl = {
   menuState: string | null;
   aria?: AriaComboboxState;
   remote?: RemoteSearchComboboxState;
+  leverSelection?: string;
 };
 type MenuRead = Readonly<{ aria: AriaComboboxState | null; remote: RemoteSearchComboboxState | null }>;
 
@@ -76,6 +78,7 @@ type LocatedField = Readonly<{
   files: readonly Readonly<{ name: string; size: number; type: string }>[];
   aria?: AriaComboboxState;
   remote?: boolean;
+  leverSelection?: string;
 }>;
 
 export type AgentBrowserSnapshot = Readonly<{
@@ -122,6 +125,7 @@ export function modelFieldView(field: AgentBrowserField): AgentBrowserField {
 }
 
 function kind(control: RawControl): AgentFieldKind {
+  if (control.leverSelection !== undefined) return "SINGLE_SELECT";
   if (control.type === "ashby-yesno") return control.options.length === 2 ? "SINGLE_SELECT" : "UNSUPPORTED";
   if (control.role === "combobox" && control.tag !== "select") {
     return control.aria ? control.aria.multiple ? "MULTI_SELECT" : "SINGLE_SELECT" : control.remote ? "SINGLE_SELECT" : "UNSUPPORTED";
@@ -140,6 +144,11 @@ async function rawControls(frame: Frame, leverLabels = false, ashbyLabels = fals
   return frame.locator(CONTROL_SELECTOR).evaluateAll((elements, flags) => elements.flatMap((element, index) => {
     const native = element as HTMLInputElement;
     const ashbyEntry = flags.ashbyLabels ? element.closest('.ashby-application-form-field-entry[data-field-path][data-field-entry-id]') : null;
+    // SMS opt-in is a separate optional notification preference inside a Phone
+    // entry, not that entry's required phone answer or schema-bound form field.
+    if (ashbyEntry && native.name === "communicationConsent" && native.type === "radio" && !native.required &&
+      element.getAttribute("aria-required") !== "true" &&
+      element.closest(".ashby-application-form-texting-consent-description")) return [];
     const yesNo = element.classList.contains("ashby-application-form-input-yesno");
     if (yesNo && !ashbyEntry || ashbyEntry && !yesNo && element.closest(".ashby-application-form-input-yesno")) return [];
     const type = yesNo ? "ashby-yesno" : String(native.type ?? element.getAttribute("role") ?? "").toLowerCase();
@@ -269,7 +278,8 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
   // that kind: after a choice their menu shows the last results instead.
   const remoteControls = new Set<string>();
   let latest = new Map<string, LocatedField>();
-  const writes = new Map<string, Readonly<{ value?: AgentFieldValue; artifact?: MaterializedApplicationArtifact; phone?: boolean }>>();
+  const writes = new Map<string, Readonly<{ value?: AgentFieldValue; artifact?: MaterializedApplicationArtifact; phone?: boolean; leverSelection?: string;
+    leverQuery?: string; leverMatch?: OptionMatch }>>();
   const readsBack = (actual: AgentFieldValue, expected: AgentFieldValue, phone: boolean) => hash(actual) === hash(expected) ||
     phone && typeof actual === "string" && typeof expected === "string" && samePhoneNumber(actual, expected);
   let initialValues: Map<string, string> | null = null;
@@ -346,6 +356,13 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       const reads = menuReads.get(frameKey)!.reads;
       if (!takeoverReason && !containsIdentityGate) {
         for (const control of controls) {
+          if (leverLabels && options?.remoteSearch && control.id === "location-input" && control.name === "location" && control.type === "text") {
+            const remote = await readLeverLocation(frame.locator(CONTROL_SELECTOR).nth(control.index));
+            if (!remote) throw new Error("AGENTS_FILL_FIELD_DRIFT");
+            control.remote = remote; control.leverSelection = remote.selection; control.options = []; control.value = remote.selectedLabel;
+            control.valid = remote.paired && (!control.required || remote.selectedLabel.length > 0);
+            continue;
+          }
           if (control.role !== "combobox" || control.tag === "select" || control.readOnly) continue;
           if (options?.ashbyLabels && options.remoteSearch && control.id === "_systemfield_location") {
             const remote = await readAshbyLocation(frame.locator(CONTROL_SELECTOR).nth(control.index), includeDisabledForReview);
@@ -470,7 +487,8 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
         // The employer may lock already-reviewed fields while submitting. A
         // disabled field never creates new authority or hides schema changes.
         if (includeDisabledForReview && control.disabled && !latest.has(field.fieldId)) throw new Error("AGENTS_FILL_FIELD_DRIFT");
-        next.set(field.fieldId, { field, frame, indexes: group.map((item) => item.index), value, files: control.files, aria: control.aria, remote: Boolean(control.remote) });
+        next.set(field.fieldId, { field, frame, indexes: group.map((item) => item.index), value, files: control.files, aria: control.aria, remote: Boolean(control.remote),
+          ...(control.leverSelection !== undefined ? { leverSelection: control.leverSelection } : {}) });
       }
     }
     if (/\/(?:login|log-in|signin|sign-in|account)(?:\/|$)/iu.test(new URL(page.url()).pathname)) {
@@ -478,7 +496,7 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     }
     latest = next;
     initialValues ??= new Map([...next].filter(([, item]) => item.field.hasValue)
-      .map(([id, item]) => [id, hash({ value: item.value, files: item.files })]));
+      .map(([id, item]) => [id, hash({ value: item.value, files: item.files, ...(item.leverSelection !== undefined ? { leverSelection: item.leverSelection } : {}) })]));
     initiallyEmpty ??= new Map([...next].filter(([, item]) => !item.field.hasValue)
       .map(([id, item]) => [id, item.field.fingerprint]));
     return Object.freeze({ origin: expectedOrigin, pageUrl: page.url(), fields: [...next.values()].map((item) => item.field), takeoverReason, navigationRequired });
@@ -533,6 +551,8 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       // with it and is confirmed by the candidate's own region/country facts.
       const search = () => options?.ashbyLabels && field.domId === "_systemfield_location"
         ? selectAshbyLocation(controls.nth(indexes[0]), answer, labels => chooseSearchResult(labels, answer, match), signal)
+        : field.provider === "LEVER" && field.domId === "location-input"
+        ? selectLeverLocation(controls.nth(indexes[0]), answer, labels => chooseSearchResult(labels, answer, match), signal)
         : searchRemoteComboboxOption(frame, controls.nth(indexes[0]), answer, (labels) => chooseSearchResult(labels, answer, match), signal, options);
       expected = options?.withRemoteSearch ? await options.withRemoteSearch(answer, search, signal) : await search();
     } else if (field.kind === "SINGLE_SELECT") {
@@ -559,7 +579,10 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
         }
       } else await controls.nth(indexes[0]).selectOption([...expected], { timeout: 5_000 });
     } else throw new Error("AGENTS_FILL_CONTROL_UNSUPPORTED");
-    writes.set(fieldId, { value: expected, phone: field.kind === "TEXT" && field.inputType === "tel" });
+    const leverLocation = field.provider === "LEVER" && field.domId === "location-input" && located.remote
+      ? await readLeverLocation(controls.nth(indexes[0])) : null;
+    writes.set(fieldId, { value: expected, phone: field.kind === "TEXT" && field.inputType === "tel",
+      ...(leverLocation && typeof answer === "string" ? { leverSelection: leverLocation.selection, leverQuery: answer, leverMatch: match } : {}) });
     await verifyWrites(signal);
   }
 
@@ -610,12 +633,14 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     const snapshot = await inspect(signal, includeDisabledForReview);
     for (const [id, priorHash] of initialValues ?? []) {
       const current = latest.get(id);
-      if (!current || hash({ value: current.value, files: current.files }) !== priorHash) throw new Error("AGENTS_FILL_CANDIDATE_VALUE_CHANGED");
+      if (!current || hash({ value: current.value, files: current.files, ...(current.leverSelection !== undefined ? { leverSelection: current.leverSelection } : {}) }) !== priorHash) throw new Error("AGENTS_FILL_CANDIDATE_VALUE_CHANGED");
     }
     for (const [id, expected] of writes) {
       const current = latest.get(id);
       if (!current) throw new Error("AGENTS_FILL_FIELD_DRIFT");
-      if (expected.value !== undefined && !readsBack(current.value, expected.value, Boolean(expected.phone))) throw new Error("AGENTS_FILL_READBACK_MISMATCH");
+      if (expected.value !== undefined && !readsBack(current.value, expected.value, Boolean(expected.phone))) throw new Error(expected.leverSelection !== undefined
+        ? "AGENTS_FILL_READBACK_MISMATCH_LEVER_LOCATION_TEXT" : "AGENTS_FILL_READBACK_MISMATCH");
+      if (expected.leverSelection !== undefined && current.leverSelection !== expected.leverSelection) throw new Error("AGENTS_FILL_READBACK_MISMATCH_LEVER_LOCATION_METADATA");
       if (expected.artifact) {
         const artifact = expected.artifact;
         const selected = current.files;
@@ -635,8 +660,31 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
     return snapshot;
   }
 
+  /** Lever's parser always rewrites hidden selectedLocation, even when its
+   * visible city was edited. Re-select only our own approved, initially-empty
+   * city after an acknowledged upload. Final review never calls this repair. */
+  async function restoreLeverLocationAfterUpload(signal?: AbortSignal): Promise<void> {
+    if (!leverLabels) return;
+    const snapshot = await inspect(signal);
+    if (snapshot.takeoverReason) throw new Error(snapshot.takeoverReason);
+    for (const [id, expected] of writes) {
+      if (!expected.leverQuery || expected.leverSelection === undefined || typeof expected.value !== "string") continue;
+      const current = latest.get(id);
+      if (!current || initiallyEmpty?.get(id) !== current.field.fingerprint || current.field.provider !== "LEVER" ||
+        current.field.domId !== "location-input") throw new Error("AGENTS_FILL_FIELD_DRIFT");
+      if (current.value === expected.value && current.leverSelection === expected.leverSelection) continue;
+      const control = current.frame.locator(CONTROL_SELECTOR).nth(current.indexes[0]);
+      const work = () => selectLeverLocation(control, expected.leverQuery!, labels => chooseSearchResult(labels, expected.leverQuery!, expected.leverMatch), signal, true);
+      const selected = options?.withRemoteSearch ? await options.withRemoteSearch(expected.leverQuery, work, signal) : await work();
+      const after = await readLeverLocation(control);
+      if (selected !== expected.value || !after?.paired) throw new Error("AGENTS_FILL_READBACK_MISMATCH");
+      writes.set(id, { ...expected, leverSelection: after.selection });
+    }
+    await verifyWrites(signal);
+  }
+
   return Object.freeze({
-    inspect: (signal?: AbortSignal) => inspect(signal), fillValue, upload, clearOptionalParserValue,
+    inspect: (signal?: AbortSignal) => inspect(signal), fillValue, upload, clearOptionalParserValue, restoreLeverLocationAfterUpload,
     verifyWrites: (signal?: AbortSignal) => verifyWrites(signal),
     // Ashby disables its controls after the click, before its final request is
     // intercepted. Read their exact values/schema here without enabling writes.
@@ -684,7 +732,8 @@ export function createAgentBrowserTools(page: Page, destinationUrl: string, opti
       assertOrigin();
     },
     counts: () => ({ filledFieldCount: [...writes.values()].filter((value) => value.value !== undefined).length, uploadedArtifactCount: [...writes.values()].filter((value) => value.artifact).length }),
-    readbackHash: () => hash({ pageUrl: page.url(), fields: [...latest].map(([id, item]) => ({ fieldId: id, value: item.value, files: item.files })) }),
+    readbackHash: () => hash({ pageUrl: page.url(), fields: [...latest].map(([id, item]) => ({ fieldId: id, value: item.value, files: item.files,
+      ...(item.leverSelection !== undefined ? { leverSelection: item.leverSelection } : {}) })) }),
   });
 }
 

@@ -319,5 +319,38 @@ begin
   insert into standing_answer_checks values('exact_clearance_subscription_owned_scoped_and_epoch_neutral',true);
 end $check$;
 
+do $check$
+declare who jsonb:=pg_temp.candidate(); stranger jsonb:=pg_temp.candidate(); run jsonb; q jsonb; bad jsonb; result jsonb;
+  saved uuid; other_saved uuid;
+begin
+  run:=pg_temp.running(who);
+  perform pg_temp.as_candidate(who);
+  saved:=public.save_candidate_standing_answer('Phone number country code','United States (+1)');
+  execute 'reset role';
+  perform pg_temp.as_candidate(stranger);
+  other_saved:=public.save_candidate_standing_answer('Phone number country code','Canada (+1)');
+  execute 'reset role';
+  q:=pg_temp.question('Phone Country','TEXT','[]',false);
+  execute 'set local role service_role';
+  result:=public.record_application_autopilot_standing_answers((run->>'autopilot')::uuid,(run->>'lease')::uuid,
+    jsonb_build_array(jsonb_build_object('descriptor',q,'value','"United States (+1)"'::jsonb,'basis',jsonb_build_array(saved))));
+  if jsonb_array_length(result)<>1 or result->0->>'value'<>'United States (+1)' then raise exception 'CHECK_PHONE_COUNTRY_NOT_RECORDED'; end if;
+  for bad in select value from jsonb_array_elements(jsonb_build_array(
+    jsonb_build_object('descriptor',q,'value','"Canada (+1)"'::jsonb,'basis',jsonb_build_array(saved)),
+    jsonb_build_object('descriptor',q,'value','"Canada (+1)"'::jsonb,'basis',jsonb_build_array(other_saved)),
+    jsonb_build_object('descriptor',q,'value','"United States (+1)"'::jsonb,'basis',jsonb_build_array(saved,'fact:location.country_code')),
+    jsonb_build_object('descriptor',q||'{"label":"Country"}','value','"United States (+1)"'::jsonb,'basis',jsonb_build_array(saved)),
+    jsonb_build_object('descriptor',q||'{"label":"Citizenship","required":true}','value','"United States (+1)"'::jsonb,'basis',jsonb_build_array(saved)),
+    jsonb_build_object('descriptor',q||'{"label":"Sponsorship","required":true}','value','"United States (+1)"'::jsonb,'basis',jsonb_build_array(saved))
+  )) loop
+    begin
+      perform public.record_application_autopilot_standing_answers((run->>'autopilot')::uuid,(run->>'lease')::uuid,jsonb_build_array(bad));
+      raise exception 'CHECK_PHONE_COUNTRY_SCOPE_BYPASS';
+    exception when invalid_parameter_value then null; end;
+  end loop;
+  execute 'reset role';
+  insert into standing_answer_checks values('phone_country_exact_saved_answer_owned_scoped_and_optional',true);
+end $check$;
+
 select check_name, passed from standing_answer_checks order by check_name;
 rollback;

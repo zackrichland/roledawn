@@ -106,12 +106,14 @@ test("Lever completes the native field change before upload so its parser preser
 
 test("Lever fills a required current city before résumé parsing, using only the approved city fact", options, async () => {
   const { result, observed, state } = await run("parser-required-location", undefined,
-    [{ factVersionId: "city-1", factKey: "location.city", value: "Springfield", valueHash: digest(JSON.stringify("Springfield")) }]);
+    [{ factVersionId: "city-1", factKey: "location.city", value: "Springfield", valueHash: digest(JSON.stringify("Springfield")) },
+     { factVersionId: "region-1", factKey: "location.region", value: "IL", valueHash: digest(JSON.stringify("IL")) },
+     { factVersionId: "country-1", factKey: "location.country_code", value: "US", valueHash: digest(JSON.stringify("US")) }]);
   assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
   assert.equal(observed.uploads.length, 1);
   assert.equal(observed.submits, 1);
   assert.equal(state.begins, 1);
-  assert.match(observed.submissions[0].toString(), /name="location"\r\n\r\nSpringfield\r\n/u);
+  assert.match(observed.submissions[0].toString(), /name="location"\r\n\r\nSpringfield, IL, USA\r\n/u);
   assert.equal(observed.submissions[0].includes("Unverified city"), false);
   // With no candidate city, parsing cannot supply authority for the same slot.
   const unknown = await run("parser-required-location");
@@ -125,6 +127,41 @@ test("Lever verifies the exact uploaded filename through presentation case chang
   assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
   assert.equal(observed.submits, 1);
   assert.equal(state.begins, 1);
+});
+
+test("Lever restores its own approved city after the parser clears hidden selection metadata", options, async () => {
+  const { result, observed, state } = await run("parser-location-null", undefined,
+    [{ factVersionId: "city-1", factKey: "location.city", value: "Springfield", valueHash: digest(JSON.stringify("Springfield")) },
+     { factVersionId: "region-1", factKey: "location.region", value: "IL", valueHash: digest(JSON.stringify("IL")) },
+     { factVersionId: "country-1", factKey: "location.country_code", value: "US", valueHash: digest(JSON.stringify("US")) }]);
+  assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
+  assert.equal(observed.submits, 1);
+  assert.equal(state.begins, 1);
+  assert.match(observed.submissions[0].toString(), /name="selectedLocation"\r\n\r\n\{"name":"Springfield, IL, USA","id":"city-1"\}/u);
+});
+
+test("initial navigation timeout gets the bounded transient code with no submission permission", options, async () => {
+  const { result, observed, state } = await run("navigation-timeout");
+  assert.equal(result.kind, "FAILED_SAFE", JSON.stringify(result));
+  assert.equal(result.kind === "FAILED_SAFE" && result.reasonCode, "APPLICATION_DELIVERY_FAILED");
+  assert.match(result.kind === "FAILED_SAFE" ? result.detail?.message ?? "" : "", /page\.goto: Timeout 500ms exceeded/u);
+  assert.equal(observed.submits, 0);
+  assert.equal(state.begins, 0);
+});
+
+test("Lever location metadata drift and extra lookup parameters stop before submit authority", options, async () => {
+  const facts = [
+    { factVersionId: "city-1", factKey: "location.city" as const, value: "Springfield", valueHash: digest(JSON.stringify("Springfield")) },
+    { factVersionId: "region-1", factKey: "location.region" as const, value: "IL", valueHash: digest(JSON.stringify("IL")) },
+    { factVersionId: "country-1", factKey: "location.country_code" as const, value: "US", valueHash: digest(JSON.stringify("US")) },
+  ];
+  for (const mode of ["location-metadata-drift", "location-query-leak"] as const) {
+    const { result, observed, state } = await run(mode, undefined, facts);
+    assert.equal(result.kind, mode === "location-query-leak" ? "QUESTIONS_REQUIRED" : "TAKEOVER", JSON.stringify(result));
+    assert.equal(observed.submits, 0);
+    assert.equal(state.begins, 0);
+    assert.equal(observed.requests.some(request => request.includes("extra=private")), false);
+  }
 });
 
 test("Lever still rejects a changed filename in the underlying acknowledgement before submit authority", options, async () => {

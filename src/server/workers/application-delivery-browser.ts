@@ -309,6 +309,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   let ashbyError: string | null = null;
   let ashbyFieldSignal: AbortSignal | undefined;
   let activeSearch: Readonly<{ query: string; signal?: AbortSignal }> | null = null;
+  const leverLocations = new Set<string>();
   const presigns = new Map<string, Presign>();
   const recaptchaKeys = new Set<string>();
   const pending = new Set<Promise<void>>();
@@ -396,6 +397,18 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
     return action?.kind === "SUBMIT" && Boolean(passive && hcaptchaKeys.has(passive[1]));
   }
   async function onResponse(response: Response) {
+    if (policy.lever && activeSearch && response.request().method() === "GET" &&
+      policy.searches?.some(rule => searchPermitted(new URL(response.url()), rule, activeSearch!.query)) && response.ok()) {
+      const body = await response.body();
+      if (body.length <= 64_000) {
+        const locations: unknown = JSON.parse(body.toString("utf8"));
+        if (Array.isArray(locations) && locations.length <= 50) for (const location of locations) {
+          if (location && typeof location === "object" && !Array.isArray(location) && typeof location.name === "string") {
+            leverLocations.add(JSON.stringify(location));
+          }
+        }
+      }
+    }
     const current = action;
     if (isPresign(response.request()) && response.ok()) {
       const data = await response.json() as Record<string, unknown>;
@@ -434,6 +447,9 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       if (ashbyEnvelope?.operation.startsWith("ApiSubmit")) current.response = { ...current.response,
         ashbyAccepted: Boolean(body && ashbySubmissionAccepted(ashbyEnvelope.operation, jsonObject(body), ashby?.surveyCount())),
         ashbyDiagnostic: inspectAshbySubmissionResponse(ashbyEnvelope.operation, body, ashby?.surveyCount()) };
+      if (current.response.ashbyDiagnostic?.verificationRejection === "SCORE_BELOW_THRESHOLD") {
+        current.error = "DELIVERY_ASHBY_VERIFICATION_REJECTED";
+      }
       // Greenhouse answers 428 {code: "captcha-failed", security_code_recipient}
       // when it wants the applicant to confirm by email instead.
       if (policy.greenhouse && current.kind === "SUBMIT" && response.status() === 428 && body && body.length <= 64_000) {
@@ -526,6 +542,13 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
           const multipart = parseMultipart(request.postDataBuffer() ?? Buffer.alloc(0), request.headers()["content-type"] || "");
           const artifacts = [...uploadedArtifacts.values()];
           if (!multipart || artifacts.length !== 1 || multipart.file.length !== artifacts[0].byteSize || hash(multipart.file) !== artifacts[0].sha256) throw new Error("DELIVERY_SUBMIT_ARTIFACT_MISMATCH");
+          await drain();
+          const selected = page.locator('#application-form input#selected-location[type="hidden"][name="selectedLocation"]');
+          if (await selected.count()) {
+            if (await selected.count() !== 1) throw new Error("DELIVERY_FORM_CONTRACT_DRIFT");
+            const value = await selected.inputValue();
+            if (value && !leverLocations.has(value)) throw new Error("DELIVERY_LEVER_LOCATION_UNVERIFIED");
+          }
         }
         if (current.humanVerification) {
           // Providers may invoke their callback just before hiding the widget.
@@ -643,7 +666,18 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       // all prior values/uploads. An empty in-memory review can never inherit
       // a retained later step. Submitted attempts use reconcile(), not open().
       loading = true;
-      try { await page.goto(policy.startUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs }); }
+      try {
+        const response = await page.goto(policy.startUrl, { waitUntil: "domcontentloaded", timeout: input.timeoutMs ?? 30_000 });
+        if (response && [429, 500, 502, 503, 504].includes(response.status())) throw new Error("DELIVERY_EMPLOYER_UNAVAILABLE");
+      }
+      catch (error) {
+        // No submit permission exists during open. Use the existing bounded
+        // transient retry for navigation failures, retaining sanitized detail.
+        if (!signal?.aborted && error instanceof Error && (error.name === "TimeoutError" || /^page\.goto: net::ERR_[A-Z_]+/u.test(error.message))) {
+          Object.assign(error, { code: "APPLICATION_DELIVERY_FAILED" });
+        }
+        throw error;
+      }
       finally { loading = false; }
       await waitFor(async () => Boolean(await currentStep()), signal);
       if (policy.greenhouse) await page.waitForLoadState("networkidle", { timeout: timeoutMs }).catch(() => undefined);
@@ -923,6 +957,7 @@ export function resolveLeverDeliveryPolicy(destinationUrl: string): DeliverySite
       { origin: "https://cdn.lever.co", pathPrefix: "/fonts/" },
     ],
     lever: { accountIdSelector: '#application-form input[type="hidden"][name="accountId"]', invisibleHcaptcha: true },
+    searches: [{ origin: "https://jobs.lever.co", path: "/searchLocations", query: "text" }],
     steps: [{ id: "application", url: startUrl, readySelector: "#application-form",
       uploads: [{ fieldId: "resume-upload-input", fieldName: "resume", selector: '#application-form input[type="file"][name="resume"]',
         request: { method: "POST" as const, url: "https://jobs.lever.co/parseResume" },

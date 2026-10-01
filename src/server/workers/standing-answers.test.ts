@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { AgentQuestionDescriptor } from "../../domain/application-agent-questions.ts";
-import { acceptStandingAnswer, createStandingAnswerResolver, exactStandingAnswerValue, EXACT_CLEARANCE_TOPIC, standingAnswerEligible } from "./standing-answers.ts";
+import { acceptStandingAnswer, createStandingAnswerResolver, exactStandingAnswerValue, EXACT_CLEARANCE_TOPIC, PHONE_COUNTRY_TOPIC, phoneCountryStandingValue, standingAnswerEligible } from "./standing-answers.ts";
 
 const GPA_ID = "7f0c2f64-5a52-4b51-9d1e-7c1c0f3f7a10";
 const ONSITE_ID = "0b6f0d9e-2f7a-4c3e-8a55-3a0d4d9f1b22";
@@ -20,6 +20,22 @@ const onsite = question("Are you able to work 5 days on-site in Tempe, Arizona f
 const sponsorship = question("Will you require visa sponsorship in the future?", "SINGLE_SELECT", ["Yes", "No"], { reasonCode: "SENSITIVE_REQUIRES_CANDIDATE" });
 const basis = new Map([["s1", GPA_ID], ["s2", ONSITE_ID], ["f:work_authorization.us.sponsorship_required", "fact:work_authorization.us.sponsorship_required"], ["f:location.city", "fact:location.city"]]);
 const draft = (choices: string[], ids: string[], text = "") => ({ questionId: "q1", decision: "ANSWER", choices, text, basis: ids });
+
+test("phone-country reuse is exact, owned and independent of residence or a model", async () => {
+  const saved = { id: GPA_ID, topic: PHONE_COUNTRY_TOPIC, answer: "Canada (+1)" };
+  const descriptor = question("Phone Country", "TEXT", [], { required: false });
+  const resolver = createStandingAnswerResolver({ client: { responses: { async create() { throw new Error("MODEL_MUST_NOT_RUN"); } } } as never });
+  assert.deepEqual(await resolver.resolve({ questions: [descriptor], context: { answers: [saved], job: null },
+    facts: [{ factKey: "location.country_code", value: "US" }] }), [{ descriptor, value: saved.answer, basis: [saved.id] }]);
+  assert.equal(phoneCountryStandingValue({ ...descriptor, required: true }, saved), saved.answer);
+  for (const label of ["Country", "Citizenship", "Employer phone country", "Phone country consent"]) {
+    assert.equal(phoneCountryStandingValue({ ...descriptor, label }, saved), null);
+  }
+  assert.equal(phoneCountryStandingValue({ ...descriptor, kind: "LONG_TEXT" }, saved), null);
+  assert.equal(phoneCountryStandingValue(descriptor, { ...saved, topic: "Residence" }), null);
+  assert.equal(phoneCountryStandingValue(descriptor, { ...saved, answer: "bad\u0000text" }), null);
+  assert.deepEqual(await resolver.resolve({ questions: [descriptor], context: { answers: [saved, { ...saved, id: ONSITE_ID }], job: null }, facts: [] }), []);
+});
 
 test("an exact saved text question retains every location component without model rewriting", async () => {
   const descriptor = question("Which city and country do you intend to work from?", "TEXT");

@@ -77,6 +77,7 @@ test("search results qualify only when they start with the approved value and th
   const results = ["Washington, District of Columbia, United States", "Washington, Pennsylvania, United States", "Washington Heights, New York, United States"];
   const dc = { semantic: "CITY", source: "FACT", hints: { region: "DC", country: "US" } } as const;
   assert.equal(chooseSearchResult(results, "Washington", dc), results[0]);
+  assert.equal(chooseSearchResult([...results, "Washington, USA"], "Washington", dc), results[0]);
   assert.equal(chooseSearchResult(results, "Washington", { ...dc, hints: { region: "PA", country: "US" } }), results[1]);
   // Candidate lives in Washington State: none of these is right.
   assert.equal(chooseSearchResult(results, "Washington", { ...dc, hints: { region: "WA", country: "US" } }), null);
@@ -95,6 +96,7 @@ test("search results qualify only when they start with the approved value and th
 
 test("alias groups are fixed and scoped to their semantic", () => {
   assert.ok(optionAliases("US", "COUNTRY").has("united states of america"));
+  assert.ok(optionAliases("United States (+1)", "COUNTRY").has("united states"));
   assert.ok(optionAliases("CA", "COUNTRY").has("canada"));
   assert.ok(optionAliases("CA", "REGION").has("california"));
   assert.equal(optionAliases("CA", "REGION").has("canada"), false);

@@ -581,11 +581,11 @@ test("only the reviewed Ashby system Location control receives city semantics", 
 });
 
 test("only the reviewed Lever native current-location slot receives the approved city", () => {
-  const field = browserField("Current location ✱", "TEXT", "text", { provider: "LEVER", domId: "location-input", name: "location" });
+  const field = browserField("Current location ✱", "SINGLE_SELECT", "text", { provider: "LEVER", domId: "location-input", name: "location" });
   assert.equal(classifyFieldFact(field), "location.city");
   assert.equal(deliveryFieldFactKey(field), "location.city");
   assert.doesNotThrow(() => assertFactCompatible(field, fact("location.city", "Springfield")));
-  for (const change of [{ provider: undefined }, { domId: "other" }, { name: "other" }, { kind: "SINGLE_SELECT" }, { inputType: "search" }, { label: "Preferred work location" }, { label: "Employer current location" }]) {
+  for (const change of [{ provider: undefined }, { domId: "other" }, { name: "other" }, { kind: "TEXT" }, { inputType: "search" }, { label: "Preferred work location" }, { label: "Employer current location" }]) {
     assert.equal(classifyFieldFact({ ...field, ...change } as AgentBrowserField), null, JSON.stringify(change));
   }
 });

@@ -101,6 +101,7 @@ const OUR_FAMILY = /^(?:DELIVERY_|AGENTS_|APPLICATION_FILL_)/u;
 export function deliveryStopGroup(code: string | null | undefined): DeliveryStopGroup {
   if (!code) return "UNKNOWN";
   if (AUTOMATIC_RETRY_CODES.has(code)) return "TEMPORARY";
+  if (code === "DELIVERY_EMPLOYER_UNAVAILABLE") return "TEMPORARY";
   if (code === "MODEL_CREDITS_EXHAUSTED") return "SERVICE_CREDITS";
   if (code === "MODEL_RATE_LIMITED") return "TEMPORARY";
   if (code === "DELIVERY_BROWSER_QUOTA_EXHAUSTED") return "CAPACITY";

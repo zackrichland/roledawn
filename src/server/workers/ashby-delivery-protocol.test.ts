@@ -306,9 +306,22 @@ test("submission diagnostics emit only fixed categories and capped counts, never
   const diagnostics = inspectAshbySubmissionResponse("ApiSubmitMultipleFormsAction", Buffer.from(JSON.stringify(payload)), 100_000);
   assert.deepEqual(diagnostics, { classification: "GRAPHQL_ERRORS", mainResult: "OTHER", surveyResults: "ARRAY", expectedSurveyCount: 1_000,
     surveyResultCount: 1_000, surveySuccessCount: 1, surveyFormRenderCount: 1, surveyOtherCount: 1_000,
-    graphqlErrors: "ARRAY", graphqlErrorCount: 1_000, blockMessage: "PRESENT" });
+    graphqlErrors: "ARRAY", graphqlErrorCount: 1_000, verificationRejection: "ABSENT", blockMessage: "PRESENT" });
   assert.equal(JSON.stringify(diagnostics).includes(secret), false);
   assert.equal(ashbySubmissionAccepted("ApiSubmitMultipleFormsAction", payload, 100_000), false);
+});
+
+test("submission diagnostics preserve the exact reviewed low-score category without response text", () => {
+  for (const [type, expected] of [["RECAPTCHA_SCORE_BELOW_THRESHOLD", "SCORE_BELOW_THRESHOLD"],
+    ["recaptcha_score_below_threshold", "ABSENT"], ["private-error@example.invalid", "ABSENT"]] as const) {
+    const payload = { errors: [{ message: "private candidate response", extensions: { ashbyErrorType: type,
+      ashbyErrorId: "private-vendor-id", message: "private vendor response" } }], data: null };
+    const diagnostic = inspectAshbySubmissionResponse("ApiSubmitSingleApplicationFormAction", Buffer.from(JSON.stringify(payload)));
+    assert.equal(diagnostic.classification, "GRAPHQL_ERRORS");
+    assert.equal(diagnostic.verificationRejection, expected);
+    assert.equal(JSON.stringify(diagnostic).includes("private"), false);
+    assert.equal(ashbySubmissionAccepted("ApiSubmitSingleApplicationFormAction", payload), false);
+  }
 });
 
 test("protocol drift reports a static stage without exposing an answer", () => {
