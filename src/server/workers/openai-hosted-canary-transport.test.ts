@@ -36,3 +36,11 @@ test("SSE rejects malformed, truncated and oversized events", async () => {
     await assert.rejects(async () => { for await (const event of stream.events) void event; }, /HOSTED_CANARY_(MALFORMED_EVENT|TRUNCATED_EVENT|STREAM_TOO_LARGE)/);
   }
 });
+test("recovery reads saved turns and deletion treats an already absent session as cleaned", async () => {
+  const urls: string[] = [];
+  const t = createHostedCanaryTransport("synthetic", async (url,init) => {
+    urls.push(String(url)); return init?.method === "DELETE" ? new Response(null,{ status: 404 }) : Response.json({ data: [],has_more: false });
+  });
+  assert.deepEqual(await t.turns("s1",signal()),{ data: [],has_more: false });
+  await t.remove("s1",signal()); assert.ok(urls[0].endsWith("/s1/turns?limit=20&order=desc"));
+});

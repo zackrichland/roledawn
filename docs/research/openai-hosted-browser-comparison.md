@@ -101,7 +101,7 @@ The persistence tests close and reopen a filesystem-backed database, retain the 
 No new migration, production worker integration, provider call, candidate upload, task dispatch or origin grant is included in this rehearsal. One scoped reduced-guarantee canary has private approval, but remains disabled pending secure configuration, packet readback, cost bounds and reviewed durable integration.
 
 
-## Disabled native hosted adapter
+## Disabled native hosted adapter at checkpoint d8f7505
 
 `src/server/workers/openai-hosted-canary.ts` now implements the actual session controller with an injected REST transport and durable-store interface. `openai-hosted-canary-transport.ts` implements documented REST calls and bounded SSE parsing. Neither is imported by production, and there is no live CLI or permissive default store. This is executable adapter code with synthetic tests, **not a completed production integration or a successful application**.
 
@@ -116,3 +116,8 @@ The store contract requires atomic approval and immutable-plan verification, exi
 The integration needs a separately reviewed private table/RPC with an authority type distinct from the existing submit seal. Store the exact private plan and message, packet digest, approval reference, cost-bound evidence, admission key, provider session, fenced controller and monotonic possible-egress state. Candidate plus normalized board/job identity must be unique independently of application row, packet version or provider. The transaction must reject existing uncertain attempts and active provider work. Never fabricate an employer request fingerprint to reuse the existing sealed-submit authority.
 
 Both provider launch paths must acquire that exclusion before creating a session or revealing a packet. Review the launch/claim paths in `src/server/workers/application-autopilot.ts`, `application-autopilot-worker.ts`, `application-delivery-runtime.ts`, and the corresponding database claim RPCs. The finish/error branches in `application-autopilot-worker.ts` currently use the presence of a normal submit permit/attempt to distinguish UNCERTAIN from FAILED_SAFE; hosted possible-egress state would need an explicit exclusion from that fallback and every transient requeue path. The hosted controller itself has no Browserbase fallback. Database access controls, durable budget reservation, authoritative employer-evidence verification and cleanup reconciliation also need implementation and review. This change does not alter any of those shared paths, existing Browserbase guards, or Greenhouse code/behavior.
+
+
+## Subsequent integration and recovery fixes
+
+The isolated runner and real RPC store now use the same controller state model. A non-deployed SQL draft implements actual scoped cross-provider exclusion, durable aggregate budget reservation, controller fencing, retained cleanup and independently reviewed evidence. Recovery handles expired immutable deadlines and reads saved turn history before cancellation/reconciliation; it never dispatches a replacement task. Confirmed outcomes retain bound evidence atomically, and failed deletion remains retryable without submission. See the [operator contract](hosted-canary-operator.md) for exact files, commands, local test evidence, shared database impact and the remaining activation gates. The earlier unconnected-store notes above describe their historical checkpoints, not the current code. Live application acceptance remains unproven.

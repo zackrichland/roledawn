@@ -25,7 +25,7 @@ export type CanaryPlan = Readonly<{
 export type CanaryRun = Readonly<{
   runId: string; controllerToken: string; version: number; intentSha256: string;
   phase: "RESERVED" | "CREATING" | "READY" | "ADMISSION_PENDING" | "ACTIVE" | "UNCERTAIN" | "CONFIRMED" | "NOT_ACCEPTED" | "STOPPED";
-  sessionId: string | null; possibleEgress: boolean; cancelRequested: boolean;
+  sessionId: string | null; possibleEgress: boolean; cancelRequested: boolean; cleanupPending: boolean; evidence: CanaryEvidence | null;
 }>;
 /** A production implementation MUST atomically check old attempts and exclude both provider launch paths.
  * Claim must verify the exact reduced-guarantee approval, immutable plan and credible aggregate cost bound,
@@ -33,8 +33,8 @@ export type CanaryRun = Readonly<{
  * Commit must be a fenced compare-and-swap; possibleEgress and terminal reservations cannot be cleared.
  */
 export interface HostedCanaryStore {
-  claim(plan: CanaryPlan): Promise<CanaryRun>;
-  commit(run: CanaryRun, patch: Partial<Pick<CanaryRun, "phase" | "sessionId" | "possibleEgress" | "cancelRequested">>): Promise<CanaryRun>;
+  claim(plan: CanaryPlan, recoveryOnly?: boolean): Promise<CanaryRun>;
+  commit(run: CanaryRun, patch: Partial<Pick<CanaryRun, "phase" | "sessionId" | "possibleEgress" | "cancelRequested" | "cleanupPending" | "evidence">>): Promise<CanaryRun>;
   budgetAvailable(run: CanaryRun): Promise<boolean>;
   releaseController(run: CanaryRun): Promise<void>; // Retains job reservation, budget and possible-egress state.
 }
@@ -81,7 +81,7 @@ export function prepareHostedCanaryPlan(input: Omit<CanaryPlan, "packetSha256" |
 
 /** Runnable with reviewed dependencies, but not imported by any production entry point. */
 export async function runHostedCanary(options: Readonly<{
-  enabled?: boolean; reducedGuaranteeApproved?: boolean; plan: CanaryPlan; store: HostedCanaryStore;
+  enabled?: boolean; recoveryOnly?: boolean; reducedGuaranteeApproved?: boolean; plan: CanaryPlan; store: HostedCanaryStore;
   transport: HostedCanaryTransport; signal?: AbortSignal;
   verifyEmployerEvidence(run: CanaryRun): Promise<CanaryEvidence | null>;
 }>) {
@@ -90,10 +90,10 @@ export async function runHostedCanary(options: Readonly<{
   const { intentSha256, ...unsigned } = plan;
   if (sha(JSON.stringify(unsigned)) !== intentSha256) fail("INTENT_CHANGED");
   const remaining = plan.deadlineMs - Date.now();
-  if (remaining <= 0 || remaining > 180_000) fail("DEADLINE_INVALID");
-  const signal = AbortSignal.any([AbortSignal.timeout(remaining), ...(options.signal ? [options.signal] : [])]);
+  if (remaining > 180_000 && !options.recoveryOnly) fail("DEADLINE_INVALID");
+  const signal = AbortSignal.any([AbortSignal.timeout(Math.max(1, remaining)), ...(options.signal ? [options.signal] : [])]);
   let run: CanaryRun;
-  try { run = await options.store.claim(plan); } catch { return fail("CLAIM_REFUSED"); }
+  try { run = await options.store.claim(plan, options.recoveryOnly); } catch { return fail("CLAIM_REFUSED"); }
   let observedSessionId = run.sessionId;
   if (run.intentSha256 !== plan.intentSha256) {
     await options.store.releaseController(run);
@@ -103,16 +103,24 @@ export async function runHostedCanary(options: Readonly<{
   let reason = "EMPLOYER_EVIDENCE_REQUIRED";
   const commit = async (patch: Parameters<HostedCanaryStore["commit"]>[1]) => { run = await options.store.commit(run, patch); };
   const check = async () => {
-    if (signal.aborted) fail("DEADLINE_OR_CANCELLED");
+    if (signal.aborted || Date.now() >= plan.deadlineMs) fail("DEADLINE_OR_CANCELLED");
     if (!await options.store.budgetAvailable(run)) fail("BUDGET_EXHAUSTED");
+  };
+  const cleanup = async () => {
+    const sessionId = run.sessionId ?? observedSessionId;
+    if (!sessionId || !run.cleanupPending) return;
+    try {
+      await options.transport.remove(sessionId, AbortSignal.timeout(5000));
+      await commit({ cleanupPending: false });
+    } catch { reason = "CLEANUP_PENDING"; }
   };
   const cancel = async () => {
     const sessionId = run.sessionId ?? observedSessionId;
     if (!sessionId) return;
     // Cancellation remains safe if the preceding durable write failed.
-    await commit({ cancelRequested: true }).catch(() => undefined);
+    await commit({ cancelRequested: true, ...(run.sessionId ? {} : { sessionId }) }).catch(() => undefined);
     await options.transport.post(sessionId, { events: [{ type: "agent.session.input.cancel" }] }, null, AbortSignal.timeout(5000)).catch(() => undefined);
-    await options.transport.remove(sessionId, AbortSignal.timeout(5000)).catch(() => { reason = "CLEANUP_PENDING"; });
+    await cleanup();
   };
   const reconcile = async () => {
     const evidence = await options.verifyEmployerEvidence(run);
@@ -120,7 +128,7 @@ export async function runHostedCanary(options: Readonly<{
     if (evidence.source !== "VERIFIED_EMPLOYER_EVIDENCE" || evidence.applicationId !== plan.applicationId ||
       evidence.destinationUrl !== plan.destinationUrl || evidence.packetSha256 !== plan.packetSha256 ||
       !HASH.test(evidence.evidenceSha256) || !["CONFIRMED","NOT_ACCEPTED"].includes(evidence.outcome)) fail("RECEIPT_MISMATCH");
-    await commit({ phase: evidence.outcome }); return true;
+    await commit({ phase: evidence.outcome, evidence }); return true;
   };
   const actions = async (session: Record<string, unknown>) => {
     if (session.id !== run.sessionId || object(session.environment).type !== "openai_hosted" || !Array.isArray(session.required_actions)) fail("SESSION_MISMATCH");
@@ -138,16 +146,37 @@ export async function runHostedCanary(options: Readonly<{
     }
   };
   try {
-    if (["CONFIRMED","NOT_ACCEPTED","STOPPED"].includes(run.phase)) return { phase: run.phase, reason: "ALREADY_TERMINAL", automaticRetryAllowed: false as const };
-    if (["CREATING","UNCERTAIN"].includes(run.phase)) {
-      // Unknown create/admission outcome never creates a replacement session or task.
-      if (run.sessionId) { await cancel(); await reconcile(); }
-      if (!["CONFIRMED","NOT_ACCEPTED"].includes(run.phase)) await commit({ phase: "UNCERTAIN" });
+    if (["CONFIRMED","NOT_ACCEPTED","STOPPED"].includes(run.phase)) {
+      await cleanup();
+      return { phase: run.phase, reason: run.cleanupPending ? "CLEANUP_PENDING" : "ALREADY_TERMINAL", automaticRetryAllowed: false as const };
+    }
+    if (options.recoveryOnly && !run.possibleEgress) {
+      await commit({ phase: "STOPPED" });
       return { phase: run.phase, reason: "RECOVERY_ONLY", automaticRetryAllowed: false as const };
+    }
+    if (options.recoveryOnly || ["CREATING","ACTIVE","UNCERTAIN"].includes(run.phase) || (remaining <= 0 && run.possibleEgress)) {
+      // Unknown create/admission outcome never creates a replacement session or task.
+      const activeRestart = run.phase === "ACTIVE";
+      if (run.sessionId) {
+        // Live SSE cannot replay missed events. Read bounded retained history first;
+        // absence/deletion never prevents cancellation or independent evidence review.
+        try {
+          const history = object(await options.transport.turns(run.sessionId, AbortSignal.timeout(5000)));
+          if (!Array.isArray(history.data) || history.has_more !== false) fail("HISTORY_INCOMPLETE");
+          for (const raw of history.data) {
+            const turn = object(raw);
+            if (turn.session_id !== run.sessionId || typeof turn.id !== "string" || !ID.test(turn.id)) fail("HISTORY_INVALID");
+          }
+        } catch { reason = "HISTORY_UNAVAILABLE"; }
+        if (run.phase !== "UNCERTAIN") await commit({ phase: "UNCERTAIN" });
+        await cancel(); await reconcile();
+      }
+      if (!["CONFIRMED","NOT_ACCEPTED"].includes(run.phase)) await commit({ phase: "UNCERTAIN" });
+      return { phase: run.phase, reason: run.cleanupPending ? "CLEANUP_PENDING" : activeRestart ? "HISTORY_RECOVERY_ONLY" : "RECOVERY_ONLY", automaticRetryAllowed: false as const };
     }
     await check();
     if (run.phase === "RESERVED") {
-      await commit({ phase: "CREATING", possibleEgress: true });
+      await commit({ phase: "CREATING", possibleEgress: true, cleanupPending: true });
       const session = object(await options.transport.create(plan.createBody, signal));
       if (typeof session.id !== "string" || !ID.test(session.id) || object(session.environment).type !== "openai_hosted") fail("SESSION_MISMATCH");
       observedSessionId = session.id;
@@ -182,7 +211,7 @@ export async function runHostedCanary(options: Readonly<{
     if (await reconcile()) {
       reason = "EMPLOYER_EVIDENCE_VERIFIED";
     }
-    await options.transport.remove(run.sessionId, AbortSignal.timeout(5000)).catch(() => { reason = "CLEANUP_PENDING"; });
+    await cleanup();
   } catch (error) {
     reason = error instanceof Error && /^HOSTED_CANARY_[A-Z_]+$/u.test(error.message) ? error.message : "HOSTED_CANARY_RUN_FAILED";
     // If persistence fails, retain the last durable possible-egress checkpoint and propagate; never continue.

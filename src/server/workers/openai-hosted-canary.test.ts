@@ -3,11 +3,11 @@ import test from "node:test";
 import { prepareHostedCanaryPlan, runHostedCanary, type CanaryPlan, type CanaryRun, type CanaryEvidence, type HostedCanaryStore } from "./openai-hosted-canary.ts";
 import type { HostedCanaryTransport } from "./openai-hosted-canary-transport.ts";
 
-const plan = (origins: Record<string, "approve" | "deny"> = {}) => prepareHostedCanaryPlan({
+const plan = (origins: Record<string, "approve" | "deny"> = {}, deadlineMs = Date.now() + 60_000) => prepareHostedCanaryPlan({
   candidateId: "11111111-1111-4111-8111-111111111111", applicationId: "22222222-2222-4222-8222-222222222222",
   destinationUrl: "https://jobs.lever.co/example/33333333-3333-4333-8333-333333333333/apply",
   admissionKey: "persisted-key", allowedDomains: ["jobs.lever.co"], originDecisions: origins,
-  deadlineMs: Date.now() + 60_000, priorSpendUpperBoundCents: 100, reservedRunCents: 100,
+  deadlineMs, priorSpendUpperBoundCents: 100, reservedRunCents: 100,
   packet: { facts: { name: "Synthetic Fixture", email: "fixture@example.test" }, resumeBase64: Buffer.from("%PDF-synthetic-fixture").toString("base64") },
 });
 const terminal = { type: "agent.session.turn.completed", turn: { id: "turn_1", session_id: "session_1", subagent_id: null } };
@@ -16,10 +16,10 @@ const action = { type: "computer_use_approval_request", request_id: "approval_1"
 // Deliberately test-only. Production requires an independently reviewed durable store.
 function harness(p: CanaryPlan = plan()) {
   let row: CanaryRun = { runId: "run_1", controllerToken: "owner", version: 0, intentSha256: p.intentSha256,
-    phase: "RESERVED", sessionId: null, possibleEgress: false, cancelRequested: false };
+    phase: "RESERVED", sessionId: null, possibleEgress: false, cancelRequested: false, cleanupPending: false, evidence: null };
   let locked = false;
   const calls: { name: string; body?: unknown; key?: string | null }[] = [];
-  const control = { events: [terminal] as unknown[], actions: [] as unknown[], budget: true, failAdmission: 0, failReady: false,
+  const control = { events: [terminal] as unknown[], actions: [] as unknown[], budget: true, failAdmission: 0, failReady: false, failDelete: false,
     evidence: null as CanaryEvidence | null, abortAfterAdmission: undefined as AbortController | undefined };
   const store: HostedCanaryStore = {
     async claim(incoming) { if (locked || incoming.intentSha256 !== row.intentSha256) throw Error("refused"); locked = true; return structuredClone(row); },
@@ -35,15 +35,16 @@ function harness(p: CanaryPlan = plan()) {
   const transport: HostedCanaryTransport = {
     async create(body) { calls.push({ name: "create", body }); assert.equal(row.phase, "CREATING"); assert.equal(row.possibleEgress, true);
       return { id: "session_1", environment: { type: "openai_hosted" } }; },
+    async turns() { calls.push({ name: "turns" }); return { data: [{ ...terminal.turn, status: "completed" }], has_more: false }; },
     async retrieve() { calls.push({ name: "retrieve" }); return { id: "session_1", environment: { type: "openai_hosted" }, required_actions: control.actions }; },
     async post(_id, body, key) { calls.push({ name: "post", body, key });
       if (key) { assert.equal(row.phase, "ADMISSION_PENDING"); control.abortAfterAdmission?.abort(); if (control.failAdmission-- > 0) throw Error("lost ack"); } },
     async stream() { calls.push({ name: "stream" }); return { events: (async function* () { yield* control.events; })(), async close() { calls.push({ name: "close" }); } }; },
-    async remove() { calls.push({ name: "remove" }); },
+    async remove() { calls.push({ name: "remove" }); if (control.failDelete) throw Error("unavailable"); },
   };
   const run = (signal?: AbortSignal) => runHostedCanary({ enabled: true, reducedGuaranteeApproved: true, plan: p, store, transport,
     signal, verifyEmployerEvidence: async () => control.evidence });
-  return { p, store, transport, control, calls, run, row: () => row };
+  return { p, store, transport, control, calls, run, seed: (patch: Partial<CanaryRun>) => { row = { ...row, ...patch }; }, row: () => row };
 }
 
 test("disabled by default; mutated approval intent cannot start", async () => {
@@ -106,4 +107,33 @@ test("only independently verified exactly bound employer evidence can confirm", 
     const result = await h.run(); assert.equal(result.phase, mismatch ? "UNCERTAIN" : "CONFIRMED");
     if (mismatch) assert.match(result.reason, /RECEIPT_MISMATCH/);
   }
+});
+
+ test("expired immutable deadlines permit cancellation and evidence reconciliation only", async () => {
+  for (const confirmed of [false, true]) {
+    const h = harness(plan({}, Date.now() - 1000));
+    h.seed({ phase: "ACTIVE", sessionId: "session_1", possibleEgress: true, cleanupPending: true });
+    if (confirmed) h.control.evidence = { source: "VERIFIED_EMPLOYER_EVIDENCE", applicationId: h.p.applicationId, destinationUrl: h.p.destinationUrl,
+      packetSha256: h.p.packetSha256, evidenceSha256: "a".repeat(64), outcome: "CONFIRMED" };
+    assert.equal((await h.run()).phase, confirmed ? "CONFIRMED" : "UNCERTAIN");
+    assert.equal(h.calls.filter(c => c.key || c.name === "create").length, 0);
+    assert.equal(h.row().cancelRequested, true);
+  }
+  const fresh = harness(plan({}, Date.now() - 1000));
+  assert.equal((await fresh.run()).phase, "STOPPED"); assert.equal(fresh.calls.length, 0);
+});
+
+test("terminal cleanup failure persists and restarts without task admission", async () => {
+  const h = harness(); h.control.failDelete = true;
+  h.control.evidence = { source: "VERIFIED_EMPLOYER_EVIDENCE", applicationId: h.p.applicationId, destinationUrl: h.p.destinationUrl,
+    packetSha256: h.p.packetSha256, evidenceSha256: "a".repeat(64), outcome: "CONFIRMED" };
+  assert.equal((await h.run()).reason, "CLEANUP_PENDING"); assert.equal(h.row().cleanupPending, true);
+  assert.deepEqual(h.row().evidence, h.control.evidence); h.control.failDelete = false;
+  assert.equal((await h.run()).reason, "ALREADY_TERMINAL"); assert.equal(h.row().cleanupPending, false);
+  assert.equal(h.calls.filter(c => c.key).length, 1);
+});
+test("ACTIVE restart reads retained history before cancellation and does not wait for live-only events", async () => {
+  const h = harness(); h.seed({ phase: "ACTIVE", sessionId: "session_1", possibleEgress: true, cleanupPending: true });
+  assert.equal((await h.run()).reason, "HISTORY_RECOVERY_ONLY");
+  assert.equal(h.calls[0].name, "turns"); assert.equal(h.calls.some(c => c.name === "stream" || c.key), false);
 });

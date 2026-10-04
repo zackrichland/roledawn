@@ -5,6 +5,7 @@ const LIMIT = 2 * 1024 * 1024;
 const safeId = (id: string) => { if (!ID.test(id)) throw new Error("HOSTED_CANARY_INVALID_ID"); return id; };
 export interface HostedCanaryTransport {
   create(body: unknown, signal: AbortSignal): Promise<unknown>;
+  turns(sessionId: string, signal: AbortSignal): Promise<unknown>;
   retrieve(sessionId: string, signal: AbortSignal): Promise<unknown>;
   post(sessionId: string, body: unknown, key: string | null, signal: AbortSignal): Promise<void>;
   stream(sessionId: string, signal: AbortSignal): Promise<{ events: AsyncIterable<unknown>; close(): Promise<void> }>;
@@ -21,7 +22,7 @@ export function createHostedCanaryTransport(apiKey: string, fetcher: typeof fetc
           ...(key ? { "Idempotency-Key": safeId(key) } : {}), ...(stream ? { Accept: "text/event-stream" } : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     } catch { throw new Error("HOSTED_CANARY_TRANSPORT_FAILED"); }
-    if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw new Error("HOSTED_CANARY_HTTP_FAILED"); }
+    if (!response.ok && !(method === "DELETE" && response.status === 404)) { await response.body?.cancel().catch(() => undefined); throw new Error("HOSTED_CANARY_HTTP_FAILED"); }
     return response;
   }
   async function json(response: Response) {
@@ -36,6 +37,7 @@ export function createHostedCanaryTransport(apiKey: string, fetcher: typeof fetc
   }
   return {
     create: async (body, signal) => json(await request("POST", "", body, signal)),
+    turns: async (id, signal) => json(await request("GET", `/${safeId(id)}/turns?limit=20&order=desc`, undefined, signal)),
     retrieve: async (id, signal) => json(await request("GET", `/${safeId(id)}`, undefined, signal)),
     post: async (id, body, key, signal) => { const r = await request("POST", `/${safeId(id)}/events`, body, signal, key); await r.body?.cancel(); },
     remove: async (id, signal) => { const r = await request("DELETE", `/${safeId(id)}`, undefined, signal); await r.body?.cancel(); },
