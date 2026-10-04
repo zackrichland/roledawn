@@ -12,7 +12,8 @@ const object = (x: unknown): Record<string, unknown> => {
   return x as Record<string, unknown>;
 };
 export type CanaryPacket = Readonly<{
-  facts: Readonly<Partial<Record<"name" | "email" | "phone" | "location" | "linkedin" | "currentCompany", string>>>;
+  facts: Readonly<Partial<Record<"name" | "email" | "phone" | "location" | "linkedin" | "currentCompany" |
+    "heardAbout" | "highestDegree" | "usAuthorized" | "usSponsorshipRequired", string>>>;
   resumeBase64: string;
   coverLetterBase64?: string;
 }>;
@@ -47,7 +48,8 @@ export function prepareHostedCanaryPlan(input: Omit<CanaryPlan, "packetSha256" |
   if (!UUID.test(input.candidateId) || !UUID.test(input.applicationId) || !ID.test(input.admissionKey)) fail("BINDING_INVALID");
   const facts = Object.fromEntries(Object.entries(input.packet.facts).sort(([a], [b]) => a.localeCompare(b)));
   if (!facts.name || !facts.email || Object.entries(facts).some(([k,v]) =>
-    !["name", "email", "phone", "location", "linkedin", "currentCompany"].includes(k) || typeof v !== "string" || v.length > 2000)) fail("PACKET_INVALID");
+    !["name", "email", "phone", "location", "linkedin", "currentCompany", "heardAbout", "highestDegree",
+      "usAuthorized", "usSponsorshipRequired"].includes(k) || typeof v !== "string" || v.length > 2000)) fail("PACKET_INVALID");
   const files = [input.packet.resumeBase64, input.packet.coverLetterBase64].flatMap((data, i) => {
     if (data === undefined) return [];
     const bytes = Buffer.from(data, "base64");
