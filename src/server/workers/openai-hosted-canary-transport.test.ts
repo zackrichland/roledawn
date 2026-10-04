@@ -51,5 +51,5 @@ test("saved items and artifact retrieval use fixed official paths and preserve b
   });
   await t.items("s1",signal()); await t.artifacts("s1",signal());
   assert.deepEqual(Array.from(await t.artifactContent("s1","artifact_1",signal())),[0,1,255]);
-  assert.deepEqual(urls.map(u=>u.replace("https://api.openai.com/v1/agents/sessions", "")),["/s1/items?limit=100&order=asc","/s1/artifacts?limit=20&order=asc","/s1/artifacts/artifact_1/content"]);
+  assert.deepEqual(urls.map(u=>u.replace("https://api.openai.com/v1/agents/sessions", "")),["/s1/items?limit=5&order=asc","/s1/artifacts?limit=20&order=asc","/s1/artifacts/artifact_1/content"]);
 });

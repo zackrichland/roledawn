@@ -20,7 +20,7 @@ function harness(p: CanaryPlan = plan()) {
   let locked = false;
   const calls: { name: string; body?: unknown; key?: string | null }[] = [];
   const control = { events: [terminal] as unknown[], actions: [] as unknown[], budget: true, failAdmission: 0, failReady: false, failDelete: false,
-    evidence: null as CanaryEvidence | null, abortAfterAdmission: undefined as AbortController | undefined };
+    evidence: null as CanaryEvidence | null, abortAfterAdmission: undefined as AbortController | undefined, recordFails: false };
   const store: HostedCanaryStore = {
     async claim(incoming) { if (locked || incoming.intentSha256 !== row.intentSha256) throw Error("refused"); locked = true; return structuredClone(row); },
     async commit(prior, patch) {
@@ -38,7 +38,8 @@ function harness(p: CanaryPlan = plan()) {
     async artifactContent() { return new Uint8Array(); },
     async create(body) { calls.push({ name: "create", body }); assert.equal(row.phase, "CREATING"); assert.equal(row.possibleEgress, true);
       return { id: "session_1", environment: { type: "openai_hosted" } }; },
-    async turns() { calls.push({ name: "turns" }); return { data: [{ ...terminal.turn, status: "completed" }], has_more: false }; },
+    async turns() { calls.push({ name: "turns" }); return { data: [{ ...terminal.turn, status: "completed", usage: {} }], has_more: false }; },
+    async traces() { return { object: "list",data: [],has_more: false }; },
     async retrieve() { calls.push({ name: "retrieve" }); return { id: "session_1", environment: { type: "openai_hosted" }, required_actions: control.actions }; },
     async post(_id, body, key) { calls.push({ name: "post", body, key });
       if (key) { assert.equal(row.phase, "ADMISSION_PENDING"); control.abortAfterAdmission?.abort(); if (control.failAdmission-- > 0) throw Error("lost ack"); } },
@@ -46,14 +47,16 @@ function harness(p: CanaryPlan = plan()) {
     async remove() { calls.push({ name: "remove" }); if (control.failDelete) throw Error("unavailable"); },
   };
   const run = (signal?: AbortSignal) => runHostedCanary({ enabled: true, reducedGuaranteeApproved: true, plan: p, store, transport,
-    signal, verifyEmployerEvidence: async () => control.evidence });
+    signal, captureOutputs: async () => { calls.push({ name: "capture" }); }, recordOriginDecision: async (_run, action) => {
+      calls.push({ name: "record_origin", body: action }); if (control.recordFails) throw Error("archive failed");
+    }, verifyEmployerEvidence: async () => control.evidence });
   return { p, store, transport, control, calls, run, seed: (patch: Partial<CanaryRun>) => { row = { ...row, ...patch }; }, row: () => row };
 }
 
 test("disabled by default; mutated approval intent cannot start", async () => {
   const h = harness();
-  await assert.rejects(runHostedCanary({ plan: h.p, store: h.store, transport: h.transport, verifyEmployerEvidence: async () => null }), /DISABLED/);
-  await assert.rejects(runHostedCanary({ enabled: true, reducedGuaranteeApproved: true, plan: { ...h.p, admissionKey: "changed" }, store: h.store, transport: h.transport, verifyEmployerEvidence: async () => null }), /INTENT_CHANGED/);
+  await assert.rejects(runHostedCanary({ plan: h.p, store: h.store, transport: h.transport, captureOutputs: async () => {}, recordOriginDecision: async () => {}, verifyEmployerEvidence: async () => null }), /DISABLED/);
+  await assert.rejects(runHostedCanary({ enabled: true, reducedGuaranteeApproved: true, plan: { ...h.p, admissionKey: "changed" }, store: h.store, transport: h.transport, captureOutputs: async () => {}, recordOriginDecision: async () => {}, verifyEmployerEvidence: async () => null }), /INTENT_CHANGED/);
   assert.equal(h.calls.length, 0);
 });
 test("hosted setup checks the exact inline PDF before agent work", () => {
@@ -87,6 +90,25 @@ test("origin pending and denial cancel without granting access", async () => {
 test("exact recorded origin approval is emitted using the documented result event", async () => {
   const h = harness(plan({ "https://jobs.lever.co": "approve" })); h.control.actions = [action]; await h.run();
   assert.ok(h.calls.some(c => JSON.stringify(c.body ?? null).includes('"decision":"approve"')));
+  assert.ok(h.calls.findIndex(c => c.name === "record_origin") < h.calls.findIndex(c => c.name === "post" && JSON.stringify(c.body ?? null).includes('"decision":"approve"')));
+});
+test("failed private origin archival prevents browser permission grant", async () => {
+  const h = harness(plan({ "https://jobs.lever.co": "approve" })); h.control.actions = [action]; h.control.recordFails = true;
+  assert.equal((await h.run()).phase, "UNCERTAIN");
+  assert.equal(h.calls.some(c => c.name === "post" && JSON.stringify(c.body ?? null).includes('"decision":"approve"')), false);
+});
+test("text delta volume does not consume the browser action limit", async () => {
+  const h = harness(); h.control.events = [...Array.from({ length: 1001 }, () => ({ type: "agent.session.turn.output_text.delta" })), terminal];
+  assert.equal((await h.run()).phase, "UNCERTAIN");
+  assert.ok(h.calls.some(c => c.name === "capture"));
+  assert.ok(h.calls.findIndex(c => c.name === "turns") < h.calls.findIndex(c => c.name === "capture"));
+  assert.ok(h.calls.findIndex(c => c.name === "capture") < h.calls.findIndex(c => c.name === "remove"));
+});
+test("browser call count is bounded separately from text deltas", async () => {
+  const h = harness(); h.control.events = Array.from({ length: 41 }, () => ({ type: "agent.session.turn.item.done", item: { type: "computer_use_call" } }));
+  assert.equal((await h.run()).phase, "UNCERTAIN");
+  assert.equal(h.row().cancelRequested, true);
+  assert.ok(h.calls.some(c => c.name === "capture"));
 });
 test("malformed and lost streams retain uncertainty across controller restart", async () => {
   for (const events of [[], [{}], [{ ...terminal, turn: { ...terminal.turn, session_id: "wrong" } }]]) {

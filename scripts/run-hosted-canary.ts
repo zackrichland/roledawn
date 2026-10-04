@@ -32,14 +32,24 @@ export async function main(args: string[], env: NodeJS.ProcessEnv = process.env)
   const store = createHostedCanaryStore(client);
   const transport = createHostedCanaryTransport(env.OPENAI_API_KEY!);
   let capture: Awaited<ReturnType<typeof captureHostedOutputs>> | null = null;
+  const originDecisionHashes: string[] = [];
   const result = await runHostedCanary({ enabled: true, recoveryOnly, reducedGuaranteeApproved: true, plan: manifest.plan, store,
-    transport, captureOutputs: async run => { capture = await captureHostedOutputs(run,transport,archive); },
+    transport, captureOutputs: async run => {
+      capture = await captureHostedOutputs(run,transport,archive);
+      if (capture.status !== "CAPTURED") throw Error("HOSTED_CANARY_CAPTURE_INCOMPLETE");
+    },
+    recordOriginDecision: async (run, action) => {
+      originDecisionHashes.push(await archive.put(Buffer.from(JSON.stringify({
+        kind: "HOSTED_ORIGIN_DECISION_NOT_RECEIPT", runId: run.runId, sessionId: run.sessionId,
+        requestId: action.requestId, origin: action.origin, decision: action.decision, observedAt: new Date().toISOString(),
+      }))));
+    },
     // No model/turn output is a receipt. Independent reconciliation remains required.
     verifyEmployerEvidence: async run => {
       const evidence = await readHostedCanaryEvidence(client,run);
       return evidence ? verifyArchivedEmployerEvidence(manifest.plan,run,evidence,archive) : null;
     } });
-  console.log(JSON.stringify({ ...result,capture }));
+  console.log(JSON.stringify({ ...result,capture,originDecisionHashes }));
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main(process.argv.slice(2)).catch(() => { console.error("HOSTED_CANARY_OPERATOR_ACTION_BLOCKED"); process.exitCode = 1; });

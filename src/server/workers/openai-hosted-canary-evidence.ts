@@ -36,44 +36,80 @@ export async function openPrivateEvidenceArchive(directory: string): Promise<Pri
   } };
 }
 function page(raw: unknown) {
-  const p = obj(raw); if (p.object !== "list" || !Array.isArray(p.data) || p.has_more !== false || p.data.length > 100) return fail();
-  return p.data;
+  const p = obj(raw); if (p.object !== "list" || !Array.isArray(p.data) || typeof p.has_more !== "boolean" || p.data.length > 100) return fail();
+  if (p.has_more && (!p.data.length || typeof p.last_id !== "string" || !ID.test(p.last_id))) return fail();
+  if (p.has_more && obj(p.data.at(-1)).id !== p.last_id) return fail();
+  return { data: p.data, hasMore: p.has_more, lastId: p.has_more ? p.last_id as string : null };
 }
 /** Diagnostic outputs only. This function NEVER returns an employer receipt. */
-export async function captureHostedOutputs(run: CanaryRun, transport: Pick<HostedCanaryTransport,"turns" | "items" | "artifacts" | "artifactContent">, archive: PrivateEvidenceArchive) {
+export async function captureHostedOutputs(run: CanaryRun, transport: Pick<HostedCanaryTransport,"turns" | "items" | "artifacts" | "artifactContent" | "traces">, archive: PrivateEvidenceArchive) {
   if (!run.sessionId || !ID.test(run.sessionId)) return { status: "UNAVAILABLE" as const, manifestSha256: null };
-  const signal = AbortSignal.timeout(15_000), saved: { kind: string; sha256: string }[] = [];
+  const signal = AbortSignal.timeout(20_000), saved: { kind: string; sha256: string }[] = [];
   let complete = true, artifacts = 0;
   const save = async (kind: string, raw: unknown) => { const sha256 = await archive.put(Buffer.from(JSON.stringify(raw))); saved.push({ kind,sha256 }); };
-  try {
-    const turnsRaw = await transport.turns(run.sessionId,signal); await save("turns",turnsRaw);
-    const turns = page(turnsRaw).map(obj);
+  const attempt = async (capture: () => Promise<void>) => { try { await capture(); } catch { complete = false; } };
+  let terminal = new Set<string>(), turnIds = new Set<string>();
+  await attempt(async () => {
+    const turnsRaw = await transport.turns(run.sessionId!,signal); await save("turns",turnsRaw);
+    const turnsPage = page(turnsRaw); if (turnsPage.hasMore) complete = false;
+    const turns = turnsPage.data.map(obj);
     if (turns.some(t => t.session_id !== run.sessionId || typeof t.id !== "string" || !ID.test(t.id))) fail();
-    const terminal = new Set(turns.filter(t => ["completed","failed","cancelled"].includes(String(t.status))).map(t => t.id));
-    if (!turns.some(t => t.subagent_id === null && terminal.has(t.id))) complete = false;
-    const itemsRaw = await transport.items(run.sessionId,signal); await save("items",itemsRaw);
-    for (const raw of page(itemsRaw)) {
-      const item = obj(raw); if (typeof item.turn_id !== "string" || !turns.some(t => t.id === item.turn_id)) fail();
-      // Preserve tool screenshots as raw bytes, but never infer authenticity or receipt status.
-      if (item.type === "computer_use_call" && item.output !== null) {
-        const output = obj(item.output);
-        if (output.type !== "computer_screenshot" || typeof output.image_url !== "string" || !output.image_url.startsWith("data:image/jpeg;base64,")) fail();
-        const data = output.image_url.slice("data:image/jpeg;base64,".length), bytes = Buffer.from(data,"base64");
-        if (bytes.toString("base64") !== data) fail();
-        saved.push({ kind: "unverified_screenshot",sha256: await archive.put(bytes) });
-      }
+    turnIds = new Set(turns.map(t => t.id as string));
+    terminal = new Set(turns.filter(t => ["completed","failed","cancelled"].includes(String(t.status))).map(t => t.id as string));
+    if (!turns.some(t => t.subagent_id === null && terminal.has(t.id as string) && t.usage != null)) complete = false;
+  });
+  await attempt(async () => {
+    let after: string | undefined; const seen = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const tracesRaw = await transport.traces(run.sessionId!,signal,after), tracesPage = page(tracesRaw);
+      const traces = tracesPage.data.map(obj);
+      if (traces.some(t => t.object !== "agent.session.trace" || t.session_id !== run.sessionId ||
+        typeof t.id !== "string" || !terminal.has(t.id))) complete = false;
+      for (const trace of traces) { if (seen.has(trace.id as string)) fail(); seen.add(trace.id as string); }
+      await save("private_raw_traces",tracesRaw);
+      if (!tracesPage.hasMore) { if (i === 0 && !traces.length) complete = false; return; }
+      if (tracesPage.lastId === after) fail();
+      after = tracesPage.lastId!;
     }
-    const artifactsRaw = await transport.artifacts(run.sessionId,signal); await save("artifact_metadata",artifactsRaw);
-    const entries = page(artifactsRaw); if (entries.length > 5) fail();
-    for (const raw of entries) {
+    complete = false;
+  });
+  await attempt(async () => {
+    let after: string | undefined; const seen = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const itemsRaw = await transport.items(run.sessionId!,signal,after), itemsPage = page(itemsRaw);
+      await save("items",itemsRaw);
+      for (const raw of itemsPage.data) {
+        const item = obj(raw);
+        if (typeof item.id !== "string" || !ID.test(item.id) || seen.has(item.id)) fail();
+        seen.add(item.id);
+        if (typeof item.turn_id !== "string" || !turnIds.has(item.turn_id)) { complete = false; continue; }
+        // Screenshots remain private diagnostics, never employer receipt authority.
+        if (item.type === "computer_use_call" && item.output !== null) {
+          const output = obj(item.output);
+          if (output.type !== "computer_screenshot" || typeof output.image_url !== "string" || !output.image_url.startsWith("data:image/jpeg;base64,")) { complete = false; continue; }
+          const data = output.image_url.slice("data:image/jpeg;base64,".length), bytes = Buffer.from(data,"base64");
+          if (bytes.toString("base64") !== data) { complete = false; continue; }
+          saved.push({ kind: "unverified_screenshot",sha256: await archive.put(bytes) });
+        }
+      }
+      if (!itemsPage.hasMore) return;
+      if (itemsPage.lastId === after) fail();
+      after = itemsPage.lastId!;
+    }
+    complete = false;
+  });
+  await attempt(async () => {
+    const artifactsRaw = await transport.artifacts(run.sessionId!,signal); await save("artifact_metadata",artifactsRaw);
+    const entriesPage = page(artifactsRaw); if (entriesPage.hasMore || entriesPage.data.length > 5) fail();
+    for (const raw of entriesPage.data) {
       const a = obj(raw);
-      if (a.object !== "agent.session.artifact" || a.session_id !== run.sessionId || !terminal.has(a.turn_id) ||
-        typeof a.id !== "string" || !ID.test(a.id) || !Number.isSafeInteger(a.size_bytes) || Number(a.size_bytes) > 2_097_152 || Number(a.size_bytes) < 0) fail();
-      const bytes = await transport.artifactContent(run.sessionId,a.id,signal);
-      if (bytes.length !== a.size_bytes) fail();
+      if (a.object !== "agent.session.artifact" || a.session_id !== run.sessionId || !terminal.has(a.turn_id as string) ||
+        typeof a.id !== "string" || !ID.test(a.id) || !Number.isSafeInteger(a.size_bytes) || Number(a.size_bytes) > 2_097_152 || Number(a.size_bytes) < 0) { complete = false; continue; }
+      const bytes = await transport.artifactContent(run.sessionId!,a.id,signal);
+      if (bytes.length !== a.size_bytes) { complete = false; continue; }
       saved.push({ kind: "unverified_artifact",sha256: await archive.put(bytes) }); artifacts++;
     }
-  } catch { complete = false; }
+  });
   const manifest = { type: "HOSTED_DIAGNOSTICS_NOT_RECEIPT", runSha256: evidenceHash(run.runId),sessionSha256: evidenceHash(run.sessionId),
     capturedAt: new Date().toISOString(),complete,artifacts,saved };
   const manifestSha256 = await archive.put(Buffer.from(JSON.stringify(manifest)));

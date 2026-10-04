@@ -45,21 +45,57 @@ test("lost-stream recovery archives saved turns, tool screenshots and published 
     const archive = await openPrivateEvidenceArchive(root), jpeg = Buffer.from([0xff,0xd8,0xff,0xd9]);
     const response = (data: unknown[]) => ({ object: "list",data,has_more:false });
     const transport = {
-      async turns() { return response([{ id:"turn_1",session_id:"session_1",subagent_id:null,status:"completed" }]); },
-      async items() { return response([{ type:"computer_use_call",turn_id:"turn_1",output:{ type:"computer_screenshot",image_url:`data:image/jpeg;base64,${jpeg.toString("base64")}` } },
-        { type:"message",turn_id:"turn_1",role:"assistant",content:[{ type:"output_text",text:"Model says application succeeded" }] }]); },
+      async turns() { return response([{ id:"turn_1",session_id:"session_1",subagent_id:null,status:"completed",usage:{} }]); },
+      async traces() { return response([{ object:"agent.session.trace",id:"turn_1",session_id:"session_1",otlp:{ resourceSpans:[] } }]); },
+      async items() { return response([{ id:"item_1",type:"computer_use_call",turn_id:"turn_1",output:{ type:"computer_screenshot",image_url:`data:image/jpeg;base64,${jpeg.toString("base64")}` } },
+        { id:"item_2",type:"message",turn_id:"turn_1",role:"assistant",content:[{ type:"output_text",text:"Model says application succeeded" }] }]); },
       async artifacts() { return response([{ object:"agent.session.artifact",id:"artifact_1",session_id:"session_1",turn_id:"turn_1",size_bytes:jpeg.length,path:"/workspace/outputs/receipt.jpg",created_at:now/1000,environment_id:"environment_1" }]); },
       async artifactContent() { return jpeg; },
-    } as Pick<HostedCanaryTransport,"turns" | "items" | "artifacts" | "artifactContent">;
+    } as Pick<HostedCanaryTransport,"turns" | "items" | "artifacts" | "artifactContent" | "traces">;
     const result = await captureHostedOutputs(run,transport,archive); assert.equal(result.status,"CAPTURED");
     const manifest = JSON.parse(Buffer.from(await archive.get(result.manifestSha256!)).toString());
     assert.equal(manifest.type,"HOSTED_DIAGNOSTICS_NOT_RECEIPT"); assert.equal(manifest.sessionSha256,evidenceHash(run.sessionId!));
     assert.equal(manifest.artifacts,1); assert.ok(manifest.saved.some((x: { kind: string }) => x.kind === "unverified_screenshot"));
+    assert.ok(manifest.saved.some((x: { kind: string }) => x.kind === "private_raw_traces"));
     const printed = JSON.stringify(result); assert.ok(!printed.includes("application succeeded")); assert.ok(!printed.includes("session_1"));
     transport.artifacts = async () => ({ object:"list",data:[],has_more:true });
     assert.equal((await captureHostedOutputs(run,transport,archive)).status,"INCOMPLETE");
     transport.turns = async () => { throw Error("private provider details"); };
     const incomplete = await captureHostedOutputs(run,transport,archive);
     assert.equal(incomplete.status,"INCOMPLETE"); assert.ok(!JSON.stringify(incomplete).includes("private provider details"));
+    const partial = JSON.parse(Buffer.from(await archive.get(incomplete.manifestSha256!)).toString());
+    assert.ok(partial.saved.some((x: { kind: string }) => x.kind === "items"));
+    assert.ok(partial.saved.some((x: { kind: string }) => x.kind === "artifact_metadata"));
+  } finally { await rm(root,{ recursive:true,force:true }); }
+});
+
+test("bounded item and trace pages retain later browser diagnostics", async () => {
+  const root = await mkdtemp(join(tmpdir(),"hosted-pages-"));
+  try {
+    const archive = await openPrivateEvidenceArchive(root);
+    const page = (data: unknown[], has_more = false, last_id: string | null = null) => ({ object:"list",data,has_more,last_id });
+    const cursors: string[] = [];
+    const transport = {
+      async turns() { return page([{ id:"turn_1",session_id:"session_1",subagent_id:null,status:"completed",usage:{} },
+        { id:"turn_2",session_id:"session_1",subagent_id:"sub_1",status:"completed",usage:{} }]); },
+      async traces(_id: string,_signal: AbortSignal,after?: string) {
+        cursors.push(`trace:${after ?? "first"}`);
+        return after ? page([{ object:"agent.session.trace",id:"turn_1",session_id:"session_1",detail:"private failure" }]) :
+          page([{ object:"agent.session.trace",id:"turn_2",session_id:"session_1" }],true,"turn_2");
+      },
+      async items(_id: string,_signal: AbortSignal,after?: string) {
+        cursors.push(`item:${after ?? "first"}`);
+        return after ? page([{ id:"item_2",type:"computer_use_call",turn_id:"turn_1",status:"failed",output:null }]) :
+          page([{ id:"item_1",type:"reasoning",turn_id:"turn_1" }],true,"item_1");
+      },
+      async artifacts() { return page([]); },
+      async artifactContent() { return new Uint8Array(); },
+    } as Pick<HostedCanaryTransport,"turns" | "items" | "artifacts" | "artifactContent" | "traces">;
+    const result = await captureHostedOutputs(run,transport,archive);
+    assert.equal(result.status,"CAPTURED");
+    assert.deepEqual(cursors,["trace:first","trace:turn_2","item:first","item:item_1"]);
+    const manifest = JSON.parse(Buffer.from(await archive.get(result.manifestSha256!)).toString());
+    assert.equal(manifest.saved.filter((x: {kind:string}) => x.kind === "private_raw_traces").length,2);
+    assert.equal(manifest.saved.filter((x: {kind:string}) => x.kind === "items").length,2);
   } finally { await rm(root,{ recursive:true,force:true }); }
 });

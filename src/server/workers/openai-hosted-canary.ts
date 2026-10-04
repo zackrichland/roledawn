@@ -93,7 +93,8 @@ export function prepareHostedCanaryPlan(input: Omit<CanaryPlan, "packetSha256" |
 export async function runHostedCanary(options: Readonly<{
   enabled?: boolean; recoveryOnly?: boolean; reducedGuaranteeApproved?: boolean; plan: CanaryPlan; store: HostedCanaryStore;
   transport: HostedCanaryTransport; signal?: AbortSignal;
-  captureOutputs?(run: CanaryRun): Promise<void>;
+  captureOutputs(run: CanaryRun): Promise<void>;
+  recordOriginDecision(run: CanaryRun, action: Readonly<{ requestId: string; origin: string; decision: "approve" | "deny" | "pending" }>): Promise<void>;
   verifyEmployerEvidence(run: CanaryRun): Promise<CanaryEvidence | null>;
 }>) {
   if (options.enabled !== true || options.reducedGuaranteeApproved !== true) fail("DISABLED");
@@ -121,9 +122,24 @@ export async function runHostedCanary(options: Readonly<{
     const sessionId = run.sessionId ?? observedSessionId;
     if (!sessionId || !run.cleanupPending) return;
     try {
-      // Archive bounded diagnostic outputs before deleting the provider session.
-      // Archive failure must not retain a paid environment indefinitely.
-      await options.captureOutputs?.(run).catch(() => { reason = "EVIDENCE_CAPTURE_INCOMPLETE"; });
+      // Retained turns, usage and traces can lag the terminal SSE or cancel ack.
+      // Bound the wait so diagnostic capture cannot retain a paid session indefinitely.
+      let terminalObserved = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const page = object(await options.transport.turns(sessionId, AbortSignal.timeout(4000)));
+          if (Array.isArray(page.data) && page.data.some(raw => {
+            const turn = object(raw);
+            return turn.session_id === sessionId && turn.subagent_id === null &&
+              ["completed", "failed", "cancelled"].includes(String(turn.status)) && turn.usage != null;
+          })) { terminalObserved = true; break; }
+        } catch { /* Capture still runs and records its own incomplete result. */ }
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      if (!terminalObserved) reason = "EVIDENCE_CAPTURE_INCOMPLETE";
+      // Raw provider diagnostics stay in the separately private archive. Never log them
+      // or promote model claims/tool screenshots into employer receipt authority.
+      await options.captureOutputs(run).catch(() => { reason = "EVIDENCE_CAPTURE_INCOMPLETE"; });
       await options.transport.remove(sessionId, AbortSignal.timeout(5000));
       await commit({ cleanupPending: false });
     } catch { reason = "CLEANUP_PENDING"; }
@@ -152,6 +168,9 @@ export async function runHostedCanary(options: Readonly<{
       if (action.type !== "computer_use_approval_request" || request.type !== "browser_origin_access" ||
         typeof action.request_id !== "string" || !ID.test(action.request_id) || typeof request.origin !== "string") fail("UNSUPPORTED_ACTION");
       const decision = Object.hasOwn(plan.originDecisions, request.origin) ? plan.originDecisions[request.origin] : undefined;
+      // Persist the exact request and decision before any grant. Session item history does
+      // not reconstruct browser origin approval requests.
+      await options.recordOriginDecision(run, { requestId: action.request_id, origin: request.origin, decision: decision ?? "pending" });
       if (!decision) fail("ORIGIN_PENDING");
       // Exact approved decisions are part of the immutable, independently approved plan.
       await options.transport.post(run.sessionId!, { events: [{ type: "agent.session.input.computer_use_approval_request_result",
@@ -207,11 +226,19 @@ export async function runHostedCanary(options: Readonly<{
       await commit({ phase: "ACTIVE" });
     }
     await actions(object(await options.transport.retrieve(run.sessionId, signal)));
-    let terminal = false, events = 0;
+    let terminal = false, events = 0, computerCalls = 0;
     for await (const raw of stream.events) {
-      await check(); if (++events > 1000) fail("EVENT_LIMIT");
+      if (++events > 20_000) fail("EVENT_LIMIT");
       const event = object(raw);
       if (typeof event.type !== "string") fail("MALFORMED_EVENT");
+      // Text deltas are numerous and carry no authorization. Check every 25
+      // events and each consequential action; the absolute deadline still aborts IO.
+      if (events % 25 === 0 || event.type === "agent.session.requires_action" ||
+        event.type === "agent.session.turn.item.done" ||
+        ["agent.session.turn.completed", "agent.session.turn.failed", "agent.session.turn.cancelled",
+          "agent.session.failed", "agent.session.environment.failed", "error"].includes(event.type)) await check();
+      if (event.type === "agent.session.turn.item.done" && object(event.item).type === "computer_use_call" &&
+        ++computerCalls > 40) fail("COMPUTER_CALL_LIMIT");
       if (event.type === "agent.session.requires_action") await actions(object(await options.transport.retrieve(run.sessionId, signal)));
       else if (["agent.session.turn.completed","agent.session.turn.failed","agent.session.turn.cancelled"].includes(event.type)) {
         const turn = object(event.turn);

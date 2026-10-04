@@ -5,10 +5,11 @@ const LIMIT = 2 * 1024 * 1024;
 const safeId = (id: string) => { if (!ID.test(id)) throw new Error("HOSTED_CANARY_INVALID_ID"); return id; };
 export interface HostedCanaryTransport {
   create(body: unknown, signal: AbortSignal): Promise<unknown>;
-  items(sessionId: string, signal: AbortSignal): Promise<unknown>;
+  items(sessionId: string, signal: AbortSignal, after?: string): Promise<unknown>;
   artifacts(sessionId: string, signal: AbortSignal): Promise<unknown>;
   artifactContent(sessionId: string, artifactId: string, signal: AbortSignal): Promise<Uint8Array>;
   turns(sessionId: string, signal: AbortSignal): Promise<unknown>;
+  traces(sessionId: string, signal: AbortSignal, after?: string): Promise<unknown>;
   retrieve(sessionId: string, signal: AbortSignal): Promise<unknown>;
   post(sessionId: string, body: unknown, key: string | null, signal: AbortSignal): Promise<void>;
   stream(sessionId: string, signal: AbortSignal): Promise<{ events: AsyncIterable<unknown>; close(): Promise<void> }>;
@@ -50,11 +51,12 @@ export function createHostedCanaryTransport(apiKey: string, fetcher: typeof fetc
     catch { throw new Error("HOSTED_CANARY_INVALID_RESPONSE"); }
   }
   return {
-    items: async (id, signal) => json(await request("GET", `/${safeId(id)}/items?limit=100&order=asc`, undefined, signal)),
+    items: async (id, signal, after) => json(await request("GET", `/${safeId(id)}/items?limit=5&order=asc${after ? `&after=${safeId(after)}` : ""}`, undefined, signal)),
     artifacts: async (id, signal) => json(await request("GET", `/${safeId(id)}/artifacts?limit=20&order=asc`, undefined, signal)),
     artifactContent: async (id, artifact, signal) => bodyBytes(await request("GET", `/${safeId(id)}/artifacts/${safeId(artifact)}/content`, undefined, signal)),
     create: async (body, signal) => json(await request("POST", "", body, signal)),
     turns: async (id, signal) => json(await request("GET", `/${safeId(id)}/turns?limit=20&order=desc`, undefined, signal)),
+    traces: async (id, signal, after) => json(await request("GET", `/${safeId(id)}/traces?limit=1&order=asc${after ? `&after=${safeId(after)}` : ""}`, undefined, signal)),
     retrieve: async (id, signal) => json(await request("GET", `/${safeId(id)}`, undefined, signal)),
     post: async (id, body, key, signal) => { const r = await request("POST", `/${safeId(id)}/events`, body, signal, key); await r.body?.cancel(); },
     remove: async (id, signal) => { const r = await request("DELETE", `/${safeId(id)}`, undefined, signal); await r.body?.cancel(); },
@@ -66,10 +68,12 @@ export function createHostedCanaryTransport(apiKey: string, fetcher: typeof fetc
       const reader = r.body.getReader();
       return { close: async () => { await reader.cancel().catch(() => undefined); },
         events: (async function* () {
-          const decoder = new TextDecoder(); let buffer = "", data: string[] = [], dataBytes = 0;
+          const decoder = new TextDecoder(); let buffer = "", data: string[] = [], dataBytes = 0, streamBytes = 0;
           try {
             while (true) {
               const part = await reader.read(); if (part.done) break;
+              streamBytes += part.value.byteLength;
+              if (streamBytes > 16 * 1024 * 1024) throw new Error("HOSTED_CANARY_STREAM_TOO_LARGE");
               buffer += decoder.decode(part.value, { stream: true });
               if (Buffer.byteLength(buffer) + dataBytes > LIMIT) throw new Error("HOSTED_CANARY_STREAM_TOO_LARGE");
               let end: number;
