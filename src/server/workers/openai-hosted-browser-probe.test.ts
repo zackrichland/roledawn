@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createHostedBrowserProbeRequest, hostedProbeOriginDecision } from "./openai-hosted-browser-probe.ts";
+import { createHostedBrowserProbeRequest, createHostedBrowserProbeTask, hostedProbeOriginDecision } from "./openai-hosted-browser-probe.ts";
 
 test("hosted probe contains no candidate or submit capability and constrains network hosts", () => {
   const request = createHostedBrowserProbeRequest({
@@ -15,7 +15,20 @@ test("hosted probe contains no candidate or submit capability and constrains net
   assert.equal("files" in request.environment, false);
   assert.equal("candidate" in request, false);
   assert.equal("submit_permission" in request, false);
-  assert.match(request.input, /jobs\.lever\.co\/example\/job-id/u);
+  assert.equal("input" in request, false, "creation must not start a task before approval events are observed");
+});
+
+test("the public task is sent separately using the session event contract", () => {
+  const spec = { board: "ASHBY" as const, publicUrl: "https://jobs.ashbyhq.com/example/job-id",
+    allowedDomains: ["jobs.ashbyhq.com"] };
+  const task = createHostedBrowserProbeTask(spec);
+  assert.deepEqual(task.events, [{
+    type: "agent.session.input.message",
+    input: [{ role: "user", content: [{ type: "input_text",
+      text: "Open https://jobs.ashbyhq.com/example/job-id and inspect the public job form without interacting with applicant fields or submitting it." }] }],
+  }]);
+  assert.throws(() => createHostedBrowserProbeTask({ ...spec, allowedDomains: [] }), /HOSTED_PROBE_NETWORK_INVALID/u);
+  assert.throws(() => createHostedBrowserProbeTask({ ...spec, publicUrl: "https://boards.greenhouse.io/example" }), /HOSTED_PROBE_URL_INVALID/u);
 });
 
 test("hosted probe refuses Greenhouse and unrelated or malformed destinations", () => {
@@ -41,4 +54,8 @@ test("origin approval needs an explicit decision and exact allowed origin", () =
     origin: "https://jobs.lever.co.evil.example" } }, ["jobs.lever.co"], "approve"), /OUT_OF_SCOPE/u);
   assert.throws(() => hostedProbeOriginDecision({ ...approval, request: { ...approval.request,
     origin: "https://jobs.lever.co/submit" } }, ["jobs.lever.co"], "approve"), /OUT_OF_SCOPE/u);
+  assert.throws(() => hostedProbeOriginDecision({ ...approval, request: { ...approval.request,
+    type: "browser_authentication" as "browser_origin_access" } }, ["jobs.lever.co"], "approve"), /APPROVAL_INVALID/u);
+  assert.throws(() => hostedProbeOriginDecision({ ...approval,
+    type: "function_call" as "computer_use_approval_request" }, ["jobs.lever.co"], "approve"), /APPROVAL_INVALID/u);
 });

@@ -33,7 +33,7 @@ function validPublicUrl(spec: HostedProbeSpec): URL {
   return url;
 }
 
-/** Create only a noncandidate public-page session. No caller-supplied prompt or files. */
+/** Create an idle public-page session; attach the event stream before sending its task. */
 export function createHostedBrowserProbeRequest(spec: HostedProbeSpec) {
   const url = validPublicUrl(spec);
   if (!spec.allowedDomains.length || spec.allowedDomains.length > 100 ||
@@ -53,9 +53,25 @@ export function createHostedBrowserProbeRequest(spec: HostedProbeSpec) {
       desktop: { enabled: true },
       network: { access: "restricted", allowed_domains: [...spec.allowedDomains] },
     },
-    // The URL is the only variable task content. Do not add candidate facts,
-    // attachments, cookies, or a submit permission to this request.
-    input: `Open ${url.href} and inspect the public job form without interacting with applicant fields or submitting it.`,
+  } as const;
+}
+
+/** Post to the session events endpoint only after its event stream is attached. */
+export function createHostedBrowserProbeTask(spec: HostedProbeSpec) {
+  // Apply the same board and network validation as session creation.
+  createHostedBrowserProbeRequest(spec);
+  const url = validPublicUrl(spec);
+  return {
+    events: [{
+      type: "agent.session.input.message",
+      input: [{
+        role: "user",
+        content: [{
+          type: "input_text",
+          text: `Open ${url.href} and inspect the public job form without interacting with applicant fields or submitting it.`,
+        }],
+      }],
+    }],
   } as const;
 }
 
@@ -71,6 +87,9 @@ export function hostedProbeOriginDecision(
   allowedDomains: readonly string[],
   explicitDecision: "approve" | "deny" | "cancel",
 ) {
+  if (approval.type !== "computer_use_approval_request" || approval.request.type !== "browser_origin_access") {
+    throw new Error("HOSTED_PROBE_APPROVAL_INVALID");
+  }
   if (!/^[A-Za-z0-9_-]{1,128}$/u.test(approval.request_id)) throw new Error("HOSTED_PROBE_APPROVAL_INVALID");
   let origin: URL;
   try { origin = new URL(approval.request.origin); }
