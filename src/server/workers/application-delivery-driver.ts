@@ -70,6 +70,7 @@ export type ApplicationDeliveryDependencies = Readonly<{
   /** How long a shown CAPTCHA may take to be solved before the send hands over (D-146). */
   captchaSolveTimeoutMs?: number;
   requestTransport?: DeliveryRequestTransport;
+  providerDefaultContext?: boolean;
 }>;
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -123,7 +124,7 @@ export function createApplicationDeliveryDriver(dependencies: ApplicationDeliver
       const policy = typeof dependencies.sitePolicy === "function" ? dependencies.sitePolicy(input.startUrl) : dependencies.sitePolicy ?? resolveApplicationDeliveryPolicy(input.startUrl);
       const policyDestination = policy.greenhouse || policy.lever || policy.ashby ? parseAutopilotDestination(input.startUrl)?.startUrl ?? input.startUrl : input.startUrl;
       if ((policy.destinationUrl ?? policy.startUrl) !== policyDestination || input.executionPackage.destinationUrl !== input.startUrl || hash(input.binding) !== hash(input.executionPackage.binding)) throw new Error("DELIVERY_CONTENT_BINDING_MISMATCH");
-      const runtime = await createApplicationDeliveryBrowser({ page, policy, hooks: dependencies.submissionHooks, timeoutMs: dependencies.browserTimeoutMs, requestTransport: dependencies.requestTransport, captchaSolveTimeoutMs: dependencies.captchaSolveTimeoutMs });
+      const runtime = await createApplicationDeliveryBrowser({ page, policy, hooks: dependencies.submissionHooks, timeoutMs: dependencies.browserTimeoutMs, requestTransport: dependencies.requestTransport, captchaSolveTimeoutMs: dependencies.captchaSolveTimeoutMs, providerDefaultContext: dependencies.providerDefaultContext });
       const started = Date.now();
       const timings: Record<string, number> = {};
       let submitStarted: number | null = null;

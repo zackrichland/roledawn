@@ -4,8 +4,9 @@ import type { Page, Request, Response, Route } from "playwright-core";
 
 import { parseAutopilotDestination, parseAshbyAutopilotDestination, parseGreenhouseAutopilotDestination, parseLeverAutopilotDestination } from "../../domain/application-autopilot-eligibility.ts";
 import type { AgentBrowserField, AgentFieldValue } from "./agents-browser-tools.ts";
-import { APPLICATION_FILL_CAPTCHA_TAKEOVER, CAPTCHA_SOLVE_TIMEOUT_MS, captchaPending, isCaptchaProviderRequestUrl, pageShowsCaptchaChallenge, waitForCaptchaSolved } from "./agents-captcha.ts";
+import { APPLICATION_FILL_CAPTCHA_TAKEOVER, CAPTCHA_SOLVE_TIMEOUT_MS, captchaPending, captchaTokensFilled, isCaptchaProviderRequestUrl, pageShowsCaptchaChallenge, waitForCaptchaSolved } from "./agents-captcha.ts";
 import type { MaterializedApplicationArtifact } from "./application-fill-materializer.ts";
+import { deliveryServiceWorkersAllowed } from "./application-delivery-service-workers.ts";
 
 import type { OptionMatch } from "./agents-option-match.ts";
 import { ashbySubmissionAccepted, createAshbyProtocol, inspectAshbyEnvelope, inspectAshbySubmissionResponse, type AshbyEnvelope, type AshbySubmissionDiagnostics } from "./ashby-delivery-protocol.ts";
@@ -34,13 +35,20 @@ export function browserbaseHcaptchaSolverMethod(request: Readonly<{ url: string;
     typeof body.tabId === "string" && /^[a-f0-9]{32}$/iu.test(body.tabId) && Number.isInteger(body.solveAttempts) && Number(body.solveAttempts) >= 0 && Number(body.solveAttempts) <= 4 ? "QUERY" : null;
 }
 /** Diagnostic markers only: never receipt, rejection or retry authority. */
-export function browserbaseSolverResponseKind(bytes: Buffer | null): "TOKEN_MARKER" | "WAITING_MARKER" | "ERROR_MARKER" | "UNCLASSIFIED" {
+export function browserbaseSolverResponseKind(bytes: Buffer | null, httpStatus?: number): "TOKEN_MARKER" | "WAITING_MARKER" | "ERROR_MARKER" | "TASK_HANDLE_MARKER" | "NO_CONTENT_MARKER" | "UNCLASSIFIED" {
+  // The retained provider task returned HTTP 204 with an empty body between
+  // HTTP 200 query echoes. Playwright may reject a body read for HTTP 204.
+  // Neither shape indicates a completed solve.
+  if (httpStatus === 204 || bytes?.length === 0) return "NO_CONTENT_MARKER";
   const body = bytes && bytes.length <= 64_000 ? jsonObject(bytes) : null;
   if (!body) return "UNCLASSIFIED";
   const status = typeof body.status === "string" ? body.status.toLowerCase() : "";
   if (["error", "failed"].includes(status) || typeof body.errorId === "number" && body.errorId > 0) return "ERROR_MARKER";
   const solution = body.solution && typeof body.solution === "object" && !Array.isArray(body.solution) ? body.solution as Record<string, unknown> : {};
   if ([body.token, solution.token, solution.gRecaptchaResponse].some(value => typeof value === "string" && value.length > 0)) return "TOKEN_MARKER";
+  const task = body.query && typeof body.query === "object" && !Array.isArray(body.query) ? body.query as Record<string, unknown> : null;
+  if (task && Number.isSafeInteger(task.taskIdEuler) && Number(task.taskIdEuler) > 0 && Object.keys(task).length === 1 &&
+      (Object.keys(body).length === 1 || typeof body.solveId === "string" && typeof body.tabId === "string" && Object.keys(body).length === 3)) return "TASK_HANDLE_MARKER";
   return ["processing", "pending", "waiting"].includes(status) ? "WAITING_MARKER" : "UNCLASSIFIED";
 }
 export type DeliveryUploadRule = Readonly<{
@@ -310,6 +318,7 @@ function validatePolicy(policy: DeliverySitePolicy): void {
  */
 export async function createApplicationDeliveryBrowser(input: Readonly<{
   page: Page; policy: DeliverySitePolicy; hooks: DeliverySubmissionHooks; timeoutMs?: number;
+  providerDefaultContext?: boolean;
   requestTransport?: DeliveryRequestTransport;
   /** Bounded solve budget for visible challenges and observed provider-local tasks (D-146). */
   captchaSolveTimeoutMs?: number;
@@ -320,7 +329,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   const captchaSolveTimeoutMs = input.captchaSolveTimeoutMs ?? CAPTCHA_SOLVE_TIMEOUT_MS;
   const dispatch = input.requestTransport ?? ((route: Route) => route.continue());
   const context = page.context();
-  if (context.serviceWorkers().length) throw new Error("DELIVERY_SERVICE_WORKER_UNSUPPORTED");
+  if (!deliveryServiceWorkersAllowed(context, input.providerDefaultContext)) throw new Error("DELIVERY_SERVICE_WORKER_UNSUPPORTED");
   await context.addInitScript(() => {
     if ("serviceWorker" in navigator) Object.defineProperty(navigator.serviceWorker, "register", {
       configurable: false, value: () => Promise.reject(new Error("DELIVERY_SERVICE_WORKER_BLOCKED")),
@@ -406,7 +415,15 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
   const browserbaseSolverMethods = new WeakMap<Request, "CREATE" | "QUERY">();
   let browserbaseSolverQueryResponses = 0;
   let browserbaseSolverHttpFailures = 0;
-  const browserbaseSolverResponseKinds = { TOKEN_MARKER: 0, WAITING_MARKER: 0, ERROR_MARKER: 0, UNCLASSIFIED: 0 };
+  let browserbaseSolvingStartedEvents = 0;
+  let browserbaseSolvingFinishedEvents = 0;
+  const browserbaseSolverResponseKinds = { TOKEN_MARKER: 0, WAITING_MARKER: 0, ERROR_MARKER: 0, TASK_HANDLE_MARKER: 0, NO_CONTENT_MARKER: 0, UNCLASSIFIED: 0 };
+  const solverConsoleListener = (message: import("playwright-core").ConsoleMessage) => {
+    if (action?.kind !== "SUBMIT") return;
+    if (message.text() === "browserbase-solving-started") browserbaseSolvingStartedEvents += 1;
+    if (message.text() === "browserbase-solving-finished") browserbaseSolvingFinishedEvents += 1;
+  };
+  page.on("console", solverConsoleListener);
   function browserbaseSolverRequest(request: Request): boolean {
     // Browserbase's injected solver calls the service inside its own browser
     // container. This is the already-authorized browser provider, not another
@@ -458,9 +475,14 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       if (!response.ok()) browserbaseSolverHttpFailures += 1;
       if (solverMethod === "QUERY") {
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const bytes = await Promise.race([response.body().catch(() => null), new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 500); })]);
+        // HTTP 204 has no body. Asking CDP for one may reject or stall while
+        // the provider continues polling, so classify it from status directly.
+        const bytes = response.status() === 204 ? Buffer.alloc(0) : await Promise.race([
+          response.body().catch(() => null),
+          new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 500); }),
+        ]);
         if (timer) clearTimeout(timer);
-        browserbaseSolverResponseKinds[browserbaseSolverResponseKind(bytes)] += 1;
+        browserbaseSolverResponseKinds[browserbaseSolverResponseKind(bytes, response.status())] += 1;
       }
     }
     if (policy.lever && activeSearch && response.request().method() === "GET" &&
@@ -853,9 +875,11 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
           return false;
         }
         if (!await captchaPending(page, passiveFrameUrls())) return false;
-        const solved = await waitForCaptchaSolved(page, { timeoutMs: captchaSolveTimeoutMs, signal, permittedPassiveFrameUrls: passiveFrameUrls });
+        const solved = await waitForCaptchaSolved(page, { timeoutMs: Math.max(0, solverDeadline - Date.now()), signal, permittedPassiveFrameUrls: passiveFrameUrls });
         if (current.admitted || current.error) return false;
-        if (solved) {
+        // A challenge can disappear when it expires. Its disappearance is not
+        // proof of a solve and must not cause another unobserved submit click.
+        if (solved && await captchaTokensFilled(page)) {
           solvedChallenge = true;
           // The page's own callback usually sends after a solve; if it has not within a few seconds, click once more.
           for (const until = Date.now() + 3_000; !current.admitted && !current.error && Date.now() < until;) await new Promise((resolve) => setTimeout(resolve, 100));
@@ -865,6 +889,11 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
         const deadline = await hooks.browserVerification?.open();
         if (deadline && Number.isFinite(deadline) && deadline > Date.now()) {
           verificationOpened = true; verificationDeadline = deadline; current.humanVerification = true; current.humanVerificationDeadline = deadline;
+          // If the unsolved challenge expired while the solver waited, make
+          // one fresh challenge visible inside the guarded candidate window.
+          if (!await captchaPending(page, passiveFrameUrls()) && !await captchaTokensFilled(page)) {
+            await page.locator(submitSelector).click({ timeout: timeoutMs }).catch(() => undefined);
+          }
           return false;
         }
         current.error = APPLICATION_FILL_CAPTCHA_TAKEOVER;
@@ -883,8 +912,16 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
           await hooks.checkpoint?.({ phase: "BROWSERBASE_SOLVER_WAIT_FINISHED", provider: "BROWSERBASE_HCAPTCHA",
             createRequests: browserbaseSolverRequests, queryRequests: browserbaseSolverQueries,
             queryResponses: browserbaseSolverQueryResponses, httpFailures: browserbaseSolverHttpFailures,
+            solvingStartedEvents: browserbaseSolvingStartedEvents, solvingFinishedEvents: browserbaseSolvingFinishedEvents,
             responseKinds: { ...browserbaseSolverResponseKinds },
             waitExpired: Date.now() >= dispatchDeadline() });
+        }
+        if (!current.beginStarted && browserbaseSolverQueries > 0 && Date.now() >= solverDeadline &&
+            browserbaseSolvingFinishedEvents === 0 && browserbaseSolverResponseKinds.TOKEN_MARKER === 0) {
+          // A provider task existed, but neither its completion event nor a
+          // token was observed before the fixed budget. No employer request or
+          // single-use submit permission was consumed.
+          current.error ??= "DELIVERY_BROWSERBASE_SOLVER_COMPLETION_UNOBSERVED";
         }
         if (verificationOpened && !current.beginStarted && Date.now() >= verificationDeadline) current.error ??= "DELIVERY_BROWSER_VERIFICATION_TIMEOUT";
         if (current.submission) {
@@ -976,6 +1013,7 @@ export async function createApplicationDeliveryBrowser(input: Readonly<{
       pendingVerification = null;
       await drain();
       page.off("response", responseListener);
+      page.off("console", solverConsoleListener);
       // Keep the context locked until its owner closes it. Returning an outcome
       // must never create an unguarded interval before provider cleanup.
     },

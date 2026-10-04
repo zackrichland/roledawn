@@ -89,3 +89,52 @@ test("provider plan limits fail with a plain reason instead of a generic error",
   assert.equal(deliveryProviderError(other), other);
   assert.equal(deliveryProviderError("offline").message, "DELIVERY_RUNTIME_PROVIDER_FAILED");
 });
+
+test("default-context experiment uses only a fresh dedicated page and releases its session", async () => {
+  const calls: string[] = [];
+  const page = { url: () => "about:blank" } as Page;
+  const context = { pages: () => [page], serviceWorkers: () => [{ url: () => `chrome-extension://${"a".repeat(32)}/background.js` }] };
+  const browser = { contexts: () => [context], async newContext() { throw new Error("UNEXPECTED_NEW_CONTEXT"); }, async close() { calls.push("disconnect"); } } as unknown as Browser;
+  const defaultRecord = { ...record, userMetadata: { ...record.userMetadata, roledawn_adapter_release: "application-delivery-browser-default-context-1" } };
+  const adapter = createApplicationDeliveryRuntimeAdapter({ contextMode: "BROWSERBASE_DEFAULT", projectId: record.projectId,
+    async connect() { calls.push("connect"); return browser; }, provider: {
+      async list() { return []; }, async create() { calls.push("create"); return defaultRecord; },
+      async retrieve() { return defaultRecord; }, async release() { calls.push("release"); },
+    } });
+  const runtime = await adapter.open({ provisionKey, runtimeReference: null, allowCreate: true, async onBound() { calls.push("bound"); } });
+  assert.equal(runtime.page, page);
+  assert.equal(runtime.contextMode, "BROWSERBASE_DEFAULT");
+  await runtime.release();
+  assert.deepEqual(calls, ["create", "bound", "connect", "release", "disconnect"]);
+});
+
+test("default-context experiment rejects preloaded pages, extra contexts and page-origin workers", async () => {
+  const defaultRecord = { ...record, userMetadata: { ...record.userMetadata, roledawn_adapter_release: "application-delivery-browser-default-context-1" } };
+  const scenarios = [
+    { contexts: [{ pages: () => [{ url: () => "https://other.example" }], serviceWorkers: () => [] }], error: /DEFAULT_PAGE_NOT_FRESH/u },
+    { contexts: [{ pages: () => [{ url: () => "about:blank" }], serviceWorkers: () => [] }, {}], error: /CONTEXT_AMBIGUOUS/u },
+    { contexts: [{ pages: () => [{ url: () => "about:blank" }], serviceWorkers: () => [{ url: () => "https://other.example/sw.js" }] }], error: /SERVICE_WORKER_UNSUPPORTED/u },
+  ];
+  for (const scenario of scenarios) {
+    let releases = 0;
+    const browser = { contexts: () => scenario.contexts, async close() {} } as unknown as Browser;
+    const adapter = createApplicationDeliveryRuntimeAdapter({ contextMode: "BROWSERBASE_DEFAULT", projectId: record.projectId,
+      async connect() { return browser; }, provider: {
+        async list() { return []; }, async create() { return defaultRecord; }, async retrieve() { return defaultRecord; },
+        async release() { releases += 1; },
+      } });
+    await assert.rejects(adapter.open({ provisionKey, runtimeReference: null, allowCreate: true, async onBound() {} }), scenario.error);
+    assert.equal(releases, 1);
+  }
+});
+
+test("default-context experiment cannot recover an isolated-mode session", async () => {
+  let connected = false;
+  const adapter = createApplicationDeliveryRuntimeAdapter({ contextMode: "BROWSERBASE_DEFAULT", projectId: record.projectId,
+    async connect() { connected = true; throw new Error("UNEXPECTED_CONNECT"); }, provider: {
+      async list() { return [record]; }, async create() { throw new Error("UNEXPECTED_CREATE"); },
+      async retrieve() { return record; }, async release() {},
+    } });
+  await assert.rejects(adapter.open({ provisionKey, runtimeReference: record.id, allowCreate: false, async onBound() {} }), /BINDING_MISMATCH/u);
+  assert.equal(connected, false);
+});

@@ -2,6 +2,7 @@ import Browserbase from "@browserbasehq/sdk";
 import { chromium, type Browser, type Page } from "playwright-core";
 
 import { parseBrowserbaseRuntimeEnvironment, resolveBrowserbaseProjectId } from "./browserbase-runtime.ts";
+import { deliveryServiceWorkersAllowed } from "./application-delivery-service-workers.ts";
 
 type ProviderSession = Readonly<{
   id: string; projectId: string; status: string; expiresAt: string;
@@ -17,6 +18,7 @@ export interface DeliverySessionProvider {
 
 export type ApplicationDeliveryRuntime = Readonly<{
   page: Page;
+  contextMode?: DeliveryContextMode;
   sessionId: string;
   expiresAt: string;
   release(): Promise<void>;
@@ -34,6 +36,9 @@ export interface ApplicationDeliveryRuntimeAdapter {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const RELEASE = "application-delivery-browser-1";
+const DEFAULT_CONTEXT_RELEASE = "application-delivery-browser-default-context-1";
+export type DeliveryContextMode = "ISOLATED" | "BROWSERBASE_DEFAULT";
+const adapterRelease = (mode: DeliveryContextMode) => mode === "BROWSERBASE_DEFAULT" ? DEFAULT_CONTEXT_RELEASE : RELEASE;
 
 /** Provisioning has its own durable intent key. Never retry an uncertain create. */
 export function createApplicationDeliveryRuntimeAdapter(input: Readonly<{
@@ -41,8 +46,11 @@ export function createApplicationDeliveryRuntimeAdapter(input: Readonly<{
   projectId: string;
   connect(url: string): Promise<Browser>;
   now?: () => number;
+  /** Explicit test-only opt-in; production stays isolated. */
+  contextMode?: DeliveryContextMode;
 }>): ApplicationDeliveryRuntimeAdapter {
   const now = input.now ?? Date.now;
+  const contextMode = input.contextMode ?? "ISOLATED";
   return {
     async open(request) {
       if (!UUID.test(request.provisionKey)) throw new Error("DELIVERY_RUNTIME_INTENT_INVALID");
@@ -61,7 +69,7 @@ export function createApplicationDeliveryRuntimeAdapter(input: Readonly<{
       }
       if (session.projectId !== input.projectId ||
           session.userMetadata?.roledawn_delivery_provision_key !== request.provisionKey ||
-          session.userMetadata?.roledawn_adapter_release !== RELEASE) {
+          session.userMetadata?.roledawn_adapter_release !== adapterRelease(contextMode)) {
         throw new Error("DELIVERY_RUNTIME_BINDING_MISMATCH");
       }
       if (!["RUNNING", "PENDING"].includes(session.status) ||
@@ -83,18 +91,31 @@ export function createApplicationDeliveryRuntimeAdapter(input: Readonly<{
           throw new Error("DELIVERY_RUNTIME_CONNECTION_INVALID");
         }
         browser = await input.connect(connection.href);
-        // Browserbase's default profile contains its provider extension worker.
-        // Candidate pages use a separate context with service workers disabled;
-        // on recovery, reuse only the unique context created in this bound session.
-        const isolatedContexts = browser.contexts().slice(1);
-        if (isolatedContexts.length > 1) throw new Error("DELIVERY_RUNTIME_CONTEXT_AMBIGUOUS");
-        const context = isolatedContexts[0] ?? await browser.newContext({ serviceWorkers: "block" });
-        if (context.serviceWorkers().length) throw new Error("DELIVERY_SERVICE_WORKER_UNSUPPORTED");
-        // The driver installs its narrowly scoped request policy before its first navigation.
-        const page = context.pages()[0] ?? await context.newPage();
+        let page: Page;
+        if (contextMode === "BROWSERBASE_DEFAULT") {
+          // The opt-in experiment uses a fresh, dedicated provider session.
+          // Refuse an already navigated/default page or an additional context:
+          // neither may receive candidate data before the driver installs its
+          // context-wide request guard.
+          const contexts = browser.contexts();
+          if (contexts.length !== 1) throw new Error("DELIVERY_RUNTIME_CONTEXT_AMBIGUOUS");
+          const context = contexts[0]!;
+          const pages = context.pages();
+          if (pages.length !== 1 || pages[0]!.url() !== "about:blank") throw new Error("DELIVERY_RUNTIME_DEFAULT_PAGE_NOT_FRESH");
+          if (!deliveryServiceWorkersAllowed(context, true)) throw new Error("DELIVERY_SERVICE_WORKER_UNSUPPORTED");
+          page = pages[0]!;
+        } else {
+          // Production remains in its isolated context with page workers off.
+          const isolatedContexts = browser.contexts().slice(1);
+          if (isolatedContexts.length > 1) throw new Error("DELIVERY_RUNTIME_CONTEXT_AMBIGUOUS");
+          const context = isolatedContexts[0] ?? await browser.newContext({ serviceWorkers: "block" });
+          if (!deliveryServiceWorkersAllowed(context)) throw new Error("DELIVERY_SERVICE_WORKER_UNSUPPORTED");
+          page = context.pages()[0] ?? await context.newPage();
+        }
+        // The driver installs its context-wide request policy before first navigation.
         let released = false;
         return {
-          page, sessionId: session.id, expiresAt: session.expiresAt,
+          page, contextMode, sessionId: session.id, expiresAt: session.expiresAt,
           async release() {
             if (released) return;
             // Request provider release before dropping the CDP connection. A disconnected
@@ -126,12 +147,14 @@ export function deliveryProviderError(error: unknown): Error {
 
 export async function createApplicationDeliveryRuntimeForNodeWorker(
   environment: NodeJS.ProcessEnv = process.env,
+  contextMode: DeliveryContextMode = "ISOLATED",
 ): Promise<ApplicationDeliveryRuntimeAdapter> {
   const configuration = parseBrowserbaseRuntimeEnvironment(environment);
   const sdk = new Browserbase({ apiKey: configuration.apiKey, timeout: configuration.apiTimeoutMs, maxRetries: 0 });
   const projectId = resolveBrowserbaseProjectId(await sdk.projects.list());
   return createApplicationDeliveryRuntimeAdapter({
     projectId,
+    contextMode,
     connect: (url) => chromium.connectOverCDP(url, { timeout: configuration.apiTimeoutMs }),
     provider: {
       list: (key) => sdk.sessions.list({ q: `user_metadata['roledawn_delivery_provision_key']:'${key}'` }),
@@ -139,7 +162,7 @@ export async function createApplicationDeliveryRuntimeForNodeWorker(
         projectId, region: configuration.region, api_timeout: 900, keepAlive: false,
         // Recording and console/network logs give every send a replay and request log in Browserbase for diagnosis (D-147); it holds what the form showed, so it stays in the founder's private Browserbase project.
         browserSettings: { solveCaptchas: true, recordSession: true, logSession: true, ignoreCertificateErrors: false },
-        userMetadata: { roledawn_delivery_provision_key: key, roledawn_adapter_release: RELEASE },
+        userMetadata: { roledawn_delivery_provision_key: key, roledawn_adapter_release: adapterRelease(contextMode) },
       }).catch((error: unknown) => { throw deliveryProviderError(error); }),
       retrieve: (id) => sdk.sessions.retrieve(id),
       async release(id) {

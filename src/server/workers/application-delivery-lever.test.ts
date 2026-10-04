@@ -5,7 +5,7 @@ import test from "node:test";
 import { chromium } from "playwright-core";
 import { syntheticLeverDelivery, type SyntheticLeverMode } from "../../test-support/synthetic-lever-delivery.ts";
 import { createApplicationDeliveryDriver } from "./application-delivery-driver.ts";
-import { browserbaseHcaptchaSolverMethod, browserbaseSolverResponseKind, createApplicationDeliveryBrowser, type DeliveryPriorSubmission } from "./application-delivery-browser.ts";
+import { browserbaseHcaptchaSolverMethod, browserbaseSolverResponseKind, createApplicationDeliveryBrowser, type DeliveryPriorSubmission, type DeliverySubmissionHooks } from "./application-delivery-browser.ts";
 import type { ApplicationFillExecutionPackage } from "./application-fill-materializer.ts";
 import { createAgentBrowserTools } from "./agents-browser-tools.ts";
 import { frameShowsCaptchaChallenge } from "./agents-captcha.ts";
@@ -22,7 +22,7 @@ function packet(url: string): ApplicationFillExecutionPackage {
   };
 }
 
-async function run(mode: SyntheticLeverMode, after?: (result: Awaited<ReturnType<ReturnType<typeof createApplicationDeliveryDriver>["deliver"]>>, fixture: ReturnType<typeof syntheticLeverDelivery>, state: { begins: number; prior: DeliveryPriorSubmission | null }, page: import("playwright-core").Page) => Promise<void>, extraFacts: ApplicationFillExecutionPackage["facts"] = []) {
+async function run(mode: SyntheticLeverMode, after?: (result: Awaited<ReturnType<ReturnType<typeof createApplicationDeliveryDriver>["deliver"]>>, fixture: ReturnType<typeof syntheticLeverDelivery>, state: { begins: number; prior: DeliveryPriorSubmission | null }, page: import("playwright-core").Page) => Promise<void>, extraFacts: ApplicationFillExecutionPackage["facts"] = [], browserVerification?: DeliverySubmissionHooks["browserVerification"]) {
   const fixture = syntheticLeverDelivery(mode);
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   const state: { begins: number; prior: DeliveryPriorSubmission | null; checkpoints: Readonly<Record<string, unknown>>[] } = { begins: 0, prior: null, checkpoints: [] };
@@ -34,6 +34,7 @@ async function run(mode: SyntheticLeverMode, after?: (result: Awaited<ReturnType
       submissionHooks: {
         async begin() { assert.equal(fixture.observed.submits, 0); state.begins += 1; return { attemptId: "attempt-1", idempotencyKey: "once-1" }; },
         async checkpoint(record) { state.checkpoints.push(record); if (record.submission) state.prior = record.submission as DeliveryPriorSubmission; },
+        browserVerification,
       },
     });
     const executionPackage = packet(fixture.policy.startUrl);
@@ -231,6 +232,29 @@ test("Lever's invisible hCaptcha scores on submit and one application is confirm
   assert.ok(observed.captchaScores >= 1);
 });
 
+test("an expired visible challenge without a token never triggers another submit click", options, async () => {
+  const { result, observed, state } = await run("captcha-expired");
+  assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
+  assert.equal(observed.captchaScores, 2);
+  assert.equal(observed.submits, 0);
+  assert.equal(state.begins, 0);
+});
+
+test("an expired visible challenge reopens only inside the guarded human window", options, async () => {
+  let opened = 0; let closed = 0;
+  const { result, observed, state } = await run("captcha-expired", undefined, [], {
+    async open() { opened += 1; return Date.now() + 1_000; },
+    async poll() {},
+    async close() { closed += 1; },
+  });
+  assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
+  assert.equal(opened, 1);
+  assert.equal(closed, 1);
+  assert.equal(observed.captchaScores, 3);
+  assert.equal(observed.submits, 0);
+  assert.equal(state.begins, 0);
+});
+
 test("Browserbase's exact provider-local solver preflight and JSON request reach the provider before one submission", options, async () => {
   const { result, observed, state } = await run("browserbase-solver");
   assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
@@ -241,11 +265,12 @@ test("Browserbase's exact provider-local solver preflight and JSON request reach
 });
 
 test("an observed hidden provider task gets its bounded solve budget beyond the ordinary dispatch wait", options, async () => {
-  for (const mode of ["browserbase-solver-delayed", "browserbase-solver-existing-task"] as const) {
+  for (const mode of ["browserbase-solver-delayed", "browserbase-solver-existing-task", "browserbase-solver-polling-success"] as const) {
     const { result, observed, state } = await run(mode);
     assert.equal(result.kind, "CONFIRMED", JSON.stringify(result));
     assert.equal(observed.submits, 1);
     assert.equal(state.begins, 1);
+    if (mode === "browserbase-solver-polling-success") assert.ok(observed.solverQueries >= 9);
     if (mode === "browserbase-solver-existing-task") assert.equal(observed.requests.some(request => request.endsWith("/create")), false);
   }
 });
@@ -253,13 +278,22 @@ test("an observed hidden provider task gets its bounded solve budget beyond the 
 test("an unfinished hidden provider task expires without authority and records counts without provider values", options, async () => {
   const { result, observed, state } = await run("browserbase-solver-pending");
   assert.equal(result.kind, "TAKEOVER", JSON.stringify(result));
+  assert.equal(result.kind === "TAKEOVER" && result.reasonCode, "DELIVERY_BROWSERBASE_SOLVER_COMPLETION_UNOBSERVED");
   assert.equal(observed.submits, 0);
   assert.equal(state.begins, 0);
-  assert.deepEqual(state.checkpoints.find(record => record.phase === "BROWSERBASE_SOLVER_WAIT_FINISHED"), {
-    phase: "BROWSERBASE_SOLVER_WAIT_FINISHED", provider: "BROWSERBASE_HCAPTCHA", createRequests: 1,
-    queryRequests: 1, queryResponses: 1, httpFailures: 0, waitExpired: true,
-    responseKinds: { TOKEN_MARKER: 0, WAITING_MARKER: 0, ERROR_MARKER: 0, UNCLASSIFIED: 1 },
-  });
+  const checkpoint = state.checkpoints.find(record => record.phase === "BROWSERBASE_SOLVER_WAIT_FINISHED");
+  assert.ok(checkpoint);
+  assert.equal(checkpoint.provider, "BROWSERBASE_HCAPTCHA");
+  assert.equal(checkpoint.createRequests, 1);
+  assert.ok(observed.solverQueries > 3);
+  assert.equal(checkpoint.queryRequests, observed.solverQueries);
+  assert.equal(checkpoint.queryResponses, observed.solverQueries);
+  assert.equal(checkpoint.httpFailures, 0);
+  assert.equal(checkpoint.solvingStartedEvents, 1);
+  assert.equal(checkpoint.solvingFinishedEvents, 0);
+  assert.equal(checkpoint.waitExpired, true);
+  assert.deepEqual(checkpoint.responseKinds, { TOKEN_MARKER: 0, WAITING_MARKER: 0, ERROR_MARKER: 0,
+    TASK_HANDLE_MARKER: Math.ceil(observed.solverQueries / 2), NO_CONTENT_MARKER: Math.floor(observed.solverQueries / 2), UNCLASSIFIED: 0 });
 });
 
 test("provider response markers expose no token, identifier or arbitrary error message", () => {
@@ -269,10 +303,15 @@ test("provider response markers expose no token, identifier or arbitrary error m
     [{ status: "processing" }, "WAITING_MARKER"],
     [{ status: "failed", message: "private-error" }, "ERROR_MARKER"],
     [{ errorId: 1, errorCode: "private-error" }, "ERROR_MARKER"],
+    [{ query: { taskIdEuler: 123 }, solveId: "private-provider-id", tabId: "private-tab-id" }, "TASK_HANDLE_MARKER"],
+    [{ query: { taskIdEuler: 123 } }, "TASK_HANDLE_MARKER"],
+    [{ query: { taskIdEuler: 0 } }, "UNCLASSIFIED"],
     [{ arbitrary: "private-provider-token" }, "UNCLASSIFIED"],
   ] as const) assert.equal(browserbaseSolverResponseKind(Buffer.from(JSON.stringify(payload))), expected);
   assert.equal(browserbaseSolverResponseKind(Buffer.from("x".repeat(64_001))), "UNCLASSIFIED");
   assert.equal(browserbaseSolverResponseKind(Buffer.from("not-json")), "UNCLASSIFIED");
+  assert.equal(browserbaseSolverResponseKind(Buffer.alloc(0)), "NO_CONTENT_MARKER");
+  assert.equal(browserbaseSolverResponseKind(null, 204), "NO_CONTENT_MARKER");
   assert.equal(browserbaseSolverResponseKind(null), "UNCLASSIFIED");
 });
 
