@@ -4,7 +4,7 @@ import type { AgentQuestionAnswer, AgentQuestionDescriptor, ApplicationAgentQues
 import type { ApplicationAutopilotClaim, ApplicationAutopilotRepository, ApplicationAutopilotSubmitPermit, AutopilotJsonObject } from "../../domain/application-autopilot.ts";
 import type { Json } from "../../lib/supabase/database.types.ts";
 import { eraseApplicationFillExecutionPackage, type ApplicationFillExecutionMaterializer, type ApplicationFillExecutionPackage } from "./application-fill-materializer.ts";
-import type { ApplicationDeliveryRuntime, ApplicationDeliveryRuntimeAdapter } from "./application-delivery-runtime.ts";
+import type { ApplicationDeliveryRuntime, ApplicationDeliveryRuntimeAdapter, DeliveryContextMode } from "./application-delivery-runtime.ts";
 import type { Page } from "playwright-core";
 import type { StandingAnswerResolver } from "./standing-answers.ts";
 import { errorCode, errorDetail } from "./worker-events.ts";
@@ -24,6 +24,7 @@ export type DeliveryWorkerOutcome = Readonly<{
 export type DeliveryWorkerDriveInput = Readonly<{
   claim: ApplicationAutopilotClaim;
   page: Page;
+  contextMode?: DeliveryContextMode;
   runtimeExpiresAt: string;
   executionPackage: ApplicationFillExecutionPackage;
   questions: ApplicationAgentQuestionRepository;
@@ -186,7 +187,7 @@ export async function coordinateApplicationAutopilot(input: Readonly<{
     timings.browserMs = Date.now() - browserStarted;
     const driveStarted = Date.now();
     outcome = await input.drive({
-      claim, page: runtime.page, runtimeExpiresAt: runtime.expiresAt, executionPackage: execution, questions, signal,
+      claim, page: runtime.page, contextMode: runtime.contextMode ?? "ISOLATED", runtimeExpiresAt: runtime.expiresAt, executionPackage: execution, questions, signal,
       async begin(request) {
         if (signal.aborted || claim.mode !== "FILL") throw new Error("DELIVERY_SUBMIT_NOT_AUTHORIZED");
         // Exact final readback found no unresolved fields. Previously asked

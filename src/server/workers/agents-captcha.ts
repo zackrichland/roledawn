@@ -49,8 +49,8 @@ export async function tickCaptchaCheckbox(page: Page): Promise<boolean> {
   return ticked;
 }
 
-/** Every response-token field on the page is filled: the provider accepted the solve. */
-async function captchaTokensFilled(page: Page): Promise<boolean> {
+/** Every observed response-token field has a value; final employer acceptance is checked separately. */
+export async function captchaTokensFilled(page: Page): Promise<boolean> {
   let seen = 0;
   for (const frame of page.frames()) {
     const result = await frame.evaluate(() => {

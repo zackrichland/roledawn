@@ -226,6 +226,7 @@ export async function runApplicationAutopilotClaim(claim: ApplicationAutopilotCl
         maxActions: configuration.maxActions,
         sitePolicy: dependencies.sitePolicy,
         requestTransport: dependencies.requestTransport,
+        providerDefaultContext: task.contextMode === "BROWSERBASE_DEFAULT",
       });
       const progress = claim.checkpoint.delivery;
       const prior = progress && typeof progress === "object" && !Array.isArray(progress) ? progress.submission : null;
