@@ -18,7 +18,7 @@ test("REST transport uses documented routes, admission key and empty 204 respons
 });
 test("transport errors do not include upstream body or URL query values and do not retry", async () => {
   let n = 0; const t = createHostedCanaryTransport("synthetic", async () => { n++; return new Response("private upstream diagnostics", { status: 403 }); });
-  await assert.rejects(t.retrieve("s1", signal()), { message: "HOSTED_CANARY_HTTP_FAILED" }); assert.equal(n, 1);
+  await assert.rejects(t.retrieve("s1", signal()), { message: "HOSTED_CANARY_HTTP_FORBIDDEN" }); assert.equal(n, 1);
   await assert.rejects(t.retrieve("../bad?secret=value", signal()), /INVALID_ID/); assert.equal(n, 1);
 });
 test("SSE supports split chunks, CRLF, comments and multiline data", async () => {

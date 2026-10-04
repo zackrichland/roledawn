@@ -8,7 +8,6 @@ import { createHostedCanaryStore } from "../src/server/workers/openai-hosted-can
 for (const board of ["lever", "ashby"] as const) test(`${board}: actual RPC store fences delivery, retains evidence/cleanup and excludes uncertainty without an attempt`, async () => {
   const { db } = await createMigratedDatabase();
   try {
-    await db.exec(await readFile("supabase/drafts/hosted_canary.sql", "utf8"));
     const url = board === "lever" ? "https://jobs.lever.co/synthetic/33333333-3333-4333-8333-333333333333/apply" : "https://jobs.ashbyhq.com/synthetic/33333333-3333-4333-8333-333333333333/application";
     // Reuse the repository's complete synthetic application fixture; no real candidate data.
     const fixture = (await readFile("supabase/checks/autopilot_transient_retry.sql", "utf8")).split("-- The worker claims")[0];

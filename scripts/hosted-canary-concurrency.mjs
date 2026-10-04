@@ -33,7 +33,6 @@ try {
       .replace(/create extension if not exists "?pg_cron"?[^;]*;/giu,"").replace(/create extension if not exists "?pg_net"?[^;]*;/giu,"");
     await ok(migration);
   }
-  await ok(await readFile("supabase/drafts/hosted_canary.sql","utf8"));
   const fixture = (await readFile("supabase/checks/autopilot_transient_retry.sql","utf8")).split("-- The worker claims")[0]
     .replaceAll("pg_temp.running","public.synthetic_running")
     .replaceAll("'https://job-boards.greenhouse.io/roledawncheck/jobs/1'",`case when p_label='lever' then 'https://jobs.lever.co/synthetic/33333333-3333-4333-8333-333333333333/apply'

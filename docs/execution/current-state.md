@@ -2,7 +2,7 @@
 title: RoleDawn current state
 status: canonical project snapshot
 owner: founder, product, and engineering
-last_updated: 2026-10-01
+last_updated: 2026-10-04
 scope: current repository capability, recorded production evidence, and remaining single-account limits
 ---
 
@@ -27,6 +27,8 @@ handle. The provider request uses the observed site key and exact application
 URL. A completed solve and employer acceptance remain unproved.
 
 **2026-10-01 acceptance batch remains incomplete:** nine fresh non-tech jobs (three per supported ATS) were pasted through the published Home with review-before-send off. Hosted readback at 19:36 UTC confirms three Greenhouse receipts, three unsent Lever failures and three uncertain Ashby outcomes. No candidate question interrupted the three confirmed sends; Gmail supplied the employer codes. Home shows six total Applied and Sent today 3/24.
+
+**2026-10-04 isolated canary controls:** The scoped hosted-browser exclusion and evidence schema was installed in the HireWire Supabase production project and read back. Its four private tables have RLS; five RPCs execute only for `service_role`; the five scoped triggers are enabled. There are zero canary runs, approval rows or budget rows. The FP&A Lever application remains `FAILED_SAFE` with zero attempts and receipts. No hosted candidate task has run. The nine-job employer-confirmed gate remains 3/9; this schema installation is not a delivery result. The next live test still needs a credible upper bound for prior incremental OpenAI and Browserbase charges within the existing $50 total cap and a separately staged exact plan/approval/budget record. Ashby originals remain uncertain and resend-blocked.
 
 Lever reaches exact field and artifact readback after the native location and parser repairs (D-150/D-151). Its provider-local creation/polling now passes the guard (D-152/D-153), but the full solve budget ends without a completed result or employer request (D-154/D-155). This is the current delivery blocker, not proof of a platform-wide vendor outage. Ashby's three final responses contain the reviewed low-score verification error and no receipts. Unknown-outcome protection blocks their resend. The nine-job acceptance requirement has not passed; fixture success does not change that assessment.
 

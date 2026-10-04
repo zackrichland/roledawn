@@ -4862,6 +4862,10 @@ export type Database = {
           tenant_key: string
         }[]
       }
+      claim_hosted_canary: {
+        Args: { p_plan_text: string; p_recovery?: boolean }
+        Returns: Json
+      }
       claim_hosted_worker_lane: {
         Args: { p_lane: string; p_lease_seconds?: number }
         Returns: string
@@ -4948,6 +4952,15 @@ export type Database = {
           research_bundle_id: string
           revision_id: string
         }[]
+      }
+      commit_hosted_canary: {
+        Args: {
+          p_patch: Json
+          p_run_id: string
+          p_token: string
+          p_version: number
+        }
+        Returns: Json
       }
       commit_job_source_snapshot: {
         Args: {
@@ -5238,6 +5251,10 @@ export type Database = {
           missing_items: string[]
         }[]
       }
+      hosted_canary_budget_available: {
+        Args: { p_run_id: string; p_token: string }
+        Returns: boolean
+      }
       hosted_worker_due_lanes: { Args: never; Returns: Json }
       ingest_resume_evidence_proposals: {
         Args: {
@@ -5391,6 +5408,10 @@ export type Database = {
         Args: { p_id: string; p_lease_token: string }
         Returns: Json
       }
+      read_hosted_canary_evidence: {
+        Args: { p_run_id: string; p_token: string }
+        Returns: Json
+      }
       reconcile_application_fill_runtime_release: {
         Args: {
           p_computer_session_id: string
@@ -5504,6 +5525,10 @@ export type Database = {
           p_expected_sha256: string
         }
         Returns: boolean
+      }
+      release_hosted_canary_controller: {
+        Args: { p_run_id: string; p_token: string }
+        Returns: undefined
       }
       request_application_agent_questions: {
         Args: {

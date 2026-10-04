@@ -25,7 +25,14 @@ export function createHostedCanaryTransport(apiKey: string, fetcher: typeof fetc
           ...(key ? { "Idempotency-Key": safeId(key) } : {}), ...(stream ? { Accept: "text/event-stream" } : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     } catch { throw new Error("HOSTED_CANARY_TRANSPORT_FAILED"); }
-    if (!response.ok && !(method === "DELETE" && response.status === 404)) { await response.body?.cancel().catch(() => undefined); throw new Error("HOSTED_CANARY_HTTP_FAILED"); }
+    if (!response.ok && !(method === "DELETE" && response.status === 404)) {
+      await response.body?.cancel().catch(() => undefined);
+      // Keep only a fixed status category. Provider bodies, URLs and IDs can contain candidate data.
+      const category = ({ 400: "BAD_REQUEST", 401: "UNAUTHORIZED", 402: "PAYMENT_REQUIRED",
+        403: "FORBIDDEN", 404: "NOT_FOUND", 409: "CONFLICT", 429: "RATE_LIMITED" } as Record<number,string>)[response.status]
+        ?? (response.status >= 500 ? "UPSTREAM_ERROR" : "FAILED");
+      throw new Error(`HOSTED_CANARY_HTTP_${category}`);
+    }
     return response;
   }
   async function bodyBytes(response: Response) {

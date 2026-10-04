@@ -1,16 +1,16 @@
 # Isolated hosted canary: review and operator contract
 
-**2026-10-04: implemented and tested locally; not activated.** The isolated runner, Supabase RPC store, recovery controller and SQL draft are connected in code. No active worker imports this runner. No schema was deployed, approval/budget row staged, credential transferred, paid session started or application sent.
+**2026-10-04: production schema installed and read back; canary not activated.** The isolated runner, Supabase RPC store and recovery controller are connected in code. No active worker imports this runner. No approval/budget row was staged, paid session started or application sent.
 
 ## Reviewable files
 
-- [SQL draft](../../supabase/drafts/hosted_canary.sql): private approval, aggregate budget, run and independently verified evidence tables; fenced service-role RPCs; scoped exclusion triggers.
+- [Applied migration](../../supabase/migrations/20261004183836_hosted_canary.sql): private approval, aggregate budget, run and independently verified evidence tables; fenced service-role RPCs; scoped exclusion triggers.
 - [Store](../../src/server/workers/openai-hosted-canary-store.ts): implements the controller's actual state contract, bounded RPC calls, durable cleanup and evidence reads.
 - [Runner](../../scripts/run-hosted-canary.ts): explicit preflight, execute and recovery-only modes. It is not a worker fallback.
 - [Controller](../../src/server/workers/openai-hosted-canary.ts): documented native hosted transport, immutable task identity, conservative recovery and independently bound evidence.
-- [Database tests](../../scripts/hosted-canary-store.test.ts): apply the real draft on all repository migrations and exercise both Lever and Ashby using the real service-role RPCs.
+- [Database tests](../../scripts/hosted-canary-store.test.ts): apply all repository migrations and exercise both Lever and Ashby using the real service-role RPCs.
 
-The SQL remains outside automatic migrations because the installed Supabase CLI failed while creating its configuration directory on the read-only home filesystem. No home override or permission bypass was used. After review, an operator with the appropriate environment should generate a migration using the CLI, copy the reviewed draft unchanged, apply it through the repository's approved migration process, verify grants/functions/triggers and regenerate database types. None of those deployment steps is authorized or performed by this checkpoint.
+The reviewed draft was copied into the forward migration and applied to HireWire Supabase project `dxrrotrugwhquqxyoisk` through the authorized migration connector (remote version `20261004183836`). The installed CLI could not write telemetry under the read-only home directory. Readback confirmed four private RLS tables, five public service-role-only RPCs, five enabled triggers including immutable evidence, and zero canary approval, budget or run rows. The public database types were regenerated from the live project. This schema installation grants no candidate task.
 
 ## Actual cross-provider exclusion
 
@@ -43,14 +43,14 @@ Cleanup state is durable. Deletion failure remains `cleanupPending`; a later ter
 
 ## Remaining activation gates
 
-The implementation is ready for review and synthetic rehearsal. It is **not ready for live activation**. Remaining gates are secure credentials; current approved packet and exact origin decisions; credible aggregate spend evidence; reviewed schema deployment and private approval/budget staging; and access to genuine employer evidence for independent reconciliation. Documented saved turns/items, tool screenshots and artifact bytes are now captured privately; they remain diagnostics until independently verified. Automatic semantic employer verification and production receipt-ledger mapping remain intentionally unconnected. Without employer evidence the result remains uncertain, with no retry or Browserbase fallback.
+The implementation is **not ready for live activation**. Local OpenAI and Supabase read-only auth checks succeeded, and the FP&A packet was reverified without printing candidate values. Remaining gates are an exact private plan and origin decisions, credible aggregate spend evidence, independent private approval/budget staging, and access to genuine employer evidence for reconciliation. The runner is prepared to capture saved turns/items, tool screenshots and artifacts in a private archive; these are diagnostics until independently verified. It does not expose a raw browser network log or hidden model reasoning. Automatic semantic employer verification and production receipt-ledger mapping remain unconnected. Without employer evidence the result remains uncertain, with no retry or Browserbase fallback.
 
 The accepted experimental limitation remains: the reservation prevents another RoleDawn run for the same intended job; it cannot enforce the exact payload, prevent another job on the approved ATS host, or prevent multiple employer requests within the first hosted task.
 
 Local checks:
 
 ```bash
-node scripts/migration-harness.mjs supabase/drafts/hosted_canary.sql supabase/checks/hosted_canary.sql
+node scripts/migration-harness.mjs supabase/checks/hosted_canary.sql
 node --test --experimental-strip-types scripts/hosted-canary-store.test.ts
 ```
 
@@ -69,7 +69,7 @@ The isolated runner rejects absent independent review, model-statement kinds, un
 
 ## Minimal activation prerequisites and next command
 
-1. Review and deploy exactly the draft's `private.hosted_canary_approvals`, `private.hosted_canary_budget`, `private.hosted_canary_runs`, `private.hosted_canary_verified_evidence`, their scoped triggers and service RPCs. Runtime uses the restricted `service_role` RPC grants; approval/budget/evidence staging requires a separate database-owner operator. The worker cannot stage its own approval or evidence.
+1. The scoped migration is deployed and read back. Runtime uses restricted `service_role` RPC grants; approval/budget/evidence staging requires a separate database-owner operator. The worker cannot stage its own approval or evidence.
 2. Securely configure `OPENAI_API_KEY` and `SUPABASE_SECRET_KEY`; retain the existing `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Configure a private evidence directory via `ROLEDAWN_HOSTED_CANARY_EVIDENCE_DIR`; leave `ROLEDAWN_HOSTED_CANARY_ENABLED` disabled until the exact run is ready.
 3. Retrieve the approved frozen packet's versioned PDFs from private Supabase storage using the existing execution materializer, verify their manifest hashes/sizes, read back the exact current structured facts and missing required answers, and build the private manifest from those bytes. The evidence module does not substitute a résumé from Library or reconstruct candidate facts. Stage the exact serialized plan and scoped approval independently.
 4. Include explicit exact origin decisions in the immutable plan; approve only reviewed required origins. Separately stage credible prior aggregate spend, conservative future run cost, supporting evidence hashes and expiry under the original $50 total ceiling. These inputs are still missing in this environment.
