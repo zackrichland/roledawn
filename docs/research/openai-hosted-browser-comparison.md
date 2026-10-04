@@ -27,3 +27,36 @@ The remaining live gates are independent:
 - Built-in hosted computer use still lacks the mandatory action/request interception needed to enforce RoleDawn's sealed, single-use submission authority. An origin allowlist cannot restrict the number of POSTs to an approved employer host. A model-called permission function, later cancellation, or post-hoc receipt check cannot replace pre-dispatch enforcement. Do not connect candidate packets or the receipt writer to this adapter until that boundary can actually be enforced and tested.
 
 The official guide explicitly recommends a runtime under application control when consequential actions need guaranteed confirmation. A separately controlled runtime would require an explicit change to the comparison design; it must not be reported as acceptance by the built-in hosted browser. No employer receipt is claimed here.
+
+## Submission architecture decision
+
+**2026-10-04 design review:** the following controls are useful but insufficient for the built-in hosted desktop:
+
+| Proposed control | What it enforces | Remaining failure |
+| --- | --- | --- |
+| One application lease and immutable packet | One worker owns the approved candidate/job/packet version | The browser can issue multiple employer requests during that worker's turn. |
+| One task or one active turn | Restricts application orchestration | One turn can include many tool calls; a message during work steers the active turn. |
+| Function-tool submit permission | The function can validate the existing sealed permission | Built-in computer use need not call the function before clicking or sending. |
+| Stop/delete immediately after submission | Bounds later work after the signal is received | First and duplicate requests can already be in flight. Cancellation is not transactional rollback. |
+| Restricted exact employer host | Limits outbound destinations | Upload, draft, submit and duplicate submit can share one allowed host. |
+| Published traces and receipts | Supports diagnosis and reconciliation | Traces arrive after work and cannot prevent a request. Model text is not a receipt. |
+
+**Concrete supported alternative, not implemented as a new provider:** retain the Agents API function-tool agent with `environment.type: none` and an application-controlled browser runtime. A provider adapter may supply a Playwright/CDP browser only if it supports the existing mandatory request guard, service-worker handling, verified upload bytes, exact field readback, and final durable authority callback. The agent receives no raw CDP, shell, unguarded navigation or fetch tool. Preserve the existing database lease and packet/version bindings; consume the existing one-use submit authority immediately before the matching employer request leaves the controlled runtime; block every later submission; classify an ambiguous network outcome as uncertain and reconcile before retry. Reuse the current protocol predicates and receipt writer rather than introducing a second ledger or in-memory substitute for durable authority. A successful outcome here would be an alternative runtime test, **not** built-in OpenAI-hosted browser acceptance.
+
+The currently available Browserbase adapter already provides that controlled-runtime boundary. It remains the approved fallback for previously named Lever applications after credentials, current readback, spend verification and duplicate checks. There is no reason to remove its fixes while investigating another provider. The supported integration pattern is described in [computer-use integration recipes](https://developers.openai.com/api/docs/guides/tools-computer-use-integration); it does not document an interception hook for the built-in Agents API desktop.
+
+## Redacted trace inspection
+
+`src/server/workers/openai-hosted-browser-traces.ts` and `scripts/read-hosted-browser-traces.ts` read **existing** sessions via the documented [session traces endpoint](https://developers.openai.com/api/reference/resources/beta/subresources/agents/subresources/sessions/subresources/traces/methods/list). They never create a session, send a task, or write application state. The endpoint's trace `id` is the root turn ID, allowing correlation with a private operator-owned turn/stage map. Use a single stage only when that turn belongs to that stage; leave mixed or unknown turns unmapped.
+
+The reader bounds requests to five pages, one trace per page, 2 MiB per response and a 15-second transport timeout. It rejects session mismatches and repeated pagination, hashes session/turn identifiers, and exports only stage, span count, failed-span count and unset-status count. Names, attributes, prompts, tool inputs/outputs, screenshots, URL paths, error messages, and purported hidden reasoning are discarded. Permission failures remain a fixed diagnostic. This is offline-tested diagnostic tooling, not a live collector wired into production.
+
+Run only with an authorized existing session and a private manifest outside the repository:
+
+```bash
+node --use-env-proxy --experimental-strip-types --env-file=.env.local scripts/read-hosted-browser-traces.ts /absolute/private/manifest.json
+```
+
+The manifest shape is `{ "sessionId": "sess_example", "stages": { "turn_example": "INSPECTION" } }`. Allowed stages are SETUP, INSPECTION, FILL, READBACK, VERIFICATION, SUBMISSION and RECONCILIATION. Trace export must be enabled for the organization and the project key needs `api.traces.read` or `api.agents.read`. Empty/pending traces do not prove zero work or zero cost; pagination completion does not mean late traces or billing are complete.
+
+For tool/network/verification/receipt investigation, correlate this turn summary with the existing controlled-runtime worker events and authoritative employer evidence. The built-in trace API is not documented as a complete browser network log. Do not infer a CAPTCHA token, employer POST, or receipt from span completion. No live trace access or network/receipt observability for the native desktop has been verified.
