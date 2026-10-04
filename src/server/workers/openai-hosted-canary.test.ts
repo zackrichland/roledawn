@@ -56,6 +56,14 @@ test("disabled by default; mutated approval intent cannot start", async () => {
   await assert.rejects(runHostedCanary({ enabled: true, reducedGuaranteeApproved: true, plan: { ...h.p, admissionKey: "changed" }, store: h.store, transport: h.transport, verifyEmployerEvidence: async () => null }), /INTENT_CHANGED/);
   assert.equal(h.calls.length, 0);
 });
+test("hosted setup checks the exact inline PDF before agent work", () => {
+  const p = plan();
+  const env = (p.createBody as { environment: { files: Array<{ path: string; data: string }>; setup_commands: Array<{ command: string }> } }).environment;
+  assert.equal(env.files.length, 1);
+  assert.equal(env.setup_commands.length, 1);
+  assert.match(env.setup_commands[0]!.command, /^printf '%s  %s\\n' '[a-f0-9]{64}' '\/workspace\/resume\.pdf' \| sha256sum --check --status$/u);
+  assert.match(JSON.stringify(p.taskBody), /use its file chooser to attach each requested PDF/u);
+});
 test("idle create, stream before task, completion is uncertain and cleans up", async () => {
   const h = harness(); const result = await h.run();
   assert.equal(result.phase, "UNCERTAIN"); assert.equal(result.automaticRetryAllowed, false);

@@ -41,6 +41,8 @@ test("access denial and oversized responses remain redacted; empty traces are no
   const empty = await readHostedTraceSummaries({ apiKey: "fixture", sessionId: "sess_fixture", stages: {},
     fetch: async () => Response.json({ object: "list", data: [], has_more: false, last_id: null }) });
   assert.deepEqual(empty, { traces: [], truncated: false, billingComplete: false });
+  await assert.rejects(readHostedTraceSummaries({ apiKey: "fixture", sessionId: "sess_fixture", stages: {},
+    fetch: async () => new Response(sensitive, { status: 404 }) }), /HOSTED_TRACE_SESSION_NOT_FOUND/u);
 });
 
 test("bad local correlation performs no request; repeated cursor cannot loop", async () => {

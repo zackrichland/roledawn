@@ -81,7 +81,8 @@ export async function readHostedTraceSummaries(options: Readonly<{
     } catch { throw new Error("HOSTED_TRACE_TRANSPORT_FAILED"); }
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
-      throw new Error(response.status === 403 ? "HOSTED_TRACE_ACCESS_DENIED" : "HOSTED_TRACE_HTTP_FAILED");
+      throw new Error(response.status === 404 ? "HOSTED_TRACE_SESSION_NOT_FOUND" :
+        response.status === 401 || response.status === 403 ? "HOSTED_TRACE_ACCESS_DENIED" : "HOSTED_TRACE_HTTP_FAILED");
     }
     const reader = response.body?.getReader();
     if (!reader) throw new Error("HOSTED_TRACE_INVALID_RESPONSE");
