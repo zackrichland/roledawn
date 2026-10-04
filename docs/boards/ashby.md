@@ -2,7 +2,7 @@
 board: ashby
 status: fills-only
 difficulty: medium
-last_verified: 2026-10-01
+last_verified: 2026-10-04
 url_patterns:
   - jobs.ashbyhq.com/<org>
   - jobs.ashbyhq.com/<org>/<job_uuid>
@@ -89,6 +89,7 @@ Single page.
 
 - Field saves disclose approved data before final submission; a stopped run may have an employer-side draft. Copy must not claim that no data was sent.
 - One shared GraphQL URL handles both reads and writes. Never allow it by origin or operation name alone; query documents, variables and the current action must agree.
+- **Verified on a public form, 2026-10-04:** a required Number widget sends one `null` `ApiSetFormValue` while the untouched page loads. The local adapter permits that one empty application-form update only while every field is still unset, with exact board/form/field binding and a full unchanged-value response readback. Applicant values, later null saves and repeated saves still require the normal approved action. The fix is not deployed and has no employer receipt (D-157).
 - The reviewed public client refetches organization metadata with optional `searchContext` omitted, `null` or `JobPosting`, and issues a constant empty City lookup on mount and around uploads. Those exact reads are admitted; empty-search responses never supply candidate location choices. Every nonempty lookup still requires an active approved-city search. Rejections report a static operation/rule code without request values.
 - **Verified, 2026-09-30:** a draft-save response rotates the server-issued action identifier while the form, definition and field metadata stay fixed. RoleDawn accepts that rotation only after the approved value echoes exactly and every other value remains unchanged. The final review seals the latest identifier; an older identifier cannot consume submit permission. The observed run stopped before final submission, so this is protocol evidence, not a receipt.
 - `aria-selected` on a location option marks keyboard focus, not a saved choice. After one selection click, read-only checks wait at most two seconds for the exact chosen label to render; they never click again. The selected label and acknowledged draft value establish readback (D-129).

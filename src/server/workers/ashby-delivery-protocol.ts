@@ -113,6 +113,8 @@ type UploadAction = { form: Form; field: Field; artifact: MaterializedApplicatio
 export function createAshbyProtocol(board: string, jobId: string) {
   let forms: Form[] = [];
   let fieldAction: FieldAction | null = null;
+  let initialEmptyNumberAction: FieldAction | null = null;
+  let initialEmptyNumberConsumed = false;
   let uploadAction: UploadAction | null = null;
   const locations = new Map<string, unknown>();
   let broken = false;
@@ -174,7 +176,8 @@ export function createAshbyProtocol(board: string, jobId: string) {
     submitOperation: (): AshbyOperation => forms.length > 1 ? "ApiSubmitMultipleFormsAction" : "ApiSubmitSingleApplicationFormAction",
     fileFields() { assertReady(); return forms.flatMap((form) => [...form.fields.values()].filter((field) => field.type === "File" && !field.many && !field.hidden).map((field) => ({ formId: form.id, path: field.path }))); },
     beginField(field: AgentBrowserField, approved: AgentFieldValue, match?: OptionMatch) {
-      if (fieldAction || uploadAction) return fail("ACTION_ALREADY_ACTIVE");
+      if (fieldAction || uploadAction || initialEmptyNumberAction) return fail("ACTION_ALREADY_ACTIVE");
+      initialEmptyNumberConsumed = true;
       const target = matchField(field);
       const { type, many, options } = target.field;
       let expected: unknown = approved;
@@ -197,7 +200,8 @@ export function createAshbyProtocol(board: string, jobId: string) {
     fieldAcknowledged: () => fieldAction?.acknowledged === true,
     endField() { fieldAction = null; locations.clear(); },
     beginUpload(field: AgentBrowserField, artifact: MaterializedApplicationArtifact) {
-      if (fieldAction || uploadAction) return fail("ACTION_ALREADY_ACTIVE");
+      if (fieldAction || uploadAction || initialEmptyNumberAction) return fail("ACTION_ALREADY_ACTIVE");
+      initialEmptyNumberConsumed = true;
       const target = matchField(field);
       if (target.field.type !== "File" || target.field.many || target.field.value !== null) return fail("UPLOAD_FIELD_STATE_DRIFT");
       uploadAction = { ...target, artifact, handleRequested: false, bytesAcknowledged: false, attachRequested: false, acknowledged: false };
@@ -239,7 +243,21 @@ export function createAshbyProtocol(board: string, jobId: string) {
       }
       if (op === "ApiSetFormValue") {
         const a = fieldAction;
-        if (!a) return reject("NO_ACTION");
+        if (!a) {
+          // Ashby's public Number widget sends one null save on initial mount.
+          // Admit only an exact, empty, pristine application-form echo. This
+          // carries no applicant answer and cannot create submit authority.
+          const form = forms[0];
+          const field = typeof v.path === "string" ? form?.fields.get(v.path) : undefined;
+          if (initialEmptyNumberConsumed || initialEmptyNumberAction || !form || forms.some(item =>
+            [...item.fields.values()].some(entry => entry.value !== null)) || !field || field.type !== "Number" ||
+            !field.required || field.hidden || v.value !== null ||
+            !keys(v, ["organizationHostedJobsPageName", "formRenderIdentifier", "formDefinitionIdentifier", "path", "value"]) ||
+            bindingFailure(v, form, field)) return reject("NO_ACTION");
+          initialEmptyNumberConsumed = true;
+          initialEmptyNumberAction = { form, field, expected: null, admitted: true, acknowledged: false, approved: "" };
+          return "FIELD";
+        }
         if (a.admitted) return reject(a.acknowledged ? "DUPLICATE_ACKNOWLEDGED" : "DUPLICATE_PENDING");
         if (!keys(v, ["organizationHostedJobsPageName", "formRenderIdentifier", "formDefinitionIdentifier", "path", "value"])) return reject("VARIABLE_KEYS");
         const mismatch = bindingFailure(v, a.form, a.field); if (mismatch) return reject(mismatch);
@@ -277,6 +295,7 @@ export function createAshbyProtocol(board: string, jobId: string) {
       }
       if (!submitting) return reject("NO_SUBMIT_ACTION");
       if (fieldAction) return reject("FIELD_ACTION_ACTIVE");
+      if (initialEmptyNumberAction) return reject("FIELD_ACTION_ACTIVE");
       if (uploadAction) return reject("UPLOAD_ACTION_ACTIVE");
       if (!forms.length) return reject("FORM_NOT_READY");
       const app = forms[0];
@@ -329,7 +348,12 @@ export function createAshbyProtocol(board: string, jobId: string) {
             const value = { text: result.name, providerLocationId: last.providerLocationId };
             locations.set(stable(value), value);
           }
-        } else if (op === "ApiSetFormValue") { if (!fieldAction?.admitted) return fail("FIELD_ACK_OUTSIDE_ACTION"); updateForm(data.setFormValue, fieldAction, false); }
+        } else if (op === "ApiSetFormValue") {
+          const expected = fieldAction?.admitted ? fieldAction : initialEmptyNumberAction;
+          if (!expected?.admitted) return fail("FIELD_ACK_OUTSIDE_ACTION");
+          updateForm(data.setFormValue, expected, false);
+          if (expected === initialEmptyNumberAction) initialEmptyNumberAction = null;
+        }
         else if (op === "ApiCreateFileUploadHandle") {
           const a = uploadAction, handle = object(data.fileUploadHandle), fields = object(handle?.fields);
           if (!a?.handleRequested || a.handle || typeof handle?.handle !== "string" || !handle.handle || handle.handle.length > 500 || typeof handle.url !== "string" || !fields) return fail("UPLOAD_HANDLE_SCHEMA_DRIFT");
@@ -341,7 +365,7 @@ export function createAshbyProtocol(board: string, jobId: string) {
       } catch (error) { broken = true; throw error; }
     },
     surveyCount: () => Math.max(0, forms.length - 1),
-    review() { assertReady(); if (fieldAction || uploadAction) return fail("ACTION_ALREADY_ACTIVE"); return forms.map((form) => ({ formId: form.id, definitionId: form.definition, actionId: form.action,
+    review() { assertReady(); if (fieldAction || uploadAction || initialEmptyNumberAction) return fail("ACTION_ALREADY_ACTIVE"); return forms.map((form) => ({ formId: form.id, definitionId: form.definition, actionId: form.action,
       ...(informationalNoticeRuleId ? { informationalNoticeRuleId, informationalNoticeHash } : {}),
       fields: [...form.fields.values()].map((field) => ({ path: field.path, valueHash: digest(stable(field.value)) })) })); },
   };

@@ -96,6 +96,42 @@ test("draft saves require the current approved field and exact tenant, form, pat
     createHash("sha256").update(JSON.stringify("Alex Candidate")).digest("hex"));
 });
 
+test("one pristine required Number null mount save is bound and read back before any candidate action", () => {
+  const protocol = createAshbyProtocol(board, job);
+  const initial = form();
+  initial.sections[0]!.fieldEntries.push({ field: { path: "salary", type: "Number", isMany: false }, isRequired: true, isHidden: false, fieldValue: null });
+  protocol.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: initial, surveyForms: [] } } });
+  const nullSave = save("salary", null);
+  assert.equal(protocol.authorize(save("salary", "50000")), null);
+  assert.equal(protocol.authorize(save("eligible", null)), null);
+  assert.equal(protocol.authorize(save("salary", null, { extra: true })), null);
+  assert.equal(protocol.authorize(nullSave), "FIELD");
+  assert.equal(protocol.authorize(nullSave), null, "duplicate empty mutation is blocked");
+  assert.throws(() => protocol.review(), /ACTION_ALREADY_ACTIVE/u);
+  protocol.observe(nullSave, { data: { setFormValue: { ...initial, formControls: [{ identifier: id(40), title: "Submit Application" }] } } });
+  assert.equal(protocol.review()[0]?.actionId, id(40));
+  assert.equal(protocol.authorize(nullSave), null, "only one mount save is permitted");
+  protocol.beginField(field("_systemfield_name"), "Alex Candidate");
+  const nameSave = save("_systemfield_name", "Alex Candidate");
+  assert.equal(protocol.authorize(nameSave), "FIELD");
+});
+
+test("pristine Number null readback cannot change another value or follow a candidate action", () => {
+  const initial = form();
+  initial.sections[0]!.fieldEntries.push({ field: { path: "salary", type: "Number", isMany: false }, isRequired: true, isHidden: false, fieldValue: null });
+  const protocol = createAshbyProtocol(board, job);
+  protocol.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: initial, surveyForms: [] } } });
+  const nullSave = save("salary", null);
+  assert.equal(protocol.authorize(nullSave), "FIELD");
+  assert.throws(() => protocol.observe(nullSave, { data: { setFormValue: form(2, { eligible: true }) } }), /DRIFT/u);
+  assert.equal(protocol.ready(), false);
+  const later = createAshbyProtocol(board, job);
+  later.observe(postingRequest, { data: { jobPosting: { id: job, applicationForm: initial, surveyForms: [] } } });
+  later.beginField(field("_systemfield_name"), "Alex Candidate");
+  later.endField();
+  assert.equal(later.authorize(nullSave), null);
+});
+
 test("composite application definition IDs bind the exact named job, autosave echo and final review", () => {
   const protocol = createAshbyProtocol(board, job);
   const definition = compositeDefinition();
