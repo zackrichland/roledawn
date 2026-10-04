@@ -33,6 +33,9 @@ function harness(p: CanaryPlan = plan()) {
     async releaseController() { locked = false; },
   };
   const transport: HostedCanaryTransport = {
+    async items() { return { object: "list",data: [],has_more: false }; },
+    async artifacts() { return { object: "list",data: [],has_more: false }; },
+    async artifactContent() { return new Uint8Array(); },
     async create(body) { calls.push({ name: "create", body }); assert.equal(row.phase, "CREATING"); assert.equal(row.possibleEgress, true);
       return { id: "session_1", environment: { type: "openai_hosted" } }; },
     async turns() { calls.push({ name: "turns" }); return { data: [{ ...terminal.turn, status: "completed" }], has_more: false }; },

@@ -5,7 +5,7 @@ export type CanaryOperatorManifest = Readonly<{ plan: CanaryPlan; approval: {
   approvalHash: string; packetReadbackHash: string; priorSpendEvidenceHash: string; futureCostBoundHash: string;
   schemaReviewHash: string; expiresAt: string;
 } }>;
-const REQUIRED = ["OPENAI_API_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY"] as const;
+const REQUIRED = ["OPENAI_API_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY", "ROLEDAWN_HOSTED_CANARY_EVIDENCE_DIR"] as const;
 const digest = (x: unknown) => createHash("sha256").update(JSON.stringify(x)).digest("hex");
 /** Local only: no imports of network clients, provider calls, or candidate values in output. */
 export function hostedCanaryPreflight(environment: Readonly<Record<string, string | undefined>>, manifest?: CanaryOperatorManifest, now = Date.now()) {

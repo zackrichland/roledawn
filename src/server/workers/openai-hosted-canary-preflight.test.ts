@@ -10,7 +10,7 @@ const plan = prepareHostedCanaryPlan({ candidateId: "11111111-1111-4111-8111-111
 const manifest: CanaryOperatorManifest = { plan, approval: { intentSha256: plan.intentSha256, packetSha256: plan.packetSha256,
   destinationUrl: plan.destinationUrl, approvalHash: "a".repeat(64), packetReadbackHash: "b".repeat(64), priorSpendEvidenceHash: "c".repeat(64),
   futureCostBoundHash: "d".repeat(64), schemaReviewHash: "e".repeat(64), expiresAt: new Date(now+120000).toISOString() } };
-const env = { NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "synthetic", ROLEDAWN_HOSTED_CANARY_ENABLED: "true", OPENAI_API_KEY: "SECRET OPENAI VALUE", NEXT_PUBLIC_SUPABASE_URL: "https://example.invalid", SUPABASE_SECRET_KEY: "SECRET DB VALUE" };
+const env = { ROLEDAWN_HOSTED_CANARY_EVIDENCE_DIR: "/private/synthetic", NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "synthetic", ROLEDAWN_HOSTED_CANARY_ENABLED: "true", OPENAI_API_KEY: "SECRET OPENAI VALUE", NEXT_PUBLIC_SUPABASE_URL: "https://example.invalid", SUPABASE_SECRET_KEY: "SECRET DB VALUE" };
 test("preflight is redacted and distinguishes local checks from deployed authorization", () => {
   const result = hostedCanaryPreflight(env,manifest,now);
   assert.equal(result.localChecksPass,true); assert.equal(result.deployedApprovalAndExclusionVerified,false);

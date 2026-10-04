@@ -63,7 +63,7 @@ language sql stable set search_path='' as $$ select jsonb_build_object(
   'phase',r.phase,'sessionId',r.session_id,'possibleEgress',r.possible_egress,'cancelRequested',r.cancel_requested,'cleanupPending',r.cleanup_pending,'evidence',r.evidence); $$;
 
 -- Only an explicitly reserved candidate/job is blocked. Cleanup/terminal writes remain available.
--- The claim transaction takes table locks before inserting the reservation, closing the first-claim race.
+-- Every Lever/Ashby launch and the hosted reservation serialize on the same job key. Greenhouse never takes this lock.
 create function private.hosted_canary_exclude_browserbase() returns trigger
 language plpgsql security definer set search_path='' as $$
 declare k text; c uuid; active boolean;
@@ -76,8 +76,14 @@ begin
   else
     k:=private.hosted_canary_job_key(new.destination_url); active:=new.status in ('QUEUED','STARTED');
   end if;
-  if active and k is not null and exists(select 1 from private.hosted_canary_runs r where r.candidate_id=c and r.job_key=k) then
-    raise exception 'HOSTED_CANARY_PROVIDER_EXCLUDED' using errcode='55000';
+  if k is null then return new; end if;
+  perform pg_advisory_xact_lock(hashtextextended('hosted-canary:'||c::text||':'||k,0));
+  if exists(select 1 from private.hosted_canary_runs r where r.candidate_id=c and r.job_key=k) then
+    if tg_table_name='application_autopilots' then
+      if new.status='QUEUED' then
+        new.status:='PAUSED'; new.stop_requested:='PAUSE'; new.failure_code:='HOSTED_CANARY_RESERVED';
+      elsif active then raise exception 'HOSTED_CANARY_PROVIDER_EXCLUDED' using errcode='55000'; end if;
+    elsif active then raise exception 'HOSTED_CANARY_PROVIDER_EXCLUDED' using errcode='55000'; end if;
   end if;
   return new;
 end $$;
@@ -89,11 +95,14 @@ create trigger hosted_canary_computer_exclusion before insert or update on publi
   for each row execute function private.hosted_canary_exclude_browserbase();
 
 create function private.hosted_canary_exclude_attempt() returns trigger
-language plpgsql security definer set search_path='' as $$ begin
-  if exists(select 1 from public.applications x left join public.job_versions j on j.id=x.job_version_id
-    left join public.job_intakes i on i.id=x.job_intake_id join private.hosted_canary_runs r on r.candidate_id=x.candidate_id
-      and (r.job_key=private.hosted_canary_job_key(j.apply_url) or r.job_key=private.hosted_canary_job_key(i.canonical_url))
-    where x.id=new.application_id) then raise exception 'HOSTED_CANARY_PROVIDER_EXCLUDED'; end if;
+language plpgsql security definer set search_path='' as $$
+declare c uuid; k text;
+begin
+  select x.candidate_id,coalesce(private.hosted_canary_job_key(j.apply_url),private.hosted_canary_job_key(i.canonical_url)) into c,k
+    from public.applications x left join public.job_versions j on j.id=x.job_version_id left join public.job_intakes i on i.id=x.job_intake_id where x.id=new.application_id;
+  if k is null then return new; end if;
+  perform pg_advisory_xact_lock(hashtextextended('hosted-canary:'||c::text||':'||k,0));
+  if exists(select 1 from private.hosted_canary_runs r where r.candidate_id=c and r.job_key=k) then raise exception 'HOSTED_CANARY_PROVIDER_EXCLUDED'; end if;
   return new;
 end $$;
 create trigger hosted_canary_attempt_exclusion before insert on public.application_attempts
@@ -121,8 +130,10 @@ begin
   if p_recovery then raise exception 'HOSTED_CANARY_RECOVERY_NOT_FOUND'; end if;
   if not a.enabled or a.valid_until<=clock_timestamp() or (p->>'deadlineMs')::numeric/1000<=extract(epoch from clock_timestamp()) then
     raise exception 'HOSTED_CANARY_APPROVAL_EXPIRED'; end if;
-  -- Administrative, one-shot exclusion installation. Never held during network work.
-  lock table public.application_autopilots,public.application_fill_attempts,public.computer_sessions,public.application_attempts in share row exclusive mode;
+  -- Fail promptly if a competing launch owns the job or has selected a queued row.
+  -- NOWAIT avoids a row-lock/advisory-lock inversion with the existing global claim.
+  if not pg_try_advisory_xact_lock(hashtextextended('hosted-canary:'||c::text||':'||k,0)) then raise exception 'HOSTED_CANARY_PROVIDER_BUSY'; end if;
+  perform 1 from public.application_autopilots x where x.candidate_id=c and private.hosted_canary_job_key(x.destination_url)=k for update nowait;
   if not exists(select 1 from public.applications x left join public.job_versions j on j.id=x.job_version_id
       left join public.job_intakes i on i.id=x.job_intake_id where x.id=app and x.candidate_id=c
       and (private.hosted_canary_job_key(j.apply_url)=k or private.hosted_canary_job_key(i.canonical_url)=k)) then
@@ -143,6 +154,10 @@ begin
   update private.hosted_canary_budget set reserved_cents=reserved_cents+cost where id=true;
   insert into private.hosted_canary_runs(candidate_id,application_id,job_key,intent_hash,controller_token,controller_until)
     values(c,app,k,a.intent_hash,extensions.gen_random_uuid(),clock_timestamp()+interval '5 minutes') returning * into r;
+  -- Remove only this reserved job from the ordinary global queue. Future QUEUED
+  -- inserts/requeues are paused by the trigger too, so they cannot poison claims.
+  update public.application_autopilots set status='PAUSED',stop_requested='PAUSE',failure_code='HOSTED_CANARY_RESERVED'
+    where candidate_id=c and private.hosted_canary_job_key(destination_url)=k and status='QUEUED';
   return private.hosted_canary_run_json(r);
 end $$;
 

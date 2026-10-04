@@ -39,7 +39,7 @@ for (const board of ["lever", "ashby"] as const) test(`${board}: actual RPC stor
       await db.exec("rollback to savepoint refused; release savepoint refused");
     };
     await assert.rejects(store.claim(plan), /STORE_REFUSED/, "existing active Browserbase work wins");
-    await db.query("update public.application_autopilots set status='QUEUED',lease_token=null,lease_expires_at=null where id=$1", [f.autopilot]);
+    await db.query("update public.application_autopilots set status='QUEUED',lease_token=null,lease_expires_at=null,created_at=now()-interval '1 hour',available_at=now()-interval '1 hour' where id=$1", [f.autopilot]);
     let run = await store.claim(plan);
     await assert.rejects(store.claim(plan), /STORE_REFUSED/, "competing controller refused");
     await refuseBrowserbase();
@@ -72,7 +72,12 @@ for (const board of ["lever", "ashby"] as const) test(`${board}: actual RPC stor
     assert.equal((await db.query<{ n: number }>("select count(*)::int n from public.application_attempts where application_id=$1",[f.application])).rows[0].n,0);
     // Unrelated Greenhouse fixture and its normal RUNNING state are unchanged.
     const gh = (await db.query<{ f: { autopilot: string } }>("select pg_temp.running('greenhouse-unaffected') as f")).rows[0].f;
-    await db.query("update public.application_autopilots set status='RUNNING' where id=$1",[gh.autopilot]);
+    await db.query("update public.application_autopilots set status='QUEUED',lease_token=null,lease_expires_at=null where id=$1",[gh.autopilot]);
+    await db.query("insert into private.application_autopilot_runtime(autopilot_id) values($1)",[gh.autopilot]);
+    const claimed = await rpc.rpc("claim_application_autopilot",{ p_worker_id: "synthetic-global-worker",p_lease_seconds: 60 });
+    assert.equal(claimed.error,null); assert.equal((claimed.data as { id: string }).id,gh.autopilot,"reserved older job cannot starve global Greenhouse claim");
+    await db.query("update public.application_autopilots set status='QUEUED' where id=$1",[f.autopilot]);
+    assert.equal((await db.query<{ status: string }>("select status from public.application_autopilots where id=$1",[f.autopilot])).rows[0].status,"PAUSED");
     // No anonymous or ordinary authenticated caller can claim or inspect the private plan.
     assert.equal((await db.query<{ allowed: boolean }>("select has_function_privilege('authenticated','public.claim_hosted_canary(text,boolean)','execute') as allowed")).rows[0].allowed,false);
     await db.exec("rollback");

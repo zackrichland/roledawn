@@ -5,6 +5,9 @@ const LIMIT = 2 * 1024 * 1024;
 const safeId = (id: string) => { if (!ID.test(id)) throw new Error("HOSTED_CANARY_INVALID_ID"); return id; };
 export interface HostedCanaryTransport {
   create(body: unknown, signal: AbortSignal): Promise<unknown>;
+  items(sessionId: string, signal: AbortSignal): Promise<unknown>;
+  artifacts(sessionId: string, signal: AbortSignal): Promise<unknown>;
+  artifactContent(sessionId: string, artifactId: string, signal: AbortSignal): Promise<Uint8Array>;
   turns(sessionId: string, signal: AbortSignal): Promise<unknown>;
   retrieve(sessionId: string, signal: AbortSignal): Promise<unknown>;
   post(sessionId: string, body: unknown, key: string | null, signal: AbortSignal): Promise<void>;
@@ -25,17 +28,24 @@ export function createHostedCanaryTransport(apiKey: string, fetcher: typeof fetc
     if (!response.ok && !(method === "DELETE" && response.status === 404)) { await response.body?.cancel().catch(() => undefined); throw new Error("HOSTED_CANARY_HTTP_FAILED"); }
     return response;
   }
-  async function json(response: Response) {
+  async function bodyBytes(response: Response) {
     const reader = response.body?.getReader(); if (!reader) throw new Error("HOSTED_CANARY_EMPTY_RESPONSE");
     const chunks: Uint8Array[] = []; let bytes = 0;
     try {
       while (true) { const part = await reader.read(); if (part.done) break;
         bytes += part.value.byteLength; if (bytes > LIMIT) throw new Error(); chunks.push(part.value); }
-      return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+      return Buffer.concat(chunks);
     } catch { throw new Error("HOSTED_CANARY_INVALID_RESPONSE"); }
     finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
   }
+  async function json(response: Response) {
+    try { return JSON.parse((await bodyBytes(response)).toString("utf8")) as unknown; }
+    catch { throw new Error("HOSTED_CANARY_INVALID_RESPONSE"); }
+  }
   return {
+    items: async (id, signal) => json(await request("GET", `/${safeId(id)}/items?limit=100&order=asc`, undefined, signal)),
+    artifacts: async (id, signal) => json(await request("GET", `/${safeId(id)}/artifacts?limit=20&order=asc`, undefined, signal)),
+    artifactContent: async (id, artifact, signal) => bodyBytes(await request("GET", `/${safeId(id)}/artifacts/${safeId(artifact)}/content`, undefined, signal)),
     create: async (body, signal) => json(await request("POST", "", body, signal)),
     turns: async (id, signal) => json(await request("GET", `/${safeId(id)}/turns?limit=20&order=desc`, undefined, signal)),
     retrieve: async (id, signal) => json(await request("GET", `/${safeId(id)}`, undefined, signal)),
