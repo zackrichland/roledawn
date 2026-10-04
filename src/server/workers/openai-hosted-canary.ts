@@ -16,6 +16,8 @@ export type CanaryPacket = Readonly<{
     "heardAbout" | "highestDegree" | "usAuthorized" | "usSponsorshipRequired", string>>>;
   resumeBase64: string;
   coverLetterBase64?: string;
+  /** Exact answer separately approved for this application, never a standing profile fact. */
+  salaryExpectationAnnualUsd?: string;
 }>;
 export type CanaryPlan = Readonly<{
   candidateId: string; applicationId: string; destinationUrl: string; admissionKey: string;
@@ -61,7 +63,9 @@ export function prepareHostedCanaryPlan(input: Omit<CanaryPlan, "packetSha256" |
   const setup_commands = files.map(file => ({ command:
     `printf '%s  %s\\n' '${sha(Buffer.from(file.data, "base64"))}' '${file.path}' | sha256sum --check --status` }));
   if (!files.length || !input.packet.resumeBase64) fail("ARTIFACT_INVALID");
-  const packetSha256 = sha(JSON.stringify({ facts, files }));
+  const salaryExpectationAnnualUsd = input.packet.salaryExpectationAnnualUsd;
+  if (salaryExpectationAnnualUsd !== undefined && !/^[1-9][0-9]{2,8}$/u.test(salaryExpectationAnnualUsd)) fail("PACKET_INVALID");
+  const packetSha256 = sha(JSON.stringify({ facts, files, ...(salaryExpectationAnnualUsd === undefined ? {} : { salaryExpectationAnnualUsd }) }));
   reserveHostedTaskModel({ ...input, sessionId: "validation_only", packetSha256, message: "validation_only" });
   const host = new URL(input.destinationUrl).hostname;
   if (!input.allowedDomains.includes(host) || input.allowedDomains.length > 100 ||
@@ -77,7 +81,7 @@ export function prepareHostedCanaryPlan(input: Omit<CanaryPlan, "packetSha256" |
     environment: { type: "openai_hosted", container_size: "medium", desktop: { enabled: true },
       network: { access: "restricted", allowed_domains: [...input.allowedDomains] }, files, setup_commands } };
   const taskBody = { events: [{ type: "agent.session.input.message", input: [{ role: "user", content: [{ type: "input_text",
-    text: `Apply only to ${input.destinationUrl}. Approved facts: ${JSON.stringify(facts)}. Approved files: ${files.map(f => f.path).join(", ")}. Navigate to the exact application page, use its file chooser to attach each requested PDF from its listed /workspace path, and verify each selected filename. Stop and report the observed obstacle if attachment or upload fails. Use no other candidate information or destinations. Stop rather than guessing any required answer.` }] }] }] };
+    text: `Apply only to ${input.destinationUrl}. Approved facts: ${JSON.stringify(facts)}. Approved files: ${files.map(f => f.path).join(", ")}.${salaryExpectationAnnualUsd === undefined ? "" : ` For the exact question "What are your salary expectations?", the applicant approved ${salaryExpectationAnnualUsd} USD annually for this application only.`} Navigate to the exact application page, use its file chooser to attach each requested PDF from its listed /workspace path, and verify each selected filename. Stop and report the observed obstacle if attachment or upload fails. Use no other candidate information or destinations. Stop rather than guessing any required answer.` }] }] }] };
   const plan = { candidateId: input.candidateId, applicationId: input.applicationId, destinationUrl: input.destinationUrl,
     admissionKey: input.admissionKey, allowedDomains: [...input.allowedDomains], originDecisions: { ...input.originDecisions },
     deadlineMs: input.deadlineMs, priorSpendUpperBoundCents: input.priorSpendUpperBoundCents, reservedRunCents: input.reservedRunCents,

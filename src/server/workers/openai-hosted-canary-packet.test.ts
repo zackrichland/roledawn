@@ -66,3 +66,20 @@ test("plan builder includes only the materialized packet for the same applicatio
   assert.match(JSON.stringify(plan.taskBody), /Synthetic Degree/u);
   assert.equal(plan.applicationId, applicationId);
 });
+
+test("one application salary answer is separately bound and cannot become a materialized fact", () => {
+  const candidateId = "11111111-1111-4111-8111-111111111111";
+  const applicationId = "22222222-2222-4222-8222-222222222222";
+  const destinationUrl = "https://jobs.ashbyhq.com/fixture/33333333-3333-4333-8333-333333333333/application";
+  const readback = { ...execution(), binding: { ...execution().binding, candidateId, applicationId }, destinationUrl };
+  const input = { candidateId, applicationId, destinationUrl, admissionKey: "canary_one",
+    allowedDomains: ["jobs.ashbyhq.com"], originDecisions: { "https://jobs.ashbyhq.com": "approve" as const },
+    deadlineMs: Date.now() + 60_000, priorSpendUpperBoundCents: 100, reservedRunCents: 100 };
+  const base = prepareHostedCanaryPlanFromReadback(readback, input);
+  const withAnswer = prepareHostedCanaryPlanFromReadback(readback, { ...input, salaryExpectationAnnualUsd: "98765" });
+  assert.equal(base.packetReadbackHash, withAnswer.packetReadbackHash);
+  assert.notEqual(base.plan.packetSha256, withAnswer.plan.packetSha256);
+  assert.match(JSON.stringify(withAnswer.plan.taskBody), /98765 USD annually for this application only/u);
+  assert.equal(JSON.stringify(base.plan.taskBody).includes("98765"), false);
+  assert.throws(() => prepareHostedCanaryPlanFromReadback(readback, { ...input, salaryExpectationAnnualUsd: "about 50k" }), /HOSTED_CANARY_PACKET_INVALID/u);
+});

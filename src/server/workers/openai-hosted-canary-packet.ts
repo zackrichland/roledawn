@@ -51,7 +51,7 @@ export function packetFromMaterializedReadback(execution: ApplicationFillExecuti
 /** Bind the canary plan to the exact application that produced the approved readback. */
 export function prepareHostedCanaryPlanFromReadback(
   execution: ApplicationFillExecutionPackage,
-  input: Omit<CanaryPlan, "packetSha256" | "intentSha256" | "createBody" | "taskBody">,
+  input: Omit<CanaryPlan, "packetSha256" | "intentSha256" | "createBody" | "taskBody"> & { salaryExpectationAnnualUsd?: string },
 ): Readonly<{ plan: CanaryPlan; packetReadbackHash: string }> {
   if (execution.binding.candidateId !== input.candidateId ||
       execution.binding.applicationId !== input.applicationId ||
@@ -59,5 +59,7 @@ export function prepareHostedCanaryPlanFromReadback(
     throw new Error("HOSTED_CANARY_READBACK_BINDING_MISMATCH");
   }
   const { packet, packetReadbackHash } = packetFromMaterializedReadback(execution);
-  return { plan: prepareHostedCanaryPlan({ ...input, packet }), packetReadbackHash };
+  return { plan: prepareHostedCanaryPlan({ ...input, packet: {
+    ...packet, ...(input.salaryExpectationAnnualUsd === undefined ? {} : { salaryExpectationAnnualUsd: input.salaryExpectationAnnualUsd }),
+  } }), packetReadbackHash };
 }
