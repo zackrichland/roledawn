@@ -53,3 +53,13 @@ test("saved items and artifact retrieval use fixed official paths and preserve b
   assert.deepEqual(Array.from(await t.artifactContent("s1","artifact_1",signal())),[0,1,255]);
   assert.deepEqual(urls.map(u=>u.replace("https://api.openai.com/v1/agents/sessions", "")),["/s1/items?limit=5&order=asc","/s1/artifacts?limit=20&order=asc","/s1/artifacts/artifact_1/content"]);
 });
+test("environment setup status uses the documented read-only endpoint", async () => {
+  const urls: string[] = [];
+  const t = createHostedCanaryTransport("synthetic",async (url,init) => {
+    urls.push(String(url)); assert.equal(init?.method,"GET");
+    return Response.json({ id:"env_1",status:"connected" });
+  });
+  assert.deepEqual(await t.environment("env_1",signal()),{ id:"env_1",status:"connected" });
+  assert.deepEqual(urls,["https://api.openai.com/v1/agents/environments/env_1"]);
+  await assert.rejects(t.environment("invalid/id",signal()),/INVALID_ID/);
+});

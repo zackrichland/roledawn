@@ -20,7 +20,8 @@ function harness(p: CanaryPlan = plan()) {
   let locked = false;
   const calls: { name: string; body?: unknown; key?: string | null }[] = [];
   const control = { events: [terminal] as unknown[], actions: [] as unknown[], budget: true, failAdmission: 0, failReady: false, failDelete: false,
-    evidence: null as CanaryEvidence | null, abortAfterAdmission: undefined as AbortController | undefined, recordFails: false };
+    evidence: null as CanaryEvidence | null, abortAfterAdmission: undefined as AbortController | undefined, recordFails: false,
+    environmentStatuses: ["connected"] as string[] };
   const store: HostedCanaryStore = {
     async claim(incoming) { if (locked || incoming.intentSha256 !== row.intentSha256) throw Error("refused"); locked = true; return structuredClone(row); },
     async commit(prior, patch) {
@@ -37,10 +38,11 @@ function harness(p: CanaryPlan = plan()) {
     async artifacts() { return { object: "list",data: [],has_more: false }; },
     async artifactContent() { return new Uint8Array(); },
     async create(body) { calls.push({ name: "create", body }); assert.equal(row.phase, "CREATING"); assert.equal(row.possibleEgress, true);
-      return { id: "session_1", environment: { type: "openai_hosted" } }; },
+      return { id: "session_1", environment: { id: "env_1",type: "openai_hosted" } }; },
     async turns() { calls.push({ name: "turns" }); return { data: [{ ...terminal.turn, status: "completed", usage: {} }], has_more: false }; },
     async traces() { return { object: "list",data: [],has_more: false }; },
-    async retrieve() { calls.push({ name: "retrieve" }); return { id: "session_1", environment: { type: "openai_hosted" }, required_actions: control.actions }; },
+    async environment() { calls.push({ name: "environment" }); return { id: "env_1",status: control.environmentStatuses.shift() ?? "connected" }; },
+    async retrieve() { calls.push({ name: "retrieve" }); return { id: "session_1", environment: { id: "env_1",type: "openai_hosted" }, required_actions: control.actions }; },
     async post(_id, body, key) { calls.push({ name: "post", body, key });
       if (key) { assert.equal(row.phase, "ADMISSION_PENDING"); control.abortAfterAdmission?.abort(); if (control.failAdmission-- > 0) throw Error("lost ack"); } },
     async stream() { calls.push({ name: "stream" }); return { events: (async function* () { yield* control.events; })(), async close() { calls.push({ name: "close" }); } }; },
@@ -70,9 +72,19 @@ test("hosted setup checks the exact inline PDF before agent work", () => {
 test("idle create, stream before task, completion is uncertain and cleans up", async () => {
   const h = harness(); const result = await h.run();
   assert.equal(result.phase, "UNCERTAIN"); assert.equal(result.automaticRetryAllowed, false);
-  assert.deepEqual(h.calls.slice(0, 4).map(c => c.name), ["create", "stream", "post", "retrieve"]);
+  assert.deepEqual(h.calls.slice(0, 5).map(c => c.name), ["create", "retrieve", "environment", "stream", "post"]);
   assert.equal("input" in (h.calls[0].body as object), false);
   assert.ok(h.calls.some(c => c.name === "remove"));
+});
+test("task admission waits for connected setup and refuses failed setup", async () => {
+  const waiting = harness(); waiting.control.environmentStatuses = ["provisioning","connected"];
+  await waiting.run();
+  assert.equal(waiting.calls.filter(c => c.name === "environment").length,2);
+  assert.ok(waiting.calls.findIndex(c => c.name === "environment") < waiting.calls.findIndex(c => c.key));
+  const failed = harness(); failed.control.environmentStatuses = ["failed"];
+  assert.equal((await failed.run()).phase,"UNCERTAIN");
+  assert.equal(failed.calls.filter(c => c.key).length,0);
+  assert.ok(failed.calls.some(c => c.name === "remove"));
 });
 test("lost admission acknowledgement replays the identical key and body only", async () => {
   const h = harness(); h.control.failAdmission = 1; await h.run();

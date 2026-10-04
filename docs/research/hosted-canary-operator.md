@@ -10,7 +10,7 @@ A fourth run was explicitly authorized as one corrected rerun of that same synth
 
 | Upload boundary | Retained evidence |
 | --- | --- |
-| Exact PDF bytes staged in hosted `/workspace` | Verified by successful create-time SHA check. |
+| Exact PDF bytes staged in hosted `/workspace` | Verified after the environment connected following the setup SHA check. Session creation alone starts setup. |
 | Browser chooser can select that path | Verified by the earlier Astra screenshot showing the synthetic filename. |
 | Form held the exact PDF bytes | Filename screenshot only; no byte-level form readback. |
 | Hosted browser dispatched multipart Upload | Not verified. The one observed Upload tool item failed without an exposed error; the corrected Luna run never clicked Upload. |
@@ -75,6 +75,8 @@ node --test --experimental-strip-types scripts/hosted-canary-store.test.ts
 ## Evidence capture and verification
 
 The [capture/verification module](../../src/server/workers/openai-hosted-canary-evidence.ts) and its fixtures use documented [saved items](https://developers.openai.com/api/reference/resources/beta/subresources/agents/subresources/sessions/subresources/items/methods/list), [artifact listings](https://developers.openai.com/api/reference/resources/beta/subresources/agents/subresources/sessions/subresources/artifacts/methods/list) and [artifact content](https://developers.openai.com/api/reference/resources/beta/subresources/agents/subresources/sessions/subresources/artifacts/methods/content). The prepared canary requests tool screenshots. Saved model descriptions, completed turns, screenshot pixels and agent-published files are **not independently authenticated employer evidence**.
+
+The controller reads the documented hosted-environment status and requires `connected` before posting the candidate-bearing task. A `provisioning` state is polled under the existing deadline; `failed`, an unknown state or a mismatched environment ID stops admission. The earlier synthetic diagnostic had posted its task before `environment.connected`; that timing does not by itself explain its later unsupported file-access claim, because its three browser items occurred after connection.
 
 Before provider deletion, the isolated runner polls briefly for terminal usage and archives bounded saved turns, paginated items and traces, screenshot bytes and up to five published artifacts matched to the session and completed turn. Trace spans are kept raw only in the private archive so their actual error fields survive; the separate public trace-summary reader still discards them. Items use pages of five and traces pages of one, up to 20 pages each, under a 2 MiB response limit and 20-second capture deadline. Missing usage or traces, excess pagination or any partial failure marks the archive INCOMPLETE. Independent capture steps preserve later artifact metadata if an earlier listing fails. Archive failure never keeps a paid environment alive indefinitely. Origin requests and exact decisions are privately archived before any approval is sent; an archive failure prevents the grant. Lost-stream recovery uses saved provider history, not replay assumptions. No evidence URL is fetched from an untrusted item.
 

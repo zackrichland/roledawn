@@ -58,8 +58,9 @@ export function prepareHostedCanaryPlan(input: Omit<CanaryPlan, "packetSha256" |
     if (bytes.toString("base64") !== data || bytes.byteLength > 1_048_576 || !bytes.subarray(0,5).equals(Buffer.from("%PDF-"))) fail("ARTIFACT_INVALID");
     return [{ type: "inline", path: i === 0 ? "/workspace/resume.pdf" : "/workspace/cover-letter.pdf", data }];
   });
-  // Input files are installed before setup commands. Fail session creation if the
-  // hosted workspace does not contain the exact approved bytes.
+  // Input files are installed before setup commands. Setup fails if the hosted
+  // workspace does not contain the exact approved bytes; task admission separately
+    // waits for the environment's connected status.
   const setup_commands = files.map(file => ({ command:
     `printf '%s  %s\\n' '${sha(Buffer.from(file.data, "base64"))}' '${file.path}' | sha256sum --check --status` }));
   if (!files.length || !input.packet.resumeBase64) fail("ARTIFACT_INVALID");
@@ -216,6 +217,24 @@ export async function runHostedCanary(options: Readonly<{
       await commit({ sessionId: session.id, phase: "READY" });
     }
     if (!run.sessionId || run.cancelRequested) fail("RECOVERY_REQUIRED");
+    // Session creation starts environment setup; only the documented connected
+    // status proves that inline files and setup commands are ready for task input.
+    const sessionBeforeTask = object(await options.transport.retrieve(run.sessionId,signal));
+    if (sessionBeforeTask.id !== run.sessionId) fail("SESSION_MISMATCH");
+    const hostedEnvironment = object(sessionBeforeTask.environment);
+    if (hostedEnvironment.type !== "openai_hosted") fail("ENVIRONMENT_INVALID");
+    const environmentId = hostedEnvironment.id;
+    if (typeof environmentId !== "string" || !ID.test(environmentId)) fail("ENVIRONMENT_INVALID");
+    const setupDeadline = Math.min(plan.deadlineMs, Date.now() + 30_000);
+    for (;;) {
+      await check(); if (Date.now() >= setupDeadline) fail("ENVIRONMENT_NOT_CONNECTED");
+      const environment = object(await options.transport.environment(environmentId,AbortSignal.timeout(5000)));
+      if (environment.id !== environmentId) fail("ENVIRONMENT_INVALID");
+      if (environment.status === "connected") break;
+      if (environment.status === "failed") fail("ENVIRONMENT_FAILED");
+      if (environment.status !== "provisioning") fail("ENVIRONMENT_INVALID");
+      await new Promise(resolve => setTimeout(resolve,500));
+    }
     await check(); stream = await options.transport.stream(run.sessionId, signal);
     if (run.phase === "READY") await commit({ phase: "ADMISSION_PENDING", possibleEgress: true });
     if (run.phase === "ADMISSION_PENDING") {

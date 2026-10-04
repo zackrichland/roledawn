@@ -10,6 +10,7 @@ export interface HostedCanaryTransport {
   artifactContent(sessionId: string, artifactId: string, signal: AbortSignal): Promise<Uint8Array>;
   turns(sessionId: string, signal: AbortSignal): Promise<unknown>;
   traces(sessionId: string, signal: AbortSignal, after?: string): Promise<unknown>;
+  environment(environmentId: string, signal: AbortSignal): Promise<unknown>;
   retrieve(sessionId: string, signal: AbortSignal): Promise<unknown>;
   post(sessionId: string, body: unknown, key: string | null, signal: AbortSignal): Promise<void>;
   stream(sessionId: string, signal: AbortSignal): Promise<{ events: AsyncIterable<unknown>; close(): Promise<void> }>;
@@ -57,6 +58,16 @@ export function createHostedCanaryTransport(apiKey: string, fetcher: typeof fetc
     create: async (body, signal) => json(await request("POST", "", body, signal)),
     turns: async (id, signal) => json(await request("GET", `/${safeId(id)}/turns?limit=20&order=desc`, undefined, signal)),
     traces: async (id, signal, after) => json(await request("GET", `/${safeId(id)}/traces?limit=1&order=asc${after ? `&after=${safeId(after)}` : ""}`, undefined, signal)),
+    environment: async (id, signal) => {
+      const environmentId = safeId(id);
+      let response: Response;
+      try { response = await fetcher(`https://api.openai.com/v1/agents/environments/${environmentId}`, {
+        method: "GET", redirect: "error", signal,
+        headers: { Authorization: `Bearer ${apiKey}`, "OpenAI-Beta": "agents=v1" },
+      }); } catch { throw new Error("HOSTED_CANARY_TRANSPORT_FAILED"); }
+      if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw new Error("HOSTED_CANARY_ENVIRONMENT_UNAVAILABLE"); }
+      return json(response);
+    },
     retrieve: async (id, signal) => json(await request("GET", `/${safeId(id)}`, undefined, signal)),
     post: async (id, body, key, signal) => { const r = await request("POST", `/${safeId(id)}/events`, body, signal, key); await r.body?.cancel(); },
     remove: async (id, signal) => { const r = await request("DELETE", `/${safeId(id)}`, undefined, signal); await r.body?.cancel(); },
